@@ -1,0 +1,27 @@
+# Development files
+src/
+tests/
+tsconfig.json
+.cursorrules
+agents.md
+bun.lock
+
+# Build tools
+*.config.js
+*.config.ts
+
+# IDE files
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp

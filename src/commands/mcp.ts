@@ -90,7 +90,7 @@ async function interactiveMCPSelection(registry: MCPRegistryManager, projectPath
   // Combine and deduplicate
   const recommendedMCPs = [...new Set([...stackMCPs, ...topMCPs])].slice(0, 6);
   
-  const choices = recommendedMCPs.map(mcp => ({
+  const choices: { title: string; value: MCPItem | string; selected: boolean }[] = recommendedMCPs.map(mcp => ({
     title: `${mcp.name} - ${mcp.description}`,
     value: mcp,
     selected: false

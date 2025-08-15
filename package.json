@@ -12,7 +12,9 @@
     "dev": "bun run src/index.ts",
     "test": "bun test",
     "lint": "tsc --noEmit",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "pack": "npm pack --dry-run",
+    "prepublishOnly": "npm run build && npm run lint"
   },
   "keywords": [
     "ai",
@@ -26,6 +28,11 @@
   "engines": {
     "node": ">=18.0.0"
   },
+  "files": [
+    "dist/",
+    "LICENSE",
+    "README.md"
+  ],
   "dependencies": {
     "commander": "^12.1.0",
     "ora": "^8.1.0",

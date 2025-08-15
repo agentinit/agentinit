@@ -24,7 +24,7 @@ export class AgentDetector {
         name: config.name,
         files: config.files,
         detected: detected.found,
-        configPath: detected.path
+        ...(detected.path && { configPath: detected.path })
       });
     }
 
@@ -54,7 +54,7 @@ export class AgentDetector {
       name: config.name,
       files: config.files,
       detected: detected.found,
-      configPath: detected.path
+      ...(detected.path && { configPath: detected.path })
     };
   }
 

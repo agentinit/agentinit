@@ -18,8 +18,8 @@ export class TemplateEngine {
       FRAMEWORK: config.stack.framework || '',
       FRAMEWORK_TEXT: config.stack.framework ? ` with ${config.stack.framework}` : '',
       FRAMEWORK_CONTEXT: config.stack.framework ? ` using ${config.stack.framework}` : '',
-      DATE: new Date().toISOString().split('T')[0],
-      TEST_FRAMEWORK: config.stack.testFramework || 'jest',
+      DATE: new Date().toISOString().split('T')[0] ?? '',
+      TEST_FRAMEWORK: config.stack.testFramework ?? 'jest',
       PACKAGE_MANAGER: config.stack.packageManager || 'npm',
       EXISTING_AGENTS: config.agents.filter(a => a.detected).map(a => a.name).join(', ') || 'none'
     });
