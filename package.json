@@ -1,0 +1,44 @@
+{
+  "name": "agentinit",
+  "version": "0.1.0",
+  "description": "A CLI tool for managing and configuring AI coding agents",
+  "main": "dist/index.js",
+  "type": "module",
+  "bin": {
+    "agentinit": "dist/index.js"
+  },
+  "scripts": {
+    "build": "bun build src/index.ts --outdir dist --target node",
+    "dev": "bun run src/index.ts",
+    "test": "bun test",
+    "lint": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "keywords": [
+    "ai",
+    "agents",
+    "cli",
+    "configuration",
+    "automation"
+  ],
+  "author": "AgentInit Team",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "commander": "^12.1.0",
+    "ora": "^8.1.0",
+    "kleur": "^4.1.5",
+    "prompts": "^2.4.2",
+    "js-yaml": "^4.1.0",
+    "gray-matter": "^4.0.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.8.0",
+    "@types/js-yaml": "^4.0.9",
+    "@types/prompts": "^2.4.9",
+    "typescript": "^5.6.3"
+  },
+  "packageManager": "bun@1.1.0"
+}
