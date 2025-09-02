@@ -6,6 +6,7 @@ import { detectCommand } from './commands/detect.js';
 import { syncCommand } from './commands/sync.js';
 import { configCommand } from './commands/config.js';
 import { mcpCommand } from './commands/mcp.js';
+import { applyCommand } from './commands/apply.js';
 import { subagentsCommand } from './commands/subagents.js';
 
 const program = new Command();
@@ -52,6 +53,18 @@ program
   .option('-s, --search <query>', 'Search MCP registry')
   .option('--install <name>', 'Install specific MCP')
   .action(mcpCommand);
+
+program
+  .command('apply')
+  .description('Apply configurations (MCP servers, etc.)')
+  .allowUnknownOption(true)
+  .action((...args) => {
+    // Extract raw arguments, excluding the command name
+    const rawArgs = process.argv.slice(2);
+    const applyIndex = rawArgs.indexOf('apply');
+    const configArgs = applyIndex >= 0 ? rawArgs.slice(applyIndex + 1) : [];
+    applyCommand(configArgs);
+  });
 
 program
   .command('subagents')

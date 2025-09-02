@@ -70,3 +70,31 @@ export interface DetectionResult {
   agents: AgentConfig[];
   stack: StackInfo;
 }
+
+export enum MCPServerType {
+  STDIO = 'stdio',
+  HTTP = 'http',
+  SSE = 'sse'
+}
+
+export interface MCPServerConfig {
+  name: string;
+  type: MCPServerType;
+  command?: string | undefined;
+  args?: string[] | undefined;
+  url?: string | undefined;
+  env?: Record<string, string> | undefined;
+  headers?: Record<string, string> | undefined;
+}
+
+export interface MCPCommandParsed {
+  servers: MCPServerConfig[];
+}
+
+export interface TomlMCPServer {
+  command?: string | undefined;
+  args?: string[] | undefined;
+  url?: string | undefined;
+  env?: Record<string, string> | undefined;
+  headers?: Record<string, string> | undefined;
+}

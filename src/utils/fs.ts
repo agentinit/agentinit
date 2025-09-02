@@ -69,3 +69,14 @@ export async function findFiles(dir: string, pattern: RegExp): Promise<string[]>
   
   return files;
 }
+
+export async function ensureAgentInitDir(projectPath: string): Promise<string> {
+  const agentInitDir = join(projectPath, '.agentinit');
+  await fs.mkdir(agentInitDir, { recursive: true });
+  return agentInitDir;
+}
+
+export async function getAgentInitTomlPath(projectPath: string): Promise<string> {
+  const agentInitDir = await ensureAgentInitDir(projectPath);
+  return join(agentInitDir, 'agentinit.toml');
+}

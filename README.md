@@ -90,6 +90,38 @@ agentinit mcp --search <query>     # Search MCPs
 agentinit mcp --install <name>     # Install specific MCP
 ```
 
+### `agentinit apply`
+
+Apply configurations including MCP server setup.
+
+#### MCP Configuration
+
+
+```bash
+# Configure STDIO MCP with arguments
+npx agentinit apply \
+  --mcp-stdio context7 "npx -y @upstash/context7-mcp" --args "--api-key=YOUR_API_KEY"
+
+# Configure multiple MCPs in one command
+npx agentinit apply \
+  --mcp-stdio supabase "npx -y @supabase/mcp-server-supabase@latest" \
+    --args "--read-only --project-ref=<project-ref>" \
+    --env "SUPABASE_ACCESS_TOKEN=<personal-access-token>" \
+  --mcp-http notion_api "https://mcp.notion.com/mcp" \
+  --mcp-sse notion_events "https://mcp.notion.com/sse"
+
+# Configure HTTP MCP with authentication
+npx agentinit apply \
+  --mcp-http github "https://api.githubcopilot.com/mcp/" --auth "Bearer YOUR_GITHUB_PAT"
+
+# Configure Docker-based MCP with environment
+npx agentinit apply \
+  --mcp-stdio browserbase "docker run -i --rm ghcr.io/metorial/mcp-container--browserbase--mcp-server-browserbase--browserbase node cli.js" \
+  --env "BROWSERBASE_API_KEY=browserbase-api-key"
+```
+
+This generates `.agentinit/agentinit.toml` with your MCP configurations.
+
 ## 🏗️ Project Structure
 
 AgentInit creates and manages these key files:
