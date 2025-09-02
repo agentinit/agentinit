@@ -1,5 +1,12 @@
 import { MCPServerConfig, MCPServerType, MCPCommandParsed } from '../types/index.js';
 
+export class MCPParseError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'MCPParseError';
+  }
+}
+
 export class MCPParser {
   /**
    * Parse command line arguments to extract MCP server configurations
@@ -40,7 +47,7 @@ export class MCPParser {
   private static parseStdioMCP(args: string[], startIndex: number): { server: MCPServerConfig | null; nextIndex: number } {
     let i = startIndex + 1;
     
-    if (i + 1 >= args.length) {
+    if (i >= args.length) {
       return { server: null, nextIndex: i };
     }
 
@@ -48,7 +55,25 @@ export class MCPParser {
     if (!serverName) {
       return { server: null, nextIndex: i + 1 };
     }
+    
+    // Validate that the name doesn't look like a command (old syntax)
+    if (this.looksLikeCommand(serverName)) {
+      throw new MCPParseError(
+        `Invalid MCP name: "${serverName}"\n` +
+        `The name appears to be a command. New syntax requires explicit names:\n` +
+        `  Correct: --mcp-stdio myname "npx -y @package/name"\n` +
+        `  Incorrect: --mcp-stdio "npx -y @package/name"`
+      );
+    }
+    
     i++;
+    
+    if (i >= args.length) {
+      throw new MCPParseError(
+        `Missing command for MCP server "${serverName}"\n` +
+        `Usage: --mcp-stdio <name> <command>`
+      );
+    }
 
     const commandStr = args[i];
     if (!commandStr) {
@@ -106,7 +131,7 @@ export class MCPParser {
   private static parseHttpMCP(args: string[], startIndex: number): { server: MCPServerConfig | null; nextIndex: number } {
     let i = startIndex + 1;
     
-    if (i + 1 >= args.length) {
+    if (i >= args.length) {
       return { server: null, nextIndex: i };
     }
 
@@ -114,7 +139,25 @@ export class MCPParser {
     if (!serverName) {
       return { server: null, nextIndex: i + 1 };
     }
+    
+    // Validate that the name doesn't look like a URL (old syntax)
+    if (this.looksLikeUrl(serverName)) {
+      throw new MCPParseError(
+        `Invalid MCP name: "${serverName}"\n` +
+        `The name appears to be a URL. New syntax requires explicit names:\n` +
+        `  Correct: --mcp-http myname "https://example.com/mcp"\n` +
+        `  Incorrect: --mcp-http "https://example.com/mcp"`
+      );
+    }
+    
     i++;
+    
+    if (i >= args.length) {
+      throw new MCPParseError(
+        `Missing URL for MCP server "${serverName}"\n` +
+        `Usage: --mcp-http <name> <url>`
+      );
+    }
 
     const url = args[i];
     if (!url) {
@@ -161,7 +204,7 @@ export class MCPParser {
   private static parseSSEMCP(args: string[], startIndex: number): { server: MCPServerConfig | null; nextIndex: number } {
     let i = startIndex + 1;
     
-    if (i + 1 >= args.length) {
+    if (i >= args.length) {
       return { server: null, nextIndex: i };
     }
 
@@ -169,7 +212,25 @@ export class MCPParser {
     if (!serverName) {
       return { server: null, nextIndex: i + 1 };
     }
+    
+    // Validate that the name doesn't look like a URL (old syntax)
+    if (this.looksLikeUrl(serverName)) {
+      throw new MCPParseError(
+        `Invalid MCP name: "${serverName}"\n` +
+        `The name appears to be a URL. New syntax requires explicit names:\n` +
+        `  Correct: --mcp-sse myname "https://example.com/sse"\n` +
+        `  Incorrect: --mcp-sse "https://example.com/sse"`
+      );
+    }
+    
     i++;
+    
+    if (i >= args.length) {
+      throw new MCPParseError(
+        `Missing URL for MCP server "${serverName}"\n` +
+        `Usage: --mcp-sse <name> <url>`
+      );
+    }
 
     const url = args[i];
     if (!url) {
@@ -243,6 +304,32 @@ export class MCPParser {
     }
 
     return env;
+  }
+
+  /**
+   * Check if a string looks like a command (indicates old syntax usage)
+   */
+  private static looksLikeCommand(name: string): boolean {
+    const commandPatterns = [
+      /^(npx|npm|node|docker|python|pip|cargo|go)\s/,  // Starts with common commands
+      /\s/,                                            // Contains spaces (likely a command string)
+      /^["'].*["']$/,                                  // Wrapped in quotes (likely a command string)
+    ];
+    
+    return commandPatterns.some(pattern => pattern.test(name));
+  }
+
+  /**
+   * Check if a string looks like a URL (indicates old syntax usage)
+   */
+  private static looksLikeUrl(name: string): boolean {
+    const urlPatterns = [
+      /^https?:\/\//,           // Starts with http:// or https://
+      /^localhost:\d+/,         // Starts with localhost:port
+      /\.[a-z]{2,}(\/|$)/i,     // Contains domain-like pattern (.com, .org, etc.)
+    ];
+    
+    return urlPatterns.some(pattern => pattern.test(name));
   }
 
 }

@@ -2,10 +2,6 @@
 # Generated automatically by agentinit
 
 # --- MCP Server Definitions ---
-[mcp_servers.context7]
-command = "npx"
-args = [ "-y", "@upstash/context7-mcp", "--api-key=YOUR_API_KEY" ]
-
 [mcp_servers.supabase]
 command = "npx"
 args = [
@@ -23,9 +19,3 @@ url = "https://mcp.notion.com/mcp"
 
 [mcp_servers.notion_events]
 url = "https://mcp.notion.com/sse"
-
-[mcp_servers.github]
-url = "https://api.githubcopilot.com/mcp/"
-
-[mcp_servers.github.headers]
-  Authorization = "Bearer YOUR_GITHUB_PAT"

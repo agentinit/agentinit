@@ -1,6 +1,6 @@
 import ora from 'ora';
 import { logger } from '../utils/logger.js';
-import { MCPParser } from '../core/mcpParser.js';
+import { MCPParser, MCPParseError } from '../core/mcpParser.js';
 import { TOMLGenerator } from '../core/tomlGenerator.js';
 import { readFileIfExists, writeFile, getAgentInitTomlPath } from '../utils/fs.js';
 import { MCPServerType } from '../types/index.js';
@@ -46,7 +46,7 @@ export async function applyCommand(args: string[]): Promise<void> {
     
     if (parsed.servers.length === 0) {
       spinner.warn('No MCP servers found in arguments');
-      logger.info('Use --help for usage examples');
+      logger.info('Use `agentinit apply` without arguments to see usage examples');
       return;
     }
 
@@ -93,7 +93,16 @@ export async function applyCommand(args: string[]): Promise<void> {
 
   } catch (error) {
     spinner.fail('Failed to apply configuration');
-    logger.error(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    
+    if (error instanceof MCPParseError) {
+      logger.error('Configuration Error:');
+      logger.error(error.message);
+      logger.info('');
+      logger.info('For help with the correct syntax, run: agentinit apply');
+    } else {
+      logger.error(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+    
     process.exit(1);
   }
 }
