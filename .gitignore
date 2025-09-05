@@ -15,6 +15,7 @@ jspm_packages/
 
 # Cursor configuration -- might have ENV variables. Included by default
 # .cursor/mcp.json
+.mcp.json
 
 # Logs
 logs

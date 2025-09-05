@@ -18,7 +18,7 @@ export class TOMLGenerator {
           if (server.command) {
             tomlServer.command = server.command;
           }
-          if (server.args && server.args.length > 0) {
+          if (server.args) {
             tomlServer.args = server.args;
           }
           if (server.env && Object.keys(server.env).length > 0) {
@@ -47,7 +47,14 @@ export class TOMLGenerator {
    * Format TOML output for better readability
    */
   private static formatTOML(tomlString: string): string {
-    const lines = tomlString.split('\n');
+    // Use TOML library's compact formatting but add our header
+    const config = TOML.parse(tomlString);
+    const compactToml = TOML.stringify(config);
+    
+    // Convert multi-line arrays to single-line format
+    const inlineArrayToml = this.formatArraysInline(compactToml);
+    
+    const lines = inlineArrayToml.split('\n');
     const formattedLines: string[] = [];
     
     // Add header comment
@@ -66,15 +73,88 @@ export class TOMLGenerator {
           formattedLines.push(''); // Add blank line between servers
         }
         inServerBlock = true;
-        // Remove indentation from table headers
         formattedLines.push(trimmedLine);
       } else if (trimmedLine) {
-        // Preserve original formatting for non-table lines
-        formattedLines.push(line);
+        formattedLines.push(trimmedLine);
       }
     }
 
     return formattedLines.join('\n') + '\n';
+  }
+
+  /**
+   * Convert multi-line arrays to single-line format
+   */
+  private static formatArraysInline(tomlString: string): string {
+    // Use regex to replace all array patterns
+    return tomlString.replace(
+      /(\w+)\s*=\s*\[\s*([^\]]*)\s*\]/g, 
+      (match, key, content) => {
+        // Handle single-line arrays with extra spaces: key = [ "item1", "item2" ]
+        if (content.includes('"') || content.includes("'")) {
+          const items = this.parseArrayItems(content);
+          return `${key} = [${items.join(', ')}]`;
+        }
+        // Empty or whitespace-only arrays
+        return `${key} = []`;
+      }
+    ).replace(
+      /(\w+)\s*=\s*\[\s*\n((?:\s*[^[\]]+,?\s*\n)*)\s*\]/g,
+      (match, key, content) => {
+        // Handle multi-line arrays: key = [\n  "item1",\n  "item2"\n]
+        const items = content
+          .split('\n')
+          .map((line: string) => line.trim())
+          .filter((line: string) => line && line !== '')
+          .map((line: string) => line.replace(/,$/, '').trim())
+          .filter((item: string) => item);
+        
+        if (items.length > 0) {
+          return `${key} = [${items.join(', ')}]`;
+        }
+        return `${key} = []`;
+      }
+    );
+  }
+
+  /**
+   * Parse array items from a comma-separated string
+   */
+  private static parseArrayItems(content: string): string[] {
+    const items: string[] = [];
+    let current = '';
+    let inQuotes = false;
+    let quoteChar = '';
+    
+    for (let i = 0; i < content.length; i++) {
+      const char = content[i];
+      
+      if ((char === '"' || char === "'") && (i === 0 || content[i - 1] !== '\\')) {
+        if (!inQuotes) {
+          inQuotes = true;
+          quoteChar = char;
+          current += char;
+        } else if (char === quoteChar) {
+          inQuotes = false;
+          current += char;
+        } else {
+          current += char;
+        }
+      } else if (char === ',' && !inQuotes) {
+        if (current.trim()) {
+          items.push(current.trim());
+        }
+        current = '';
+      } else {
+        current += char;
+      }
+    }
+    
+    if (current.trim()) {
+      items.push(current.trim());
+    }
+    
+    return items;
   }
 
   /**
@@ -106,7 +186,7 @@ export class TOMLGenerator {
           if (server.command) {
             tomlServer.command = server.command;
           }
-          if (server.args && server.args.length > 0) {
+          if (server.args) {
             tomlServer.args = server.args;
           }
           if (server.env && Object.keys(server.env).length > 0) {

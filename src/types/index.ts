@@ -98,3 +98,48 @@ export interface TomlMCPServer {
   env?: Record<string, string> | undefined;
   headers?: Record<string, string> | undefined;
 }
+
+// Agent-related interfaces
+export interface AgentCapabilities {
+  mcp: {
+    stdio: boolean;
+    http: boolean;
+    sse: boolean;
+  };
+  rules: boolean;
+  hooks: boolean;
+  commands: boolean;
+  subagents: boolean;
+  statusline: boolean;
+}
+
+export interface AgentDefinition {
+  id: string;
+  name: string;
+  url?: string;
+  capabilities: AgentCapabilities;
+  configFiles: string[];
+  nativeConfigPath: string;
+  globalConfigPath?: string;
+  globalConfigPaths?: {
+    windows?: string;
+    darwin?: string;
+    linux?: string;
+  };
+}
+
+export interface AgentDetectionResult {
+  agent: import('../agents/Agent.js').Agent;
+  configPath: string;
+}
+
+export interface FilteredMCPConfig {
+  servers: MCPServerConfig[];
+  transformations: MCPTransformation[];
+}
+
+export interface MCPTransformation {
+  original: MCPServerConfig;
+  transformed: MCPServerConfig;
+  reason: string;
+}

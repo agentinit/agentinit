@@ -80,3 +80,8 @@ export async function getAgentInitTomlPath(projectPath: string): Promise<string>
   const agentInitDir = await ensureAgentInitDir(projectPath);
   return join(agentInitDir, 'agentinit.toml');
 }
+
+export async function ensureDirectoryExists(filePath: string): Promise<void> {
+  const dir = dirname(filePath);
+  await fs.mkdir(dir, { recursive: true });
+}
