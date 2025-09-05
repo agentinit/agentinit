@@ -52,14 +52,14 @@ describe('ClaudeDesktopAgent', () => {
 
   describe('detectPresence', () => {
     it('should always return null since it is desktop-only', async () => {
-      const result = await agent.detectPresence('/any/path');
+      const result = await agent.detectPresence();
       expect(result).toBeNull();
     });
   });
 
   describe('applyMCPConfig', () => {
     it('should throw error for project-level configuration', async () => {
-      await expect(agent.applyMCPConfig('/test/path', []))
+      await expect(agent.applyMCPConfig())
         .rejects.toThrow('Claude Desktop only supports global configuration. Use --global flag.');
     });
   });

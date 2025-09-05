@@ -67,7 +67,6 @@ describe('Agent global configuration functionality', () => {
     it('should handle platform-specific paths', () => {
       const agentWithPlatformPaths = new TestAgent({
         ...testDefinition,
-        globalConfigPath: undefined,
         globalConfigPaths: {
           windows: '%APPDATA%/Test/config.json',
           darwin: '~/Library/Test/config.json',
@@ -92,9 +91,7 @@ describe('Agent global configuration functionality', () => {
 
     it('should return null when no global config is available', () => {
       const agentWithoutGlobal = new TestAgent({
-        ...testDefinition,
-        globalConfigPath: undefined,
-        globalConfigPaths: undefined
+        ...testDefinition
       });
 
       mockGetFullGlobalConfigPath.mockReturnValue(null);
