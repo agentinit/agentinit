@@ -1,6 +1,6 @@
 {
   "name": "agentinit",
-  "version": "0.0.0-semantic-release",
+  "version": "1.0.0",
   "description": "A CLI tool for managing and configuring AI coding agents",
   "main": "dist/index.js",
   "type": "module",
