@@ -65,9 +65,9 @@ describe('Agent global configuration functionality', () => {
     });
 
     it('should handle platform-specific paths', () => {
+      const { globalConfigPath, ...testDefinitionWithoutGlobalPath } = testDefinition;
       const agentWithPlatformPaths = new TestAgent({
-        ...testDefinition,
-        globalConfigPath: undefined,
+        ...testDefinitionWithoutGlobalPath,
         globalConfigPaths: {
           windows: '%APPDATA%/Test/config.json',
           darwin: '~/Library/Test/config.json',
