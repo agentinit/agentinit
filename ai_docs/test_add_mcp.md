@@ -1,294 +1,142 @@
 # AgentInit MCP Testing Commands
 
-This document provides comprehensive test commands for adding MCP servers to different AI coding agents using the AgentInit tool.
-
 ## Prerequisites
-
-Before running these tests:
-1. Build the project: `npm run build`
-2. Ensure you have the necessary API keys for the MCP servers
-3. Create appropriate agent configuration files where needed
-
-## Test Categories
-
-- [Basic MCP Server Types](#basic-mcp-server-types)
-- [Agent-Specific Tests](#agent-specific-tests)
-- [Global Configuration Tests](#global-configuration-tests)
-- [Complex Multi-MCP Tests](#complex-multi-mcp-tests)
-- [Error Handling Tests](#error-handling-tests)
-- [Real-World MCP Examples](#real-world-mcp-examples)
-
----
+1. Build: `npm run build`
+2. Set API keys for MCP servers
+3. Create agent config files where needed
 
 ## Basic MCP Server Types
 
-### STDIO MCP Servers
-
+### STDIO Servers
 ```bash
-# Basic filesystem MCP server
+# Filesystem server
 node dist/index.js apply --agent claude \
   --mcp-stdio filesystem "npx -y @modelcontextprotocol/server-filesystem" \
   --args "/Users/$(whoami)/Documents"
 
-# MCP server with environment variables
+# With environment variables
 node dist/index.js apply --agent claude \
   --mcp-stdio supabase "npx -y @supabase/mcp-server-supabase" \
-  --args "--read-only --project-ref=your-project-ref" \
-  --env "SUPABASE_ACCESS_TOKEN=your-token"
-
-# Multiple arguments example
-node dist/index.js apply --agent claude \
-  --mcp-stdio postgres "npx -y @postgres/mcp-server" \
-  --args "--host localhost --port 5432 --database mydb" \
-  --env "POSTGRES_PASSWORD=secret DATABASE_URL=postgres://localhost/mydb"
+  --args "--read-only --project-ref=your-ref" \
+  --env "SUPABASE_ACCESS_TOKEN=token"
 ```
 
-### HTTP MCP Servers
-
+### HTTP Servers
 ```bash
-# Basic HTTP MCP server
+# Basic HTTP server
 node dist/index.js apply --agent claude \
   --mcp-http github "https://api.github.com/mcp" \
-  --auth "Bearer ghp_your_github_token"
-
-# HTTP server with custom headers
-node dist/index.js apply --agent claude \
-  --mcp-http notion "https://api.notion.com/mcp"
+  --auth "Bearer ghp_token"
 ```
 
-### SSE MCP Servers
-
+### SSE Servers  
 ```bash
-# Basic SSE MCP server
+# SSE server with auth
 node dist/index.js apply --agent claude \
-  --mcp-sse realtime "https://api.example.com/mcp/sse"
-
-# SSE server with authentication
-node dist/index.js apply --agent claude \
-  --mcp-sse context7 "https://mcp.context7.com/sse" \
-  --auth "Bearer ctx7sk-your-api-key"
+  --mcp-sse realtime "https://api.example.com/mcp/sse" \
+  --auth "Bearer token"
 ```
-
----
 
 ## Agent-Specific Tests
 
-### Claude Code Tests
-
+### Claude Code
 ```bash
-# Project-level configuration (.mcp.json)
+# Project config (.mcp.json)
 node dist/index.js apply --agent claude \
   --mcp-stdio exa "npx -y @exa/mcp-server" \
-  --env "EXA_API_KEY=your-exa-key" \
-  --mcp-http anthropic-tools "https://tools.anthropic.com/mcp"
+  --env "EXA_API_KEY=key" \
+  --mcp-http tools "https://tools.anthropic.com/mcp"
 
-# Global configuration (~/.claude.json)
+# Global config (~/.claude.json)
 node dist/index.js apply --global --agent claude \
   --mcp-stdio global-fs "npx -y @modelcontextprotocol/server-filesystem" \
-  --args "/Users/$(whoami)/shared-docs" \
-  --mcp-sse global-realtime "https://global.example.com/sse"
+  --args "/Users/$(whoami)/shared"
 ```
 
-### Cursor IDE Tests
-
+### Cursor IDE
 ```bash
-# Cursor project configuration (.cursor/mcp.json)
+# Project config (.cursor/mcp.json)
 node dist/index.js apply --agent cursor \
   --mcp-stdio cursor-fs "npx -y @modelcontextprotocol/server-filesystem" \
-  --args "/workspace/projects" \
+  --args "/workspace" \
   --mcp-http cursor-api "https://cursor-tools.com/mcp"
-
-# Multiple MCP servers for Cursor
-node dist/index.js apply --agent cursor \
-  --mcp-stdio git-tools "npx -y @git/mcp-server" \
-  --mcp-http code-review "https://api.codereview.com/mcp" \
-  --auth "Bearer cursor_token_123" \
-  --mcp-sse live-collab "https://collab.cursor.com/sse"
 ```
 
-### Codex CLI Tests
-
+### Codex CLI
 ```bash
-# Codex only supports STDIO, so remote servers are transformed
+# STDIO only (HTTP transformed via mcp-remote)
 node dist/index.js apply --agent codex \
   --mcp-stdio local-tools "npx -y @codex/local-tools" \
-  --mcp-http remote-api "https://api.example.com/mcp"  # Will be transformed to stdio via mcp-remote
-
-# Complex Codex configuration
-node dist/index.js apply --agent codex \
-  --mcp-stdio database "python -m codex_db_tools" \
-  --args "--connection-string postgresql://localhost/codex" \
-  --env "DB_PASSWORD=secret LOG_LEVEL=debug"
+  --mcp-http remote-api "https://api.example.com/mcp"  # Transformed
 ```
 
-### Gemini CLI Tests
-
+### Claude Desktop
 ```bash
-# Gemini configuration (.gemini/settings.json)
-node dist/index.js apply --agent gemini \
-  --mcp-stdio gemini-fs "npx -y @google/filesystem-mcp" \
-  --args "/home/user/workspace" \
-  --mcp-http google-tools "https://tools.googleapis.com/mcp" \
-  --auth "Bearer ya29.your_google_token"
-```
-
-### Claude Desktop Tests
-
-```bash
-# Claude Desktop only supports global configuration
+# Global only
 node dist/index.js apply --global --agent claude-desktop \
   --mcp-stdio desktop-fs "npx -y @modelcontextprotocol/server-filesystem" \
-  --args "/Users/$(whoami)/Desktop" \
-  --mcp-http claude-tools "https://desktop.anthropic.com/mcp"
+  --args "/Users/$(whoami)/Desktop"
 ```
 
----
+## Multi-Server Tests
 
-## Global Configuration Tests
-
-### Cross-Agent Global Setup
-
+### Development Stack
 ```bash
-# Set up global MCP servers for Claude Code
-node dist/index.js apply --global --agent claude \
-  --mcp-stdio global-git "npx -y @git/mcp-server" \
-  --args "--repo-path /Users/$(whoami)/git" \
-  --mcp-http global-ai-tools "https://ai-tools.com/mcp" \
-  --auth "Bearer global_token_123"
-
-# Set up global MCP servers for Cursor
-node dist/index.js apply --global --agent cursor \
-  --mcp-stdio shared-workspace "npx -y @workspace/mcp-tools" \
-  --env "WORKSPACE_ROOT=/shared/workspace"
-```
-
-### Global vs Project Configuration
-
-```bash
-# Add to global first
-node dist/index.js apply --global --agent claude \
-  --mcp-stdio global-utils "npx -y @utils/mcp-server"
-
-# Then add project-specific
-node dist/index.js apply --agent claude \
-  --mcp-stdio project-specific "npx -y @project/mcp-tools" \
-  --args "--project-root ."
-```
-
----
-
-## Complex Multi-MCP Tests
-
-### Full Development Stack
-
-```bash
-# Complete development environment
 node dist/index.js apply --agent claude \
   --mcp-stdio filesystem "npx -y @modelcontextprotocol/server-filesystem" \
   --args "/Users/$(whoami)/projects" \
   --mcp-stdio git "npx -y @git/mcp-server" \
-  --args "--auto-commit false" \
   --mcp-http github "https://api.github.com/mcp" \
-  --auth "Bearer ghp_your_token" \
+  --auth "Bearer ghp_token" \
   --mcp-stdio database "npx -y @database/mcp-tools" \
-  --env "DATABASE_URL=postgres://localhost/devdb" \
-  --mcp-sse notifications "https://notify.example.com/sse" \
-  --auth "Bearer notify_token"
+  --env "DATABASE_URL=postgres://localhost/devdb"
 ```
 
-### Data Science Stack
-
+### Web Development
 ```bash
-# Data science workflow
-node dist/index.js apply --agent claude \
-  --mcp-stdio jupyter "npx -y @jupyter/mcp-server" \
-  --args "--notebook-dir /Users/$(whoami)/notebooks" \
-  --mcp-http datasets "https://api.datasets.com/mcp" \
-  --auth "Bearer dataset_key_123" \
-  --mcp-stdio python-env "python -m datascience_mcp" \
-  --env "PYTHON_PATH=/opt/miniconda3/envs/ds/bin/python"
-```
-
-### Web Development Stack
-
-```bash
-# Full-stack web development
 node dist/index.js apply --agent cursor \
   --mcp-stdio npm-tools "npx -y @npm/mcp-server" \
-  --mcp-stdio tailwind "npx -y @tailwindcss/mcp-server" \
   --mcp-http vercel "https://api.vercel.com/mcp" \
   --auth "Bearer vercel_token" \
-  --mcp-http supabase-api "https://api.supabase.com/mcp" \
-  --auth "Bearer supabase_key" \
   --mcp-sse hot-reload "https://dev-server.local/sse"
 ```
 
----
-
 ## Error Handling Tests
 
-### Invalid Configurations
-
 ```bash
-# Test missing server name (should fail)
+# Missing server name (should fail)
 node dist/index.js apply --agent claude --mcp-stdio
 
-# Test invalid agent (should fail)  
-node dist/index.js apply --agent invalid-agent \
+# Invalid agent (should fail)
+node dist/index.js apply --agent invalid \
   --mcp-stdio test "npx -y test"
 
-# Test global without agent specified (should fail)
-node dist/index.js apply --global \
-  --mcp-stdio test "npx -y test"
-```
-
-### Agent Detection Tests
-
-```bash
-# Test in directory without agent files (should warn)
+# No agent detection (should warn)
 cd /tmp && node /path/to/agentinit/dist/index.js apply \
   --mcp-stdio test "npx -y test"
-
-# Test with specific agent in non-agent directory
-cd /tmp && node /path/to/agentinit/dist/index.js apply --agent claude \
-  --mcp-stdio test "npx -y test"
 ```
 
----
+## Real-World Examples
 
-## Real-World MCP Examples
-
-### AI/ML Development
-
+### AI/ML Tools
 ```bash
-# Ollama local AI models
+# Ollama local models
 node dist/index.js apply --agent claude \
   --mcp-stdio ollama "npx -y @ollama/mcp-server" \
-  --args "--model-path /Users/$(whoami)/.ollama/models"
+  --args "--model-path ~/.ollama/models"
 
-# Weights & Biases integration
+# Weights & Biases
 node dist/index.js apply --agent claude \
   --mcp-http wandb "https://api.wandb.ai/mcp" \
-  --auth "Bearer your_wandb_key"
-
-# Hugging Face models
-node dist/index.js apply --agent claude \
-  --mcp-http huggingface "https://huggingface.co/api/mcp" \
-  --auth "Bearer hf_your_token"
+  --auth "Bearer wandb_key"
 ```
 
 ### Development Tools
-
 ```bash
 # Docker integration
 node dist/index.js apply --agent cursor \
   --mcp-stdio docker "npx -y @docker/mcp-server" \
   --env "DOCKER_HOST=unix:///var/run/docker.sock"
-
-# Kubernetes tools
-node dist/index.js apply --agent claude \
-  --mcp-stdio kubectl "npx -y @k8s/mcp-server" \
-  --args "--kubeconfig /Users/$(whoami)/.kube/config"
 
 # AWS integration
 node dist/index.js apply --agent claude \
@@ -296,140 +144,93 @@ node dist/index.js apply --agent claude \
   --env "AWS_PROFILE=default AWS_REGION=us-west-2"
 ```
 
-### Database Integrations
-
+### Databases
 ```bash
 # PostgreSQL
 node dist/index.js apply --agent claude \
   --mcp-stdio postgres "npx -y @postgres/mcp-server" \
-  --env "DATABASE_URL=postgresql://user:pass@localhost:5432/mydb"
+  --env "DATABASE_URL=postgresql://user:pass@localhost:5432/db"
 
 # MongoDB
 node dist/index.js apply --agent claude \
   --mcp-stdio mongodb "npx -y @mongodb/mcp-server" \
-  --env "MONGO_URI=mongodb://localhost:27017/myapp"
-
-# Redis
-node dist/index.js apply --agent claude \
-  --mcp-stdio redis "npx -y @redis/mcp-server" \
-  --env "REDIS_URL=redis://localhost:6379"
+  --env "MONGO_URI=mongodb://localhost:27017/app"
 ```
 
 ### Content Management
-
 ```bash
-# Notion integration
+# Notion
 node dist/index.js apply --agent claude \
   --mcp-http notion "https://api.notion.com/mcp" \
-  --auth "Bearer notion_integration_token"
+  --auth "Bearer notion_token"
 
-# Airtable
-node dist/index.js apply --agent claude \
-  --mcp-http airtable "https://api.airtable.com/mcp" \
-  --auth "Bearer airtable_pat"
-
-# Confluence
-node dist/index.js apply --agent claude \
-  --mcp-http confluence "https://your-domain.atlassian.net/wiki/api/mcp" \
-  --auth "Bearer confluence_token"
-```
-
-### Communication Tools
-
-```bash
-# Slack integration
+# Slack
 node dist/index.js apply --agent claude \
   --mcp-http slack "https://slack.com/api/mcp" \
-  --auth "Bearer xoxb-your-slack-token"
-
-# Discord bot
-node dist/index.js apply --agent claude \
-  --mcp-sse discord "https://discord.com/api/mcp/sse" \
-  --auth "Bot your_discord_token"
+  --auth "Bearer xoxb-slack-token"
 ```
 
----
-
-## Validation Commands
-
-After adding MCP servers, use these commands to verify the configurations:
+## Validation
 
 ### Check Generated Files
-
 ```bash
-# Check project-level configurations
-ls -la .mcp.json .cursor/mcp.json .codex/config.toml .gemini/settings.json
+# Project configs
+ls -la .mcp.json .cursor/mcp.json .codex/config.toml
 
-# Check global configurations  
-ls -la ~/.mcp.json ~/.claude.json ~/.cursor/mcp.json
+# Global configs
+ls -la ~/.mcp.json ~/.claude.json
 
-# View configuration contents
+# View contents
 cat .mcp.json | jq '.'
-cat .cursor/mcp.json | jq '.'
 ```
 
-### Verify TOML Files
-
+### Agent Detection
 ```bash
-# Check universal configuration
-cat .agentinit/agentinit.toml
-
-# Validate TOML syntax
-npm install -g @taplo/cli
-taplo check .agentinit/agentinit.toml
-```
-
-### Test Agent Detection
-
-```bash
-# Detect available agents in current project
+# Detect agents
 node dist/index.js detect
 
-# Show agent capabilities
+# Verbose info
 node dist/index.js detect --verbose
 ```
 
----
+### Verify TOML
+```bash
+# Check universal config
+cat .agentinit/agentinit.toml
+
+# Validate syntax
+taplo check .agentinit/agentinit.toml
+```
 
 ## Performance Tests
 
-### Large Configuration Test
-
+### Large Configuration
 ```bash
-# Add many MCP servers at once
 node dist/index.js apply --agent claude \
   --mcp-stdio fs1 "npx -y @modelcontextprotocol/server-filesystem" --args "/path1" \
   --mcp-stdio fs2 "npx -y @modelcontextprotocol/server-filesystem" --args "/path2" \
-  --mcp-stdio fs3 "npx -y @modelcontextprotocol/server-filesystem" --args "/path3" \
-  --mcp-http api1 "https://api1.example.com/mcp" \
-  --mcp-http api2 "https://api2.example.com/mcp" \
-  --mcp-http api3 "https://api3.example.com/mcp" \
-  --mcp-sse sse1 "https://sse1.example.com" \
-  --mcp-sse sse2 "https://sse2.example.com"
+  --mcp-http api1 "https://api1.com/mcp" \
+  --mcp-http api2 "https://api2.com/mcp" \
+  --mcp-sse sse1 "https://sse1.com"
 ```
 
-### Configuration Merging Test
-
+### Configuration Merging
 ```bash
-# Add initial configuration
+# Initial config
 node dist/index.js apply --agent claude \
   --mcp-stdio initial "npx -y @initial/mcp"
 
-# Add more servers (should merge, not overwrite)
+# Add more (should merge)
 node dist/index.js apply --agent claude \
-  --mcp-stdio additional "npx -y @additional/mcp" \
-  --mcp-http api "https://api.example.com/mcp"
+  --mcp-stdio additional "npx -y @additional/mcp"
 
-# Verify both servers exist
+# Verify both exist
 cat .mcp.json | jq '.mcpServers | keys'
 ```
 
----
+## Environment-Specific
 
-## Environment-Specific Tests
-
-### Development Environment
-
+### Development
 ```bash
 node dist/index.js apply --agent claude \
   --mcp-stdio dev-tools "npx -y @dev/mcp-server" \
@@ -437,8 +238,7 @@ node dist/index.js apply --agent claude \
   --env "NODE_ENV=development DEBUG=mcp:*"
 ```
 
-### Production Environment
-
+### Production
 ```bash
 node dist/index.js apply --agent claude \
   --mcp-stdio prod-tools "npx -y @prod/mcp-server" \
@@ -446,58 +246,36 @@ node dist/index.js apply --agent claude \
   --env "NODE_ENV=production"
 ```
 
-### Testing Environment
+## Troubleshooting
 
+Check if tests fail:
+1. **Agent Detection**: Config files exist (CLAUDE.md, .cursorrules, etc.)
+2. **Permissions**: Write access to config directories
+3. **Dependencies**: MCP servers available (`npx -y @package/name --help`)
+4. **API Keys**: Valid environment variables and tokens
+5. **Network**: HTTP/SSE endpoints accessible
+
+### Debug Mode
 ```bash
-node dist/index.js apply --agent claude \
-  --mcp-stdio test-tools "npx -y @test/mcp-server" \
-  --args "--mock-mode --test-data ./fixtures" \
-  --env "NODE_ENV=test MOCK_EXTERNAL_APIS=true"
+DEBUG=agentinit:* node dist/index.js apply --agent claude \
+  --mcp-stdio debug "npx -y @debug/mcp-server"
 ```
 
----
-
-## Cleanup Commands
-
-### Remove Test Configurations
+## Cleanup
 
 ```bash
-# Remove project-level configs (be careful!)
-rm -f .mcp.json .cursor/mcp.json .codex/config.toml .gemini/settings.json
+# Remove project configs (careful!)
+rm -f .mcp.json .cursor/mcp.json .codex/config.toml
 
 # Remove universal config
 rm -f .agentinit/agentinit.toml
 
-# Note: Be very careful with global configs as they affect all projects
-# Manually edit ~/.claude.json, ~/.cursor/mcp.json to remove test entries
+# Manually edit global configs: ~/.claude.json, ~/.cursor/mcp.json
 ```
-
----
-
-## Troubleshooting
-
-If tests fail, check:
-
-1. **Agent Detection**: Ensure appropriate config files exist (CLAUDE.md, .cursorrules, etc.)
-2. **Permissions**: Verify you have write permissions to configuration directories
-3. **Dependencies**: Ensure MCP servers are available (try `npx -y @package/name --help`)
-4. **API Keys**: Check that environment variables and tokens are valid
-5. **Network**: Verify HTTP/SSE endpoints are accessible
-
-### Debug Mode
-
-```bash
-# Run with verbose output
-DEBUG=agentinit:* node dist/index.js apply --agent claude \
-  --mcp-stdio debug-test "npx -y @debug/mcp-server"
-```
-
----
 
 ## Notes
-
-- Always backup existing configuration files before running tests
-- Some MCP servers may require additional setup or API keys
-- Global configurations affect all projects using that agent
-- Test in a safe environment before applying to production projects
-- Check the generated `.agentinit/agentinit.toml` file for the universal configuration format
+- Backup configs before testing
+- Some servers require additional setup/API keys  
+- Global configs affect all projects
+- Test in safe environment first
+- Check `.agentinit/agentinit.toml` for universal format
