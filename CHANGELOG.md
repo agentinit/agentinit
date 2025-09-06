@@ -1,3 +1,10 @@
+## [1.0.1](https://github.com/agentinit/agentinit/compare/v1.0.0...v1.0.1) (2025-09-06)
+
+
+### Bug Fixes
+
+* compact docs ([11709e8](https://github.com/agentinit/agentinit/commit/11709e8655d217178c1ab8943ab02247e0c36b4f))
+
 # 1.0.0 (2025-09-05)
 
 
