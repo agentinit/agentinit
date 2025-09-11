@@ -20,9 +20,6 @@ AgentInit transforms AI agent configuration from a fragmented, manual process in
 ```bash
 # Install AgentInit globally
 npm install -g agentinit
-
-# Or use with Bun
-bun install -g agentinit
 ```
 
 ### Basic Usage
@@ -65,9 +62,13 @@ agentinit init --force            # Overwrite existing configuration
 Detect current project stack and existing agent configurations.
 
 ```bash
-agentinit detect           # Basic detection
+agentinit detect           # Basic detection (only shows found agents)
 agentinit detect --verbose # Detailed information
+DEBUG=1 agentinit detect   # Show all supported agents (found and not found)
 ```
+
+**Environment Variables:**
+- `DEBUG=1` - Shows all supported agents, including those not found in the project
 
 ### `agentinit sync`
 
