@@ -1,0 +1,30 @@
+[template]
+id = "use_subagents"
+name = "Use Subagents"
+description = "Delegate work to specialized subagents for better results"
+category = "workflow"
+priority = 2
+
+[[rules]]
+text = "Break complex tasks into smaller, manageable subtasks"
+
+[[rules]]
+text = "Delegate code review tasks to the Code Reviewer subagent"
+
+[[rules]]
+text = "Use the QA Engineer subagent for test coverage and quality assurance"
+
+[[rules]]
+text = "Coordinate between subagents to ensure consistent approach"
+
+[[rules]]
+text = "Let specialized subagents handle their domain expertise areas"
+
+[[rules]]
+text = "Use subagents for parallel work on independent components"
+
+[[rules]]
+text = "Provide clear context and requirements to subagents"
+
+[[rules]]
+text = "Review and integrate subagent outputs before finalizing"

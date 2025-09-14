@@ -10,6 +10,7 @@ AgentInit transforms AI agent configuration from a fragmented, manual process in
 - **🔍 Smart Stack Detection**: Automatically detects project language, framework, and tools
 - **🔄 Bidirectional Sync**: Keep agent configurations in sync across Claude, Cursor, Windsurf, and more
 - **📦 MCP Management**: Interactive installation and management of Model Context Protocol tools
+- **📋 Rules Templates**: Apply coding best practices with predefined rule templates (Git, testing, docs, linting)
 - **⚙️ Project Templates**: Pre-built templates for web apps, CLI tools, libraries, and more
 - **🎯 Stack-Aware Guidance**: Customized instructions based on your technology stack
 
@@ -122,6 +123,35 @@ npx agentinit apply \
 ```
 
 This generates `.agentinit/agentinit.toml` with your MCP configurations.
+
+#### Rules Configuration
+
+Apply coding rules and best practices to your AI agents using predefined templates or custom rules.
+
+```bash
+# Apply rule templates (recommended combinations)
+agentinit apply --rules git,write_tests,use_linter
+
+# Mix templates with custom rules
+agentinit apply --rules git,write_docs --rule-raw "Use TypeScript strict mode"
+
+# Load rules from a file
+agentinit apply --rules-file ./project-rules.md
+
+# Apply globally to all projects using Claude
+agentinit apply --global --agent claude --rules git,write_tests
+
+# Combine with MCP configuration
+agentinit apply --rules git,use_linter --mcp-stdio context7 "npx @context7/mcp"
+```
+
+**Available Rule Templates:**
+- `git` - Enforce Git workflows and commit standards
+- `write_docs` - Require comprehensive documentation
+- `use_git_worktrees` - Enable parallel development with worktrees  
+- `use_subagents` - Delegate work to specialized subagents
+- `use_linter` - Enforce code quality and formatting
+- `write_tests` - Implement test-driven development practices
 
 ## 🏗️ Project Structure
 

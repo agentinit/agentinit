@@ -1,0 +1,30 @@
+[template]
+id = "git"
+name = "Git Enforcement"
+description = "Enforce proper Git usage and workflow practices"
+category = "workflow"
+priority = 1
+
+[[rules]]
+text = "Always initialize a Git repository if one doesn't exist (git init)"
+
+[[rules]]
+text = "Make atomic commits with clear, descriptive commit messages"
+
+[[rules]]
+text = "Use conventional commit format: type(scope): description"
+
+[[rules]]
+text = "Create feature branches for new work, don't work directly on main/master"
+
+[[rules]]
+text = "Never commit sensitive data, API keys, or secrets to the repository"
+
+[[rules]]
+text = "Review changes with `git diff --staged` before committing"
+
+[[rules]]
+text = "Keep commits focused on a single logical change"
+
+[[rules]]
+text = "Use meaningful branch names that describe the feature or fix"

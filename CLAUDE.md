@@ -111,3 +111,56 @@ This is a typescript project. The codebase follows modern development practices 
 - Provide detailed explanations for complex code
 - Break down large tasks into smaller, manageable steps
 - Use Claude's code analysis capabilities effectively
+
+## Rules System
+
+AgentInit provides a rules system to apply coding best practices and standards. Rules can be applied using:
+
+```bash
+# Apply rule templates to this project
+agentinit apply --rules git,write_tests,use_linter
+
+# Add custom rules
+agentinit apply --rule-raw "Use functional programming patterns"
+
+# Load rules from file
+agentinit apply --rules-file ./team-standards.md
+
+# Apply globally to all Claude projects
+agentinit apply --global --agent claude --rules git,write_docs
+```
+
+**Available Rule Templates:**
+- `git` - Git workflow enforcement and commit standards
+- `write_docs` - Comprehensive documentation requirements
+- `use_git_worktrees` - Parallel development with Git worktrees
+- `use_subagents` - Delegate specialized work to subagents
+- `use_linter` - Code quality and formatting enforcement
+- `write_tests` - Test-driven development practices
+
+Rules are automatically merged and managed in the section below. They can be updated by running new `agentinit apply --rules` commands.
+
+## AgentInit Rules
+
+The following rules have been applied by AgentInit:
+
+- Always initialize a Git repository if one doesn't exist (git init)
+- Make atomic commits with clear, descriptive commit messages
+- Use conventional commit format: type(scope): description
+- Create feature branches for new work, don't work directly on main/master
+- Never commit sensitive data, API keys, or secrets to the repository
+- Review changes with `git diff --staged` before committing
+- Keep commits focused on a single logical change
+- Use meaningful branch names that describe the feature or fix
+- Write tests for all new functionality before or during implementation
+- Don't use mocks unless absolutely necessary - prefer real implementations
+- Test edge cases, error conditions, and boundary values
+- Maintain a minimum of 80% code coverage for all new code
+- Run the full test suite before committing changes
+- Write both unit tests for individual components and integration tests
+- Use descriptive test names that explain what is being tested
+- Test the actual behavior users will experience, not just implementation details
+- Run tsc tests.
+
+---
+*Rules managed by AgentInit. Do not edit this section manually.*

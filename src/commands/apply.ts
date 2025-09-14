@@ -1,19 +1,21 @@
 import ora from 'ora';
 import { logger } from '../utils/logger.js';
 import { MCPParser, MCPParseError } from '../core/mcpParser.js';
+import { RulesParser, RulesParseError } from '../core/rulesParser.js';
 import { TOMLGenerator } from '../core/tomlGenerator.js';
 import { readFileIfExists, writeFile, getAgentInitTomlPath } from '../utils/fs.js';
 import { AgentManager } from '../core/agentManager.js';
 import { MCPFilter } from '../core/mcpFilter.js';
-import { MCPServerType } from '../types/index.js';
+import { MCPServerType, type AppliedRules } from '../types/index.js';
 
 export async function applyCommand(args: string[]): Promise<void> {
   const cwd = process.cwd();
   
   logger.title('🔧 AgentInit - Apply Configuration');
   
-  // Check if any MCP arguments are present
+  // Check if any MCP or Rules arguments are present
   const hasMcpArgs = args.some(arg => arg.startsWith('--mcp-'));
+  const hasRulesArgs = args.some(arg => arg === '--rules' || arg === '--rule-raw' || arg === '--rules-file' || arg === '--rules-remote');
   
   // Check if --client or --agent is specified
   const clientArgIndex = args.findIndex(arg => arg === '--client' || arg === '--agent');
@@ -24,7 +26,7 @@ export async function applyCommand(args: string[]): Promise<void> {
   // Check if --global flag is specified
   const isGlobal = args.includes('--global');
   
-  if (!hasMcpArgs) {
+  if (!hasMcpArgs && !hasRulesArgs) {
     logger.info('Usage: agentinit apply [options]');
     logger.info('');
     logger.info('Options:');
@@ -32,6 +34,27 @@ export async function applyCommand(args: string[]): Promise<void> {
     logger.info('  --agent <agent>     Alias for --client');
     logger.info('  --global            Apply configuration globally (requires --agent)');
     logger.info('                      If not specified, auto-detects agents in the project');
+    logger.info('');
+    logger.info('Rules Configuration Options:');
+    logger.info('  --rules <templates>     Apply rule templates (comma-separated)');
+    logger.info('                         Available: git, write_docs, use_git_worktrees, use_subagents, use_linter, write_tests');
+    logger.info('  --rule-raw <rule>       Add a raw rule (can be used multiple times)');
+    logger.info('  --rules-file <path>     Load rules from a file');
+    logger.info('  --rules-remote <url>    Load rules from a remote URL');
+    logger.info('  --auth <token>          Authentication token for remote rules (Bearer token)');
+    logger.info('');
+    logger.info('Rules Configuration Examples:');
+    logger.info('  # Apply rule templates');
+    logger.info('  agentinit apply --rules git,write_tests,use_linter');
+    logger.info('');
+    logger.info('  # Mix templates with raw rules');
+    logger.info('  agentinit apply --rules git,write_docs --rule-raw "Use TypeScript strict mode"');
+    logger.info('');
+    logger.info('  # Load from file');
+    logger.info('  agentinit apply --rules-file ./custom-rules.md');
+    logger.info('');
+    logger.info('  # Global rules application');
+    logger.info('  agentinit apply --global --agent claude --rules git,write_tests');
     logger.info('');
     logger.info('MCP Configuration Examples:');
     logger.info('  # Auto-detect agents and apply to all found');
@@ -59,17 +82,40 @@ export async function applyCommand(args: string[]): Promise<void> {
   const spinner = ora('Parsing configurations...').start();
 
   try {
-    // Parse the MCP arguments (filter out --client, --agent, --global args)
+    // Parse the MCP arguments (filter out --client, --agent, --global and rules args)
     const mcpArgs = args.filter((arg, index) => {
+      // Filter out non-MCP arguments
       if (arg === '--client' || arg === '--agent' || arg === '--global') return false;
+      if (arg === '--rules' || arg === '--rule-raw' || arg === '--rules-file' || arg === '--rules-remote' || arg === '--auth') return false;
       if (index > 0 && (args[index - 1] === '--client' || args[index - 1] === '--agent')) return false;
+      if (index > 0 && (args[index - 1] === '--rules' || args[index - 1] === '--rule-raw' || args[index - 1] === '--rules-file' || args[index - 1] === '--rules-remote' || args[index - 1] === '--auth')) return false;
       return true;
     });
     
-    const parsed = MCPParser.parseArguments(mcpArgs);
+    // Parse MCP configuration if present
+    const mcpParsed = hasMcpArgs ? MCPParser.parseArguments(mcpArgs) : { servers: [] };
     
-    if (parsed.servers.length === 0) {
-      spinner.warn('No MCP servers found in arguments');
+    // Parse Rules configuration if present
+    let appliedRules: AppliedRules | null = null;
+    if (hasRulesArgs) {
+      const rulesParser = new RulesParser();
+      const rulesConfig = RulesParser.parseArguments(args);
+      
+      // Validate template IDs
+      if (rulesConfig.templates.length > 0) {
+        const invalidTemplates = rulesParser.validateTemplateIds(rulesConfig.templates);
+        if (invalidTemplates.length > 0) {
+          spinner.fail(`Unknown rule templates: ${invalidTemplates.join(', ')}`);
+          logger.info('Available templates: git, write_docs, use_git_worktrees, use_subagents, use_linter, write_tests');
+          process.exit(1);
+        }
+      }
+      
+      appliedRules = await rulesParser.processRules(rulesConfig);
+    }
+    
+    if (mcpParsed.servers.length === 0 && (!appliedRules || appliedRules.merged.length === 0)) {
+      spinner.warn('No MCP servers or rules found in arguments');
       logger.info('Use `agentinit apply` without arguments to see usage examples');
       return;
     }
@@ -155,39 +201,63 @@ export async function applyCommand(args: string[]): Promise<void> {
       const { agent } = targetAgent;
       
       // Filter and transform MCP servers for this agent
-      const filtered = MCPFilter.filterForAgent(agent, parsed.servers);
+      const filtered = MCPFilter.filterForAgent(agent, mcpParsed.servers);
       
-      if (filtered.servers.length === 0) {
-        logger.warning(`No compatible MCP servers for ${agent.name}`);
+      const hasMcpServers = filtered.servers.length > 0;
+      const hasRules = appliedRules && appliedRules.merged.length > 0 && agent.capabilities.rules;
+      
+      if (!hasMcpServers && !hasRules) {
+        if (mcpParsed.servers.length > 0 && !agent.capabilities.rules) {
+          logger.warning(`${agent.name}: No compatible MCP servers, and rules not supported`);
+        } else if (!hasRules && appliedRules) {
+          logger.warning(`${agent.name}: No rules support`);
+        } else {
+          logger.warning(`${agent.name}: No compatible MCP servers`);
+        }
         continue;
       }
       
-      // Apply configuration (global or project-specific)
-      if (isGlobal) {
-        await agent.applyGlobalMCPConfig(filtered.servers);
-      } else {
-        await agent.applyMCPConfig(cwd, filtered.servers);
+      // Apply MCP configuration (global or project-specific)
+      if (hasMcpServers) {
+        if (isGlobal) {
+          await agent.applyGlobalMCPConfig(filtered.servers);
+        } else {
+          await agent.applyMCPConfig(cwd, filtered.servers);
+        }
+      }
+      
+      // Apply rules configuration
+      let rulesResult = null;
+      if (hasRules && appliedRules) {
+        if (isGlobal) {
+          rulesResult = await agent.applyGlobalRules(appliedRules);
+        } else {
+          rulesResult = await agent.applyRules(cwd, appliedRules);
+        }
       }
       
       results.push({
         agent,
         serversApplied: filtered.servers.length,
+        rulesApplied: rulesResult?.rulesApplied || 0,
         transformations: filtered.transformations,
-        configPath: isGlobal ? agent.getGlobalMcpPath()! : agent.getNativeMcpPath(cwd)
+        mcpConfigPath: hasMcpServers ? (isGlobal ? agent.getGlobalMcpPath()! : agent.getNativeMcpPath(cwd)) : null,
+        rulesConfigPath: rulesResult?.configPath || null,
+        rulesSuccess: rulesResult?.success ?? true
       });
     }
 
-    // Generate the universal TOML file (only for project-level configurations)
+    // Generate the universal TOML file (only for project-level configurations with MCPs)
     let tomlPath: string | null = null;
-    if (!isGlobal) {
+    if (!isGlobal && mcpParsed.servers.length > 0) {
       tomlPath = await getAgentInitTomlPath(cwd);
       const existingToml = await readFileIfExists(tomlPath);
       
       let finalToml: string;
       if (existingToml) {
-        finalToml = TOMLGenerator.mergeTOML(existingToml, parsed.servers);
+        finalToml = TOMLGenerator.mergeTOML(existingToml, mcpParsed.servers);
       } else {
-        finalToml = TOMLGenerator.generateTOML(parsed.servers);
+        finalToml = TOMLGenerator.generateTOML(mcpParsed.servers);
       }
       
       await writeFile(tomlPath, finalToml);
@@ -204,16 +274,29 @@ export async function applyCommand(args: string[]): Promise<void> {
       logger.info(`📁 Universal config saved to: ${tomlPath}`);
     }
     
-    logger.info(`🔥 Applied ${parsed.servers.length} MCP server(s):`);
+    // Report MCP servers if any
+    if (mcpParsed.servers.length > 0) {
+      logger.info(`🔥 Applied ${mcpParsed.servers.length} MCP server(s):`);
+      
+      mcpParsed.servers.forEach(server => {
+        logger.info(`  • ${server.name} (${server.type.toUpperCase()})`);
+        if (server.type === MCPServerType.STDIO && server.command) {
+          logger.info(`    Command: ${server.command} ${server.args?.join(' ') || ''}`);
+        } else if (server.url) {
+          logger.info(`    URL: ${server.url}`);
+        }
+      });
+    }
     
-    parsed.servers.forEach(server => {
-      logger.info(`  • ${server.name} (${server.type.toUpperCase()})`);
-      if (server.type === MCPServerType.STDIO && server.command) {
-        logger.info(`    Command: ${server.command} ${server.args?.join(' ') || ''}`);
-      } else if (server.url) {
-        logger.info(`    URL: ${server.url}`);
-      }
-    });
+    // Report rules if any
+    if (appliedRules && appliedRules.merged.length > 0) {
+      if (mcpParsed.servers.length > 0) logger.info('');
+      logger.info(`📋 Applied ${appliedRules.merged.length} rule(s):`);
+      
+      appliedRules.merged.forEach(rule => {
+        logger.info(`  • ${rule}`);
+      });
+    }
     
     logger.info('');
     if (isGlobal) {
@@ -223,7 +306,17 @@ export async function applyCommand(args: string[]): Promise<void> {
     }
     
     results.forEach(result => {
-      logger.info(`  • ${result.agent.name}: ${result.serversApplied} server(s) → ${result.configPath}`);
+      const mcpInfo = result.serversApplied > 0 ? `${result.serversApplied} MCP server(s)` : '';
+      const rulesInfo = result.rulesApplied > 0 ? `${result.rulesApplied} rule(s)` : '';
+      const appliedInfo = [mcpInfo, rulesInfo].filter(Boolean).join(', ');
+      
+      logger.info(`  • ${result.agent.name}: ${appliedInfo}`);
+      if (result.mcpConfigPath) {
+        logger.info(`    MCP Config: ${result.mcpConfigPath}`);
+      }
+      if (result.rulesConfigPath) {
+        logger.info(`    Rules Config: ${result.rulesConfigPath}`);
+      }
       
       if (result.transformations.length > 0) {
         logger.info(`    ⚡ ${result.transformations.length} server(s) transformed for compatibility`);
@@ -248,10 +341,15 @@ export async function applyCommand(args: string[]): Promise<void> {
     spinner.fail('Failed to apply configuration');
     
     if (error instanceof MCPParseError) {
-      logger.error('Configuration Error:');
+      logger.error('MCP Configuration Error:');
       logger.error(error.message);
       logger.info('');
       logger.info('For help with the correct syntax, run: agentinit apply');
+    } else if (error instanceof RulesParseError) {
+      logger.error('Rules Configuration Error:');
+      logger.error(error.message);
+      logger.info('');
+      logger.info('For help with rules syntax, run: agentinit apply');
     } else {
       logger.error(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }

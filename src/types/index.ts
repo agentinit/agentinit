@@ -143,3 +143,12 @@ export interface MCPTransformation {
   transformed: MCPServerConfig;
   reason: string;
 }
+
+// Re-export rules types
+export type { 
+  RuleTemplate, 
+  RulesConfig, 
+  RemoteRulesOptions, 
+  AppliedRules, 
+  RuleApplicationResult 
+} from './rules.js';

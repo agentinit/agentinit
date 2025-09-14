@@ -1,11 +1,13 @@
 import { resolve } from 'path';
 import { fileExists } from '../utils/fs.js';
 import { getFullGlobalConfigPath } from '../utils/paths.js';
+import { RulesApplicator } from '../core/rulesApplicator.js';
 import type { 
   AgentDefinition, 
   MCPServerConfig, 
   AgentDetectionResult 
 } from '../types/index.js';
+import type { AppliedRules, RuleApplicationResult } from '../types/rules.js';
 
 /**
  * Abstract base class for AI coding agents
@@ -159,6 +161,37 @@ export abstract class Agent {
   transformMCPServers(servers: MCPServerConfig[]): MCPServerConfig[] {
     // Default: no transformations
     return servers;
+  }
+
+  /**
+   * Apply rules configuration to this agent
+   */
+  async applyRules(
+    projectPath: string, 
+    rules: AppliedRules
+  ): Promise<RuleApplicationResult> {
+    const applicator = new RulesApplicator();
+    return applicator.applyRulesToAgent(this, rules, projectPath, false);
+  }
+
+  /**
+   * Apply rules configuration to this agent's global config
+   */
+  async applyGlobalRules(rules: AppliedRules): Promise<RuleApplicationResult> {
+    const applicator = new RulesApplicator();
+    
+    if (!this.supportsGlobalConfig()) {
+      return {
+        success: false,
+        rulesApplied: 0,
+        agent: this.name,
+        configPath: '',
+        errors: [`Agent ${this.name} does not support global configuration`]
+      };
+    }
+    
+    // Use empty string as project path for global config
+    return applicator.applyRulesToAgent(this, rules, '', true);
   }
 
   /**
