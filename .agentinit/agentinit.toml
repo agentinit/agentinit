@@ -1,0 +1,7 @@
+# AgentInit MCP Configuration
+# Generated automatically by agentinit
+
+# --- MCP Server Definitions ---
+[mcp_servers.filesystem]
+command = "echo"
+args = ["filesystem", "/tmp"]

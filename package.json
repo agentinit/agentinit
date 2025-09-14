@@ -12,6 +12,7 @@
     "dev": "bun run src/index.ts",
     "test": "jest",
     "test:watch": "jest --watch",
+    "test_all": "jest && tsc --noEmit",
     "lint": "tsc --noEmit",
     "clean": "rm -rf dist",
     "pack": "npm pack --dry-run",

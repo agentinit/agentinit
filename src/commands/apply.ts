@@ -1,4 +1,5 @@
 import ora from 'ora';
+import { green, yellow, red, cyan } from 'kleur/colors';
 import { logger } from '../utils/logger.js';
 import { MCPParser, MCPParseError } from '../core/mcpParser.js';
 import { RulesParser, RulesParseError } from '../core/rulesParser.js';
@@ -7,6 +8,20 @@ import { readFileIfExists, writeFile, getAgentInitTomlPath } from '../utils/fs.j
 import { AgentManager } from '../core/agentManager.js';
 import { MCPFilter } from '../core/mcpFilter.js';
 import { MCPServerType, type AppliedRules } from '../types/index.js';
+
+// Color utility functions for token display
+function colorizeTokenCount(tokenCount: number): string {
+  if (tokenCount <= 5000) return green(tokenCount.toString());
+  if (tokenCount <= 15000) return yellow(tokenCount.toString());
+  if (tokenCount <= 30000) return red(tokenCount.toString()); // Light red approximated with red
+  return red(tokenCount.toString()); // Red for >30k
+}
+
+function colorizeTokenDiff(diff: number): string {
+  if (diff === 0) return '±0';
+  if (diff > 0) return green(`+${diff}`);
+  return red(`${diff}`); // Already has negative sign
+}
 
 export async function applyCommand(args: string[]): Promise<void> {
   const cwd = process.cwd();
@@ -240,6 +255,14 @@ export async function applyCommand(args: string[]): Promise<void> {
         agent,
         serversApplied: filtered.servers.length,
         rulesApplied: rulesResult?.rulesApplied || 0,
+        rulesTokenCount: rulesResult?.tokenCount || 0,
+        rulesTokenDiff: rulesResult?.tokenDiff || 0,
+        totalFileTokens: rulesResult?.totalFileTokens || 0,
+        existingRules: rulesResult?.existingRules || [],
+        newlyApplied: rulesResult?.newlyApplied || [],
+        existingCount: rulesResult?.existingCount || 0,
+        newlyAppliedCount: rulesResult?.newlyAppliedCount || 0,
+        appliedSections: rulesResult?.mergedSections || [],
         transformations: filtered.transformations,
         mcpConfigPath: hasMcpServers ? (isGlobal ? agent.getGlobalMcpPath()! : agent.getNativeMcpPath(cwd)) : null,
         rulesConfigPath: rulesResult?.configPath || null,
@@ -291,40 +314,110 @@ export async function applyCommand(args: string[]): Promise<void> {
     // Report rules if any
     if (appliedRules && appliedRules.merged.length > 0) {
       if (mcpParsed.servers.length > 0) logger.info('');
-      logger.info(`📋 Applied ${appliedRules.merged.length} rule(s):`);
       
-      appliedRules.merged.forEach(rule => {
-        logger.info(`  • ${rule}`);
-      });
+      // Calculate totals across all agents
+      const totalExisting = results.reduce((sum, r) => sum + (r.existingCount || 0), 0);
+      const totalNewlyApplied = results.reduce((sum, r) => sum + (r.newlyAppliedCount || 0), 0);
+      
+      // Get unique sections across all results
+      const allSections = results.flatMap(r => r.appliedSections || []);
+      const uniqueSections = Array.from(
+        new Map(allSections.map(s => [s.templateId, s])).values()
+      );
+      
+      // Show existing sections (if any)
+      if (totalExisting > 0) {
+        const existingSectionCount = uniqueSections.filter(section => {
+          return section.rules.some(rule => 
+            results.some(r => r.existingRules?.includes(rule))
+          );
+        }).length;
+        
+        logger.info(`📋 Already exists (${existingSectionCount} sections):`);
+        uniqueSections.forEach(section => {
+          const existingRulesInSection = section.rules.filter(rule =>
+            results.some(r => r.existingRules?.includes(rule))
+          );
+          if (existingRulesInSection.length > 0) {
+            logger.info(`  • ${section.templateName} (${existingRulesInSection.length} rules)`);
+          }
+        });
+      }
+      
+      // Show newly applied sections (if any)
+      if (totalNewlyApplied > 0) {
+        if (totalExisting > 0) logger.info('');
+        
+        const newlySectionCount = uniqueSections.filter(section => {
+          return section.rules.some(rule => 
+            results.some(r => r.newlyApplied?.includes(rule))
+          );
+        }).length;
+        
+        logger.info(`📋 Applied (${newlySectionCount} sections):`);
+        uniqueSections.forEach(section => {
+          const newRulesInSection = section.rules.filter(rule =>
+            results.some(r => r.newlyApplied?.includes(rule))
+          );
+          if (newRulesInSection.length > 0) {
+            logger.info(`  • ${section.templateName} (${newRulesInSection.length} rules)`);
+          }
+        });
+      }
     }
     
     logger.info('');
     if (isGlobal) {
-      logger.info('🌍 Global configurations:');
+      logger.info('🌍 Agents:');
     } else {
-      logger.info('🤖 Agent-specific configurations:');
+      logger.info('🤖 Agents:');
     }
+    
+    const totalTokens = results.reduce((sum, result) => sum + (result.rulesTokenCount || 0), 0);
     
     results.forEach(result => {
       const mcpInfo = result.serversApplied > 0 ? `${result.serversApplied} MCP server(s)` : '';
       const rulesInfo = result.rulesApplied > 0 ? `${result.rulesApplied} rule(s)` : '';
       const appliedInfo = [mcpInfo, rulesInfo].filter(Boolean).join(', ');
       
-      logger.info(`  • ${result.agent.name}: ${appliedInfo}`);
-      if (result.mcpConfigPath) {
-        logger.info(`    MCP Config: ${result.mcpConfigPath}`);
-      }
-      if (result.rulesConfigPath) {
-        logger.info(`    Rules Config: ${result.rulesConfigPath}`);
+      logger.info(`- ${result.agent.name}`);
+      
+      // Show detailed token information for rules
+      if (result.rulesApplied > 0) {
+        if (result.totalFileTokens && result.totalFileTokens > 0) {
+          const totalColored = colorizeTokenCount(result.totalFileTokens);
+          const totalDiff = colorizeTokenDiff(result.rulesTokenDiff || 0);
+          logger.info(`  Total File: ${totalColored} tokens (${totalDiff})`);
+        }
+        
+        if (result.rulesConfigPath) {
+          logger.info(`  Config: ${result.rulesConfigPath}`);
+        }
+        
+        // Show warning if file is overweight
+        if (result.totalFileTokens && result.totalFileTokens > 30000) {
+          const configName = result.rulesConfigPath?.includes('CLAUDE') ? 'CLAUDE.md' : 
+                           result.rulesConfigPath?.includes('.cursorrules') ? '.cursorrules' :
+                           'config file';
+          logger.warning(`  ⚠️ ${configName} is overweight (>30k tokens). Consider reducing rules.`);
+        }
+      } else if (result.mcpConfigPath) {
+        logger.info(`  MCP Config: ${result.mcpConfigPath}`);
       }
       
       if (result.transformations.length > 0) {
-        logger.info(`    ⚡ ${result.transformations.length} server(s) transformed for compatibility`);
+        logger.info(`  ⚡ ${result.transformations.length} server(s) transformed for compatibility`);
         result.transformations.forEach(transform => {
-          logger.info(`      - ${transform.original.name}: ${transform.reason}`);
+          logger.info(`    - ${transform.original.name}: ${transform.reason}`);
         });
       }
     });
+
+    // Show total token count if multiple agents with rules
+    if (totalTokens > 0 && results.filter(r => r.rulesApplied > 0).length > 1) {
+      logger.info('');
+      logger.info(`📊 Total rules token usage: ${totalTokens} tokens`);
+    }
 
     logger.info('');
     logger.info('Next steps:');

@@ -109,7 +109,39 @@ transformMCPServers(servers: MCPServerConfig[]): MCPServerConfig[] {
 }
 ```
 
-### 4. Register Agent
+### 4. Implement Rules Support (Optional)
+
+```typescript
+// Add to your agent class
+import type { AppliedRules, RuleSection } from '../types/rules.js';
+
+async applyRulesConfig(configPath: string, rules: AppliedRules, existingContent: string): Promise<string> {
+  // Agent-specific rules formatting
+  const rulesSection = this.generateRulesContent(rules.sections);
+  return existingContent + '\n\n' + rulesSection;
+}
+
+extractExistingRules(content: string): string[] {
+  // Parse existing rules from agent's format
+  return content.split('\n').filter(line => line.trim() && !line.startsWith('#'));
+}
+
+extractExistingSections(content: string): RuleSection[] {
+  // Parse sections from agent's format
+  const sections: RuleSection[] = [];
+  // ... parsing logic for your format
+  return sections;
+}
+
+generateRulesContent(sections: RuleSection[]): string {
+  // Generate rules in agent's format
+  return sections.map(section => 
+    `# ${section.templateName}\n${section.rules.join('\n')}\n`
+  ).join('\n');
+}
+```
+
+### 5. Register Agent
 
 ```typescript
 // src/core/agentManager.ts
@@ -420,6 +452,7 @@ agentinit apply --global --agent your-agent --mcp-stdio test "cmd"
 - [ ] Research agent's MCP format and capabilities
 - [ ] Create agent class extending `Agent`
 - [ ] Implement `applyMCPConfig` method
+- [ ] Implement rules methods (if `capabilities.rules: true`)
 - [ ] Add optional filtering/transformation
 - [ ] Register in `AgentManager`
 - [ ] Write comprehensive tests

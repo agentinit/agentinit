@@ -20,12 +20,19 @@ export interface RemoteRulesOptions {
   timeout?: number;
 }
 
+export interface RuleSection {
+  templateId: string;
+  templateName: string;
+  rules: string[];
+}
+
 export interface AppliedRules {
   templateRules: string[];
   rawRules: string[];
   fileRules: string[];
   remoteRules: string[];
   merged: string[];
+  sections: RuleSection[];
 }
 
 export interface RuleApplicationResult {
@@ -33,5 +40,13 @@ export interface RuleApplicationResult {
   rulesApplied: number;
   agent: string;
   configPath: string;
+  tokenCount?: number;
+  tokenDiff?: number;
+  totalFileTokens?: number;
   errors?: string[];
+  existingRules?: string[];
+  newlyApplied?: string[];
+  existingCount?: number;
+  newlyAppliedCount?: number;
+  mergedSections?: RuleSection[];
 }

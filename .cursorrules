@@ -1,24 +1,29 @@
-// Basic cursor rules
+# Git Enforcement
+Always initialize a Git repository if one doesn't exist (git init)
+Make atomic commits with clear, descriptive commit messages
+Use conventional commit format: type(scope): description
+Create feature branches for new work, don't work directly on main/master
+Never commit sensitive data, API keys, or secrets to the repository
+Review changes with `git diff --staged` before committing
+Keep commits focused on a single logical change
+Use meaningful branch names that describe the feature or fix
 
-// AgentInit Rules
-// The following rules have been applied by AgentInit:
+# Write Tests
+Write tests for all new functionality before or during implementation
+Don't use mocks unless absolutely necessary - prefer real implementations
+Test edge cases, error conditions, and boundary values
+Maintain a minimum of 80% code coverage for all new code
+Run the full test suite before committing changes
+Write both unit tests for individual components and integration tests
+Use descriptive test names that explain what is being tested
+Test the actual behavior users will experience, not just implementation details
 
-// - Always initialize a Git repository if one doesn't exist (git init)
-// - Make atomic commits with clear, descriptive commit messages
-// - Use conventional commit format: type(scope): description
-// - Create feature branches for new work, don't work directly on main/master
-// - Never commit sensitive data, API keys, or secrets to the repository
-// - Review changes with `git diff --staged` before committing
-// - Keep commits focused on a single logical change
-// - Use meaningful branch names that describe the feature or fix
-// - Write tests for all new functionality before or during implementation
-// - Don't use mocks unless absolutely necessary - prefer real implementations
-// - Test edge cases, error conditions, and boundary values
-// - Maintain a minimum of 80% code coverage for all new code
-// - Run the full test suite before committing changes
-// - Write both unit tests for individual components and integration tests
-// - Use descriptive test names that explain what is being tested
-// - Test the actual behavior users will experience, not just implementation details
-// - Run tsc tests.
-
-// Rules managed by AgentInit. Do not edit this section manually.
+# Enforce Linting
+Run the project's linter before committing any code changes
+Fix all linter errors and warnings before proceeding
+Use the project's existing linter configuration without modification
+Run code formatters (prettier, black, gofmt, etc.) to maintain consistent style
+Ensure all code passes CI linting checks before pushing
+Install and configure linting tools if not already present
+Follow language-specific linting best practices
+Don't disable linting rules without proper justification

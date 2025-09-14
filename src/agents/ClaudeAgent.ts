@@ -2,6 +2,7 @@ import { resolve } from 'path';
 import { Agent } from './Agent.js';
 import { readFileIfExists, writeFile, ensureDirectoryExists } from '../utils/fs.js';
 import type { MCPServerConfig, AgentDefinition } from '../types/index.js';
+import type { AppliedRules, RuleSection } from '../types/rules.js';
 
 /**
  * Claude Code agent implementation
@@ -124,5 +125,96 @@ export class ClaudeAgent extends Agent {
    */
   transformMCPServers(servers: MCPServerConfig[]): MCPServerConfig[] {
     return servers; // No transformations needed
+  }
+
+  /**
+   * Apply rules configuration to Claude's CLAUDE.md format
+   */
+  async applyRulesConfig(
+    configPath: string,
+    rules: AppliedRules,
+    existingContent: string
+  ): Promise<string> {
+    const rulesSection = this.generateRulesContent(rules.sections);
+    
+    let content = existingContent;
+    
+    // For markdown, we'll append rules directly
+    if (content && !content.endsWith('\n')) {
+      content += '\n';
+    }
+    if (content) {
+      content += '\n';
+    }
+    content += rulesSection;
+    
+    return content.trim() + '\n';
+  }
+
+  /**
+   * Extract existing rule texts from CLAUDE.md content
+   */
+  extractExistingRules(content: string): string[] {
+    // Extract rules from markdown format - look for lines starting with "- "
+    const ruleLines = content.split('\n').filter(line => line.trim().startsWith('- '));
+    return ruleLines.map(line => line.replace(/^- /, '').trim()).filter(rule => rule.length > 0);
+  }
+
+  /**
+   * Extract existing rule sections from CLAUDE.md content using ## headers
+   */
+  extractExistingSections(content: string): RuleSection[] {
+    const lines = content.split('\n');
+    const sections: RuleSection[] = [];
+    let currentSection: RuleSection | null = null;
+    
+    for (const line of lines) {
+      const trimmed = line.trim();
+      
+      // Check if it's a section header
+      if (trimmed.startsWith('## ') && trimmed.includes(' ')) {
+        // Start new section
+        if (currentSection) {
+          sections.push(currentSection);
+        }
+        const sectionName = trimmed.replace(/^##\s*/, '');
+        currentSection = {
+          templateId: sectionName.toLowerCase().replace(/\s+/g, '_'),
+          templateName: sectionName,
+          rules: []
+        };
+      } else if (currentSection && trimmed.startsWith('- ')) {
+        // Add rule to current section
+        const rule = trimmed.replace(/^- /, '');
+        currentSection.rules.push(rule);
+      }
+    }
+    
+    // Add the last section
+    if (currentSection) {
+      sections.push(currentSection);
+    }
+    
+    return sections;
+  }
+
+  /**
+   * Generate rules content in Claude's CLAUDE.md markdown format
+   */
+  generateRulesContent(sections: RuleSection[]): string {
+    let content = '';
+    
+    if (sections && sections.length > 0) {
+      // Group rules by sections
+      for (const ruleSection of sections) {
+        content += `## ${ruleSection.templateName}\n\n`;
+        for (const rule of ruleSection.rules) {
+          content += `- ${rule}\n`;
+        }
+        content += '\n';
+      }
+    }
+    
+    return content;
   }
 }

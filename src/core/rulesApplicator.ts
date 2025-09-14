@@ -1,4 +1,5 @@
 import { resolve } from 'path';
+import { countTokens } from 'contextcalc';
 import { readFileIfExists, writeFile, ensureDirectoryExists } from '../utils/fs.js';
 import type { Agent } from '../agents/Agent.js';
 import type { AppliedRules, RuleApplicationResult } from '../types/rules.js';
@@ -39,14 +40,44 @@ export class RulesApplicator {
         };
       }
 
-      // Apply rules based on agent type
-      await this.applyRulesByAgentType(agent, rules.merged, configPath);
+      // Get existing sections and rules before applying new ones using agent methods
+      const existingContent = await readFileIfExists(configPath) || '';
+      const existingSections = agent.extractExistingSections(existingContent);
+      const existingRules = agent.extractExistingRules(existingContent);
+      const previousTokenCount = this.countRulesTokens(existingRules);
+
+      // Merge new sections with existing ones
+      const mergedSections = this.mergeSections(existingSections, rules.sections);
+      const allMergedRules = mergedSections.flatMap(section => section.rules);
+
+      // Determine which rules are new vs existing
+      const existingSet = new Set(existingRules);
+      const newlyApplied = allMergedRules.filter(rule => !existingSet.has(rule));
+      const existing = allMergedRules.filter(rule => existingSet.has(rule));
+
+      // Apply rules based on agent type using merged sections
+      await this.applyRulesByAgentType(agent, allMergedRules, configPath, mergedSections);
+
+      // Count tokens in the applied rules (now using merged rules)
+      const tokenCount = this.countRulesTokens(allMergedRules);
+      const tokenDiff = tokenCount - previousTokenCount;
+      
+      // Count total file tokens after applying rules
+      const totalFileTokens = await this.countTotalFileTokens(configPath);
 
       return {
         success: true,
-        rulesApplied: rules.merged.length,
+        rulesApplied: allMergedRules.length,
         agent: agent.name,
-        configPath
+        configPath,
+        tokenCount,
+        tokenDiff,
+        totalFileTokens,
+        existingRules: existing,
+        newlyApplied: newlyApplied,
+        existingCount: existing.length,
+        newlyAppliedCount: newlyApplied.length,
+        mergedSections: mergedSections
       };
     } catch (error) {
       return {
@@ -60,161 +91,114 @@ export class RulesApplicator {
   }
 
   /**
-   * Apply rules based on the specific agent type
+   * Apply rules using agent-specific methods
    */
-  private async applyRulesByAgentType(agent: Agent, rules: string[], configPath: string): Promise<void> {
-    switch (agent.id) {
-      case 'claude':
-        await this.applyRulesToClaudeAgent(rules, configPath);
-        break;
-      case 'cursor':
-        await this.applyRulesToCursorAgent(rules, configPath);
-        break;
-      case 'claude-desktop':
-        await this.applyRulesToClaudeDesktopAgent(rules, configPath);
-        break;
-      default:
-        // Generic markdown format for other agents
-        await this.applyRulesToGenericAgent(rules, configPath);
-        break;
-    }
-  }
-
-  /**
-   * Apply rules to Claude agent (CLAUDE.md format)
-   */
-  private async applyRulesToClaudeAgent(rules: string[], configPath: string): Promise<void> {
+  private async applyRulesByAgentType(agent: Agent, rules: string[], configPath: string, sections?: any[]): Promise<void> {
     await ensureDirectoryExists(configPath);
     
     const existing = await readFileIfExists(configPath) || '';
-    const rulesSection = this.generateMarkdownRulesSection(rules);
     
-    let content = existing;
+    // Create AppliedRules object for the agent
+    const appliedRules: AppliedRules = {
+      templateRules: rules,
+      rawRules: [],
+      fileRules: [],
+      remoteRules: [],
+      merged: rules,
+      sections: sections || []
+    };
     
-    // Check if rules section already exists
-    const rulesSectionRegex = /## AgentInit Rules\s*[\s\S]*?(?=\n## |$)/;
+    // Delegate to agent-specific implementation
+    const newContent = await agent.applyRulesConfig(configPath, appliedRules, existing);
     
-    if (rulesSectionRegex.test(content)) {
-      // Replace existing rules section
-      content = content.replace(rulesSectionRegex, rulesSection.trim());
-    } else {
-      // Append rules section
-      if (content && !content.endsWith('\n')) {
-        content += '\n';
-      }
-      content += '\n' + rulesSection;
-    }
-    
-    await writeFile(configPath, content.trim() + '\n');
+    // Write the new content
+    await writeFile(configPath, newContent);
   }
 
-  /**
-   * Apply rules to Cursor agent (.cursorrules format)
-   */
-  private async applyRulesToCursorAgent(rules: string[], configPath: string): Promise<void> {
-    await ensureDirectoryExists(configPath);
-    
-    const existing = await readFileIfExists(configPath) || '';
-    const rulesSection = this.generateCursorRulesSection(rules);
-    
-    let content = existing;
-    
-    // Check if AgentInit rules section already exists
-    const rulesSectionRegex = /\/\/ AgentInit Rules[\s\S]*?\/\/ Rules managed by AgentInit\. Do not edit this section manually\.[\s\S]*?(?=\n[^\s\/]|$)/;
-    
-    if (rulesSectionRegex.test(content)) {
-      // Replace existing rules section
-      content = content.replace(rulesSectionRegex, rulesSection.trim());
-    } else {
-      // Append rules section
-      if (content && !content.endsWith('\n')) {
-        content += '\n';
-      }
-      content += '\n' + rulesSection;
-    }
-    
-    await writeFile(configPath, content.trim() + '\n');
-  }
+
 
   /**
-   * Apply rules to Claude Desktop agent (JSON format)
+   * Merge new sections with existing ones
    */
-  private async applyRulesToClaudeDesktopAgent(rules: string[], configPath: string): Promise<void> {
-    await ensureDirectoryExists(configPath);
-    
-    const existing = await readFileIfExists(configPath);
-    let config: any = {};
-    
-    if (existing) {
-      try {
-        config = JSON.parse(existing);
-      } catch (error) {
-        console.warn('Warning: Existing config is invalid JSON, creating new configuration');
+  private mergeSections(existingSections: any[], newSections: any[]): any[] {
+    const merged = new Map();
+
+    // Add all existing sections
+    for (const section of existingSections) {
+      merged.set(section.templateId, {
+        templateId: section.templateId,
+        templateName: section.templateName,
+        rules: [...section.rules]
+      });
+    }
+
+    // Add or merge new sections
+    for (const section of newSections) {
+      if (merged.has(section.templateId)) {
+        // Merge rules, deduplicating
+        const existing = merged.get(section.templateId);
+        const allRules = [...existing.rules, ...section.rules];
+        const uniqueRules = [...new Set(allRules)];
+        merged.set(section.templateId, {
+          ...existing,
+          rules: uniqueRules
+        });
+      } else {
+        // Add new section
+        merged.set(section.templateId, {
+          templateId: section.templateId,
+          templateName: section.templateName,
+          rules: [...section.rules]
+        });
       }
     }
-    
-    // Add rules to the agentinit_rules section
-    config.agentinit_rules = rules;
-    
-    await writeFile(configPath, JSON.stringify(config, null, 2));
+
+    return Array.from(merged.values());
   }
 
   /**
-   * Apply rules to generic agent (markdown format)
+   * Count tokens in existing rules from config file
    */
-  private async applyRulesToGenericAgent(rules: string[], configPath: string): Promise<void> {
-    await ensureDirectoryExists(configPath);
-    
-    const existing = await readFileIfExists(configPath) || '';
-    const rulesSection = this.generateMarkdownRulesSection(rules);
-    
-    let content = existing;
-    
-    // Check if rules section already exists
-    const rulesSectionRegex = /## AgentInit Rules\s*[\s\S]*?(?=\n## |$)/;
-    
-    if (rulesSectionRegex.test(content)) {
-      // Replace existing rules section
-      content = content.replace(rulesSectionRegex, rulesSection.trim());
-    } else {
-      // Append rules section
-      if (content && !content.endsWith('\n')) {
-        content += '\n';
-      }
-      content += '\n' + rulesSection;
+  private async countExistingRulesTokens(configPath: string): Promise<number> {
+    try {
+      const existingRules = await this.getExistingRules(configPath);
+      return this.countRulesTokens(existingRules);
+    } catch (error) {
+      console.warn('Failed to count existing rules tokens:', error);
+      return 0;
     }
-    
-    await writeFile(configPath, content.trim() + '\n');
   }
 
   /**
-   * Generate markdown rules section
+   * Count total tokens in the entire config file
    */
-  private generateMarkdownRulesSection(rules: string[]): string {
-    let section = '## AgentInit Rules\n\n';
-    
-    for (const rule of rules) {
-      section += `- ${rule}\n`;
+  private async countTotalFileTokens(configPath: string): Promise<number> {
+    try {
+      const fileContent = await readFileIfExists(configPath);
+      if (!fileContent) return 0;
+      
+      return countTokens(fileContent);
+    } catch (error) {
+      console.warn('Failed to count total file tokens:', error);
+      return 0;
     }
-    
-    section += '\n---\n*Rules managed by AgentInit. Do not edit this section manually.*\n';
-    
-    return section;
   }
 
+
   /**
-   * Generate Cursor rules section
+   * Count tokens in the rules
    */
-  private generateCursorRulesSection(rules: string[]): string {
-    let section = '// AgentInit Rules\n';
-    
-    for (const rule of rules) {
-      section += `// - ${rule}\n`;
+  private countRulesTokens(rules: string[]): number {
+    try {
+      if (rules.length === 0) return 0;
+      // Join all rules with bullet points as they would appear in the config
+      const rulesText = rules.map(rule => `- ${rule}`).join('\n');
+      return countTokens(rulesText);
+    } catch (error) {
+      // If token counting fails, return 0 to avoid breaking the functionality
+      console.warn('Failed to count tokens:', error);
+      return 0;
     }
-    
-    section += '\n// Rules managed by AgentInit. Do not edit this section manually.\n';
-    
-    return section;
   }
 
   /**

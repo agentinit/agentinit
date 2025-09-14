@@ -140,9 +140,18 @@ agentinit apply --global --agent claude --rules git,write_docs
 
 Rules are automatically merged and managed in the section below. They can be updated by running new `agentinit apply --rules` commands.
 
-## AgentInit Rules
+### Token Tracking
 
-The following rules have been applied by AgentInit:
+The apply command provides comprehensive token counting to help manage AI context usage:
+
+- **Color-coded Token Display**: 🟢 Green (≤5k tokens), 🟡 Yellow (5k-15k), 🔴 Red (>15k)
+- **Rules vs Total File**: Shows both rule-specific tokens and complete file size
+- **Change Tracking**: Git-style diffs display token changes (+/- with colors)
+- **Overweight Warnings**: Alerts when total file exceeds 30k tokens
+
+Example output: `Rules: 101 tokens (-296)` shows 101 tokens in rules section with a 296 token decrease from previous state.
+
+## AgentInit Rules
 
 - Always initialize a Git repository if one doesn't exist (git init)
 - Make atomic commits with clear, descriptive commit messages
@@ -152,15 +161,6 @@ The following rules have been applied by AgentInit:
 - Review changes with `git diff --staged` before committing
 - Keep commits focused on a single logical change
 - Use meaningful branch names that describe the feature or fix
-- Write tests for all new functionality before or during implementation
-- Don't use mocks unless absolutely necessary - prefer real implementations
-- Test edge cases, error conditions, and boundary values
-- Maintain a minimum of 80% code coverage for all new code
-- Run the full test suite before committing changes
-- Write both unit tests for individual components and integration tests
-- Use descriptive test names that explain what is being tested
-- Test the actual behavior users will experience, not just implementation details
-- Run tsc tests.
 
 ---
 *Rules managed by AgentInit. Do not edit this section manually.*

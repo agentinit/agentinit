@@ -153,6 +153,8 @@ agentinit apply --rules git,use_linter --mcp-stdio context7 "npx @context7/mcp"
 - `use_linter` - Enforce code quality and formatting
 - `write_tests` - Implement test-driven development practices
 
+**Token Tracking:** The apply command automatically tracks and displays token usage with color-coded output (🟢 Green ≤5k, 🟡 Yellow 5k-15k, 🔴 Red >15k) and git-style diffs to help manage AI context size. Example: `Rules: 101 tokens (-296)` shows rule tokens with change tracking.
+
 ## 🏗️ Project Structure
 
 AgentInit creates and manages these key files:

@@ -7,7 +7,7 @@ import type {
   MCPServerConfig, 
   AgentDetectionResult 
 } from '../types/index.js';
-import type { AppliedRules, RuleApplicationResult } from '../types/rules.js';
+import type { AppliedRules, RuleApplicationResult, RuleSection } from '../types/rules.js';
 
 /**
  * Abstract base class for AI coding agents
@@ -162,6 +162,34 @@ export abstract class Agent {
     // Default: no transformations
     return servers;
   }
+
+  /**
+   * Apply rules configuration to this agent's config file format
+   * Must be implemented by each specific agent
+   */
+  abstract applyRulesConfig(
+    configPath: string,
+    rules: AppliedRules,
+    existingContent: string
+  ): Promise<string>;
+
+  /**
+   * Extract existing rule texts from config content
+   * Must be implemented by each specific agent
+   */
+  abstract extractExistingRules(content: string): string[];
+
+  /**
+   * Extract existing rule sections from config content
+   * Must be implemented by each specific agent
+   */
+  abstract extractExistingSections(content: string): RuleSection[];
+
+  /**
+   * Generate rules content in this agent's format
+   * Must be implemented by each specific agent
+   */
+  abstract generateRulesContent(sections: RuleSection[]): string;
 
   /**
    * Apply rules configuration to this agent

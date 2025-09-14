@@ -76,26 +76,57 @@ export class RulesParser {
       rawRules: config.rawRules || [],
       fileRules: [],
       remoteRules: [],
-      merged: []
+      merged: [],
+      sections: []
     };
 
-    // Process template rules
+    // Process template rules and build sections
     for (const templateId of config.templates || []) {
       const template = this.templateLoader.getTemplate(templateId);
       if (!template) {
         throw new RulesParseError(`Unknown rule template: ${templateId}`);
       }
       result.templateRules.push(...template.rules);
+      
+      // Add section information
+      result.sections.push({
+        templateId: template.id,
+        templateName: template.name,
+        rules: template.rules
+      });
     }
 
     // Process file rules
     if (config.fileRules) {
       result.fileRules = await this.loadRulesFromFile(config.fileRules);
+      if (result.fileRules.length > 0) {
+        result.sections.push({
+          templateId: 'file_rules',
+          templateName: 'File Rules',
+          rules: result.fileRules
+        });
+      }
     }
 
     // Process remote rules
     if (config.remoteRules) {
       result.remoteRules = await this.loadRulesFromRemote(config.remoteRules);
+      if (result.remoteRules.length > 0) {
+        result.sections.push({
+          templateId: 'remote_rules',
+          templateName: 'Remote Rules',
+          rules: result.remoteRules
+        });
+      }
+    }
+
+    // Process raw rules
+    if (result.rawRules.length > 0) {
+      result.sections.push({
+        templateId: 'custom_rules',
+        templateName: 'Custom Rules',
+        rules: result.rawRules
+      });
     }
 
     // Merge all rules and deduplicate
