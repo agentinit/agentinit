@@ -1,5 +1,6 @@
 import { Agent } from '../../src/agents/Agent.js';
 import { MCPServerType, type MCPServerConfig, type AgentDefinition } from '../../src/types/index.js';
+import type { AppliedRules, RuleSection } from '../../src/types/rules.js';
 
 // Mock the fs module
 jest.mock('fs', () => ({
@@ -22,6 +23,26 @@ class TestAgent extends Agent {
     // Mock implementation
     return Promise.resolve();
   }
+
+  async applyRulesConfig(configPath: string, rules: AppliedRules, existingContent: string): Promise<string> {
+    // Mock implementation
+    return existingContent;
+  }
+
+  extractExistingRules(content: string): string[] {
+    // Mock implementation
+    return [];
+  }
+
+  extractExistingSections(content: string): RuleSection[] {
+    // Mock implementation
+    return [];
+  }
+
+  generateRulesContent(sections: RuleSection[]): string {
+    // Mock implementation
+    return '';
+  }
 }
 
 describe('Agent global configuration functionality', () => {
@@ -41,7 +62,15 @@ describe('Agent global configuration functionality', () => {
       subagents: false,
       statusline: false
     },
-    configFiles: ['.test-config'],
+    configFiles: [
+      {
+        path: '.test-config',
+        purpose: 'detection',
+        format: 'text',
+        type: 'file',
+        optional: true
+      }
+    ],
     nativeConfigPath: '.test/config.json',
     globalConfigPath: '~/.test/global.json'
   };

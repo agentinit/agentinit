@@ -174,7 +174,9 @@ export async function applyCommand(args: string[]): Promise<void> {
         if (!detection) {
           spinner.warn(`Agent ${specifiedClient} not found in project`);
           logger.info(`To use ${agent.name}, ensure one of these files exists:`);
-          agent.configFiles.forEach(file => logger.info(`  • ${file}`));
+          agent.configFiles.forEach(config => 
+            logger.info(`  • ${config.path} (${config.type}, ${config.purpose}${config.description ? ': ' + config.description : ''})`)
+          );
           return;
         }
         
@@ -196,7 +198,7 @@ export async function applyCommand(args: string[]): Promise<void> {
         logger.info('Supported agents:');
         agentManager.getAllAgents().forEach(agent => {
           logger.info(`  • ${agent.name} (${agent.id})`);
-          logger.info(`    Files: ${agent.configFiles.join(', ')}`);
+          logger.info(`    Files: ${agent.configFiles.map(c => c.path).join(', ')}`);
         });
         logger.info('');
         logger.info('To target a specific agent, use: --agent <agent-id>');

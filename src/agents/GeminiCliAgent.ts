@@ -25,7 +25,16 @@ export class GeminiCliAgent extends Agent {
         subagents: false,
         statusline: false
       },
-      configFiles: ['.gemini/settings.json'],
+      configFiles: [
+        {
+          path: '.gemini/settings.json',
+          purpose: 'settings',
+          format: 'json',
+          type: 'file',
+          optional: true,
+          description: 'Google Gemini CLI settings and MCP configuration'
+        }
+      ],
       nativeConfigPath: '.gemini/settings.json',
       globalConfigPath: '~/.gemini/settings.json'
     };

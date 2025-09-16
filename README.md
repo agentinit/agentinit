@@ -163,7 +163,10 @@ AgentInit creates and manages these key files:
 your-project/
 ├── agents.md                 # Universal agent configuration
 ├── CLAUDE.md                 # Claude-specific config (synced)
-├── .cursorrules              # Cursor-specific config (synced)
+├── .cursor/rules/            # Cursor rules (MDC files)
+│   ├── 001_workspace.mdc
+│   └── 002_frontend.mdc
+├── AGENTS.md                 # Simple agent instructions (alternative)
 └── .windsurfrules           # Windsurf-specific config (synced)
 ```
 
@@ -204,7 +207,7 @@ This is a TypeScript project using Next.js...
 | Agent | Config File | Status |
 |-------|-------------|--------|
 | Claude | `CLAUDE.md` | ✅ |
-| Cursor | `.cursorrules` | ✅ |
+| Cursor | `.cursor/rules/*.mdc` or `AGENTS.md` | ✅ |
 | Windsurf | `.windsurfrules` | ✅ |
 | Copilot | `.github/copilot.yml` | 🚧 |
 | Codeium | `.codeium/config.json` | 🚧 |

@@ -113,12 +113,21 @@ export interface AgentCapabilities {
   statusline: boolean;
 }
 
+export interface ConfigFileDefinition {
+  path: string;
+  purpose: 'detection' | 'mcp' | 'rules' | 'settings' | 'hooks' | 'commands' | 'subagents' | 'statusline';
+  format: 'json' | 'toml' | 'markdown' | 'text' | 'yaml';
+  type: 'file' | 'folder';
+  optional?: boolean;
+  description?: string;
+}
+
 export interface AgentDefinition {
   id: string;
   name: string;
   url?: string;
   capabilities: AgentCapabilities;
-  configFiles: string[];
+  configFiles: ConfigFileDefinition[];
   nativeConfigPath: string;
   globalConfigPath?: string;
   globalConfigPaths?: {
@@ -131,6 +140,28 @@ export interface AgentDefinition {
 export interface AgentDetectionResult {
   agent: import('../agents/Agent.js').Agent;
   configPath: string;
+}
+
+// Backward compatibility helpers
+export function createConfigFile(
+  path: string, 
+  purpose: ConfigFileDefinition['purpose'] = 'detection',
+  format: ConfigFileDefinition['format'] = 'text',
+  type: ConfigFileDefinition['type'] = 'file',
+  options?: { optional?: boolean; description?: string }
+): ConfigFileDefinition {
+  return {
+    path,
+    purpose,
+    format,
+    type,
+    ...(options?.optional !== undefined && { optional: options.optional }),
+    ...(options?.description !== undefined && { description: options.description })
+  };
+}
+
+export function legacyConfigFiles(paths: string[]): ConfigFileDefinition[] {
+  return paths.map(path => createConfigFile(path, 'detection'));
 }
 
 export interface FilteredMCPConfig {

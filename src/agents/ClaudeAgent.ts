@@ -33,7 +33,24 @@ export class ClaudeAgent extends Agent {
         subagents: true,
         statusline: true
       },
-      configFiles: ['CLAUDE.md', '.claude/config.md'],
+      configFiles: [
+        {
+          path: 'CLAUDE.md',
+          purpose: 'rules',
+          format: 'markdown',
+          type: 'file',
+          optional: true,
+          description: 'Claude-specific configuration and rules'
+        },
+        {
+          path: '.claude/config.md',
+          purpose: 'rules',
+          format: 'markdown',
+          type: 'file',
+          optional: true,
+          description: 'Alternative Claude configuration file'
+        }
+      ],
       nativeConfigPath: '.mcp.json',
       globalConfigPath: '~/.claude.json'
     };

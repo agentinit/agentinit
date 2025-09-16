@@ -26,7 +26,16 @@ export class CodexCliAgent extends Agent {
         subagents: false,
         statusline: false
       },
-      configFiles: ['.codex/config.toml'],
+      configFiles: [
+        {
+          path: '.codex/config.toml',
+          purpose: 'mcp',
+          format: 'toml',
+          type: 'file',
+          optional: true,
+          description: 'OpenAI Codex CLI MCP server configuration'
+        }
+      ],
       nativeConfigPath: '.codex/config.toml',
       globalConfigPath: '~/.codex/config.toml'
     };

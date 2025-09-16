@@ -1,7 +1,7 @@
 import { resolve } from 'path';
 import { Agent } from './Agent.js';
 import { readFileIfExists, writeFile, ensureDirectoryExists } from '../utils/fs.js';
-import type { MCPServerConfig, AgentDefinition } from '../types/index.js';
+import type { MCPServerConfig, AgentDefinition, createConfigFile } from '../types/index.js';
 import type { AppliedRules, RuleSection } from '../types/rules.js';
 
 /**
@@ -27,7 +27,40 @@ export class CursorAgent extends Agent {
         subagents: false,
         statusline: false
       },
-      configFiles: ['.cursorrules', '.cursor/settings.json', '.cursor/mcp.json'],
+      configFiles: [
+        {
+          path: '.cursor/rules',
+          purpose: 'rules',
+          format: 'markdown',
+          type: 'folder',
+          optional: true,
+          description: 'AI behavior rules directory with MDC files'
+        },
+        {
+          path: 'AGENTS.md',
+          purpose: 'rules',
+          format: 'markdown',
+          type: 'file',
+          optional: true,
+          description: 'Simple agent instructions in markdown format'
+        },
+        {
+          path: '.cursor/settings.json',
+          purpose: 'settings',
+          format: 'json',
+          type: 'file',
+          optional: true,
+          description: 'Cursor IDE preferences and settings'
+        },
+        {
+          path: '.cursor/mcp.json',
+          purpose: 'mcp',
+          format: 'json',
+          type: 'file',
+          optional: true,
+          description: 'Model Context Protocol server configurations'
+        }
+      ],
       nativeConfigPath: '.cursor/mcp.json',
       globalConfigPath: '~/.cursor/mcp.json'
     };

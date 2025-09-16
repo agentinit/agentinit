@@ -10,6 +10,27 @@ export async function fileExists(path: string): Promise<boolean> {
   }
 }
 
+export async function isDirectory(path: string): Promise<boolean> {
+  try {
+    const stat = await fs.stat(path);
+    return stat.isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+export async function pathExists(path: string, type: 'file' | 'folder'): Promise<boolean> {
+  if (!(await fileExists(path))) {
+    return false;
+  }
+  
+  if (type === 'folder') {
+    return await isDirectory(path);
+  } else {
+    return !(await isDirectory(path));
+  }
+}
+
 export async function readFileIfExists(path: string): Promise<string | null> {
   try {
     return await fs.readFile(path, 'utf8');
@@ -35,15 +56,6 @@ export async function listFiles(dir: string): Promise<string[]> {
     return await fs.readdir(dir);
   } catch {
     return [];
-  }
-}
-
-export async function isDirectory(path: string): Promise<boolean> {
-  try {
-    const stat = await fs.stat(path);
-    return stat.isDirectory();
-  } catch {
-    return false;
   }
 }
 

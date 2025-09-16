@@ -1,11 +1,12 @@
 import { resolve } from 'path';
-import { fileExists } from '../utils/fs.js';
+import { pathExists } from '../utils/fs.js';
 import { getFullGlobalConfigPath } from '../utils/paths.js';
 import { RulesApplicator } from '../core/rulesApplicator.js';
 import type { 
   AgentDefinition, 
   MCPServerConfig, 
-  AgentDetectionResult 
+  AgentDetectionResult,
+  ConfigFileDefinition
 } from '../types/index.js';
 import type { AppliedRules, RuleApplicationResult, RuleSection } from '../types/rules.js';
 
@@ -44,8 +45,15 @@ export abstract class Agent {
   /**
    * Get the agent's configuration files to check for presence
    */
-  get configFiles(): string[] {
+  get configFiles(): ConfigFileDefinition[] {
     return this.definition.configFiles;
+  }
+
+  /**
+   * Get the agent's configuration file paths (backward compatibility)
+   */
+  get configFilePaths(): string[] {
+    return this.definition.configFiles.map(config => config.path);
   }
 
   /**
@@ -60,8 +68,8 @@ export abstract class Agent {
    */
   async detectPresence(projectPath: string): Promise<AgentDetectionResult | null> {
     for (const configFile of this.configFiles) {
-      const fullPath = resolve(projectPath, configFile);
-      if (await fileExists(fullPath)) {
+      const fullPath = resolve(projectPath, configFile.path);
+      if (await pathExists(fullPath, configFile.type)) {
         return {
           agent: this,
           configPath: fullPath
