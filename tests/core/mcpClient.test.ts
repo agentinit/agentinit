@@ -1,4 +1,4 @@
-import { MCPVerifier, MCPVerificationError } from '../../src/core/mcpVerifier.js';
+import { MCPVerifier, MCPVerificationError } from '../../src/core/mcpClient.js';
 import { MCPServerType, type MCPServerConfig } from '../../src/types/index.js';
 
 // Mock the MCP SDK

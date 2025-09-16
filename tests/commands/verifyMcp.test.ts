@@ -1,12 +1,12 @@
 import { verifyMcpCommand } from '../../src/commands/verifyMcp.js';
 import { AgentManager } from '../../src/core/agentManager.js';
-import { MCPVerifier } from '../../src/core/mcpVerifier.js';
+import { MCPVerifier } from '../../src/core/mcpClient.js';
 import { logger } from '../../src/utils/logger.js';
 import { MCPServerType } from '../../src/types/index.js';
 
 // Mock dependencies
 jest.mock('../../src/core/agentManager.js');
-jest.mock('../../src/core/mcpVerifier.js');
+jest.mock('../../src/core/mcpClient.js');
 jest.mock('../../src/utils/logger.js');
 jest.mock('ora', () => {
   return jest.fn(() => ({

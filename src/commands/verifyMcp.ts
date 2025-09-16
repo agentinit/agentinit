@@ -1,6 +1,6 @@
 import ora from 'ora';
 import { logger } from '../utils/logger.js';
-import { MCPVerifier } from '../core/mcpVerifier.js';
+import { MCPVerifier } from '../core/mcpClient.js';
 import { MCPParser, MCPParseError } from '../core/mcpParser.js';
 import { AgentManager } from '../core/agentManager.js';
 import type { MCPServerConfig } from '../types/index.js';

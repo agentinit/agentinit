@@ -7,7 +7,7 @@ import { TOMLGenerator } from '../core/tomlGenerator.js';
 import { readFileIfExists, writeFile, getAgentInitTomlPath } from '../utils/fs.js';
 import { AgentManager } from '../core/agentManager.js';
 import { MCPFilter } from '../core/mcpFilter.js';
-import { MCPVerifier } from '../core/mcpVerifier.js';
+import { MCPVerifier } from '../core/mcpClient.js';
 import { MCPServerType, type AppliedRules } from '../types/index.js';
 
 // Color utility functions for token display
