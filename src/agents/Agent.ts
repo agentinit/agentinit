@@ -114,6 +114,14 @@ export abstract class Agent {
   ): Promise<void>;
 
   /**
+   * Get existing MCP servers from this agent's configuration
+   * Default implementation returns empty array - should be overridden by agents that support MCP
+   */
+  async getMCPServers(projectPath: string): Promise<MCPServerConfig[]> {
+    return [];
+  }
+
+  /**
    * Apply MCP configuration to this agent's global config format
    * Default implementation uses the same logic as applyMCPConfig but with global path
    * Can be overridden by specific agents for different global config formats

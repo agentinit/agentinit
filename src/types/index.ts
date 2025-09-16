@@ -183,3 +183,48 @@ export type {
   AppliedRules, 
   RuleApplicationResult 
 } from './rules.js';
+
+// MCP Verification types
+export interface MCPTool {
+  name: string;
+  description?: string;
+  inputSchema?: any;
+}
+
+export interface MCPResource {
+  uri: string;
+  name?: string;
+  description?: string;
+  mimeType?: string;
+}
+
+export interface MCPPrompt {
+  name: string;
+  description?: string;
+  arguments?: Array<{
+    name: string;
+    description?: string;
+    required?: boolean;
+  }>;
+}
+
+export interface MCPCapabilities {
+  tools: MCPTool[];
+  resources: MCPResource[];
+  prompts: MCPPrompt[];
+  serverInfo?: {
+    name: string;
+    version: string;
+    protocolVersion?: string;
+  };
+  toolTokenCounts?: Map<string, number>;
+  totalToolTokens?: number;
+}
+
+export interface MCPVerificationResult {
+  server: MCPServerConfig;
+  status: 'success' | 'error' | 'timeout';
+  capabilities?: MCPCapabilities;
+  error?: string;
+  connectionTime?: number;
+}

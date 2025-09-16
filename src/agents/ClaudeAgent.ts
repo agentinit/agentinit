@@ -1,7 +1,7 @@
 import { resolve } from 'path';
 import { Agent } from './Agent.js';
 import { readFileIfExists, writeFile, ensureDirectoryExists } from '../utils/fs.js';
-import type { MCPServerConfig, AgentDefinition } from '../types/index.js';
+import type { MCPServerConfig, MCPServerType, AgentDefinition } from '../types/index.js';
 import type { AppliedRules, RuleSection } from '../types/rules.js';
 
 /**
@@ -233,5 +233,54 @@ export class ClaudeAgent extends Agent {
     }
     
     return content;
+  }
+
+  /**
+   * Get existing MCP servers from Claude's .mcp.json configuration
+   */
+  async getMCPServers(projectPath: string): Promise<MCPServerConfig[]> {
+    const mcpConfigPath = this.getNativeMcpPath(projectPath);
+    const configContent = await readFileIfExists(mcpConfigPath);
+    
+    if (!configContent) {
+      return [];
+    }
+
+    try {
+      const config = JSON.parse(configContent);
+      const servers: MCPServerConfig[] = [];
+
+      if (config.mcpServers) {
+        for (const [name, serverConfig] of Object.entries(config.mcpServers) as [string, any][]) {
+          const server: MCPServerConfig = {
+            name,
+            type: serverConfig.type as MCPServerType,
+          };
+
+          if (serverConfig.command) {
+            server.command = serverConfig.command;
+          }
+          if (serverConfig.args) {
+            server.args = serverConfig.args;
+          }
+          if (serverConfig.env) {
+            server.env = serverConfig.env;
+          }
+          if (serverConfig.url) {
+            server.url = serverConfig.url;
+          }
+          if (serverConfig.headers) {
+            server.headers = serverConfig.headers;
+          }
+
+          servers.push(server);
+        }
+      }
+
+      return servers;
+    } catch (error) {
+      // Invalid JSON or missing mcpServers property
+      return [];
+    }
   }
 }

@@ -5,6 +5,71 @@
 2. Set API keys for MCP servers
 3. Create agent config files where needed
 
+## MCP Verification
+
+### Verify During Apply
+```bash
+# Verify MCP servers immediately after configuration
+node dist/index.js apply --verify-mcp \
+  --mcp-stdio everything "npx -y @modelcontextprotocol/server-everything"
+
+# Multiple servers with verification
+node dist/index.js apply --verify-mcp \
+  --mcp-stdio everything "npx -y @modelcontextprotocol/server-everything" \
+  --mcp-stdio filesystem "npx -y @modelcontextprotocol/server-filesystem" \
+  --args "/workspace" \
+  --mcp-http github "https://api.github.com/mcp" \
+  --auth "Bearer ghp_token"
+```
+
+### Verify Existing MCPs
+```bash
+# Verify all configured MCP servers
+node dist/index.js verify_mcp --all
+
+# Verify specific MCP server
+node dist/index.js verify_mcp --mcp-name everything
+
+# Test MCP configuration directly
+node dist/index.js verify_mcp --mcp-stdio everything "npx -y @modelcontextprotocol/server-everything"
+
+# Custom timeout (15 seconds)
+node dist/index.js verify_mcp --all --timeout 15000
+```
+
+### Expected Verification Output
+```
+✅ MCP Server: everything (STDIO)
+   Status: Connected successfully (847ms)
+   Version: 1.0.0
+   
+   Tools (8):
+   • memory - Store and retrieve memories
+   • sample_tool - A sample tool for testing
+   • files - File operations (read, write, list)
+   • database - Database operations
+   • weather - Get weather information
+   • calculator - Perform calculations
+   • web_search - Search the web
+   • notifications - Send notifications
+   
+   Resources (3):
+   • file://examples - Example files and templates
+   • memo://user - User memories and preferences
+   • config://settings - Configuration and settings
+   
+   Prompts (4):
+   • analyze_code - Code analysis and review template
+   • write_docs - Documentation writing template
+   • debug_help - Debugging assistance template
+   • project_summary - Project overview template
+
+❌ MCP Server: broken-server (STDIO)
+   Status: Failed (156ms)
+   Error: Command not found: invalid-command
+   Command: invalid-command --args
+```
+
 ## Basic MCP Server Types
 
 ### STDIO Servers
@@ -43,8 +108,7 @@ node dist/index.js apply --agent claude \
 ```bash
 # Project config (.mcp.json)
 node dist/index.js apply --agent claude \
-  --mcp-stdio exa "npx -y @exa/mcp-server" \
-  --env "EXA_API_KEY=key" \
+  --mcp-stdio everything "npx -y @modelcontextprotocol/server-everything" \
   --mcp-http tools "https://tools.anthropic.com/mcp"
 
 # Global config (~/.claude.json)
@@ -255,10 +319,54 @@ Check if tests fail:
 4. **API Keys**: Valid environment variables and tokens
 5. **Network**: HTTP/SSE endpoints accessible
 
+### MCP Verification Issues
+
+#### Common Verification Failures
+```bash
+# Test if MCP package is installed correctly
+npx -y @modelcontextprotocol/server-everything --help
+
+# Test network connectivity for HTTP servers
+curl -I https://api.example.com/mcp
+
+# Verify with increased timeout
+node dist/index.js verify_mcp --mcp-name everything --timeout 30000
+
+# Test direct MCP configuration
+node dist/index.js verify_mcp --mcp-stdio everything "npx -y @modelcontextprotocol/server-everything"
+```
+
+#### STDIO Server Issues
+- **Command not found**: Ensure MCP package is installed globally or use `npx -y`
+- **Permission denied**: Check file permissions and execution rights
+- **Environment variables**: Verify all required env vars are set correctly
+- **Path issues**: Use absolute paths for commands when possible
+
+#### HTTP/SSE Server Issues  
+- **Connection timeout**: Increase timeout or check network connectivity
+- **SSL/TLS errors**: Verify HTTPS certificates are valid
+- **Authentication**: Check Bearer tokens and API keys
+- **CORS issues**: Ensure server allows cross-origin requests
+
+#### Verification Output Analysis
+```bash
+# Successful connection but no tools/resources/prompts
+# May indicate server is running but not configured properly
+
+# Connection timeout
+# Server might be slow or unreachable - try increasing timeout
+
+# Command not found
+# Package not installed or wrong command path
+```
+
 ### Debug Mode
 ```bash
 DEBUG=agentinit:* node dist/index.js apply --agent claude \
   --mcp-stdio debug "npx -y @debug/mcp-server"
+
+# Verify with debug output
+DEBUG=agentinit:* node dist/index.js verify_mcp --all
 ```
 
 ## Cleanup

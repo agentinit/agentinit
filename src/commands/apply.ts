@@ -7,6 +7,7 @@ import { TOMLGenerator } from '../core/tomlGenerator.js';
 import { readFileIfExists, writeFile, getAgentInitTomlPath } from '../utils/fs.js';
 import { AgentManager } from '../core/agentManager.js';
 import { MCPFilter } from '../core/mcpFilter.js';
+import { MCPVerifier } from '../core/mcpVerifier.js';
 import { MCPServerType, type AppliedRules } from '../types/index.js';
 
 // Color utility functions for token display
@@ -41,6 +42,9 @@ export async function applyCommand(args: string[]): Promise<void> {
   // Check if --global flag is specified
   const isGlobal = args.includes('--global');
   
+  // Check if --verify-mcp flag is specified
+  const verifyMcp = args.includes('--verify-mcp');
+  
   if (!hasMcpArgs && !hasRulesArgs) {
     logger.info('Usage: agentinit apply [options]');
     logger.info('');
@@ -49,6 +53,7 @@ export async function applyCommand(args: string[]): Promise<void> {
     logger.info('  --agent <agent>     Alias for --client');
     logger.info('  --global            Apply configuration globally (requires --agent)');
     logger.info('                      If not specified, auto-detects agents in the project');
+    logger.info('  --verify-mcp        Verify MCP servers after configuration');
     logger.info('');
     logger.info('Rules Configuration Options:');
     logger.info('  --rules <templates>     Apply rule templates (comma-separated)');
@@ -91,6 +96,11 @@ export async function applyCommand(args: string[]): Promise<void> {
     logger.info('  agentinit apply --global --agent claude \\');
     logger.info('    --mcp-stdio filesystem "npx -y @modelcontextprotocol/server-filesystem" \\');
     logger.info('      --args "/Users/username/Documents"');
+    logger.info('');
+    logger.info('  # Verify MCP servers after configuration');
+    logger.info('  agentinit apply --verify-mcp \\');
+    logger.info('    --mcp-stdio exa "npx -y @exa/mcp-server" \\');
+    logger.info('      --env "EXA_API_KEY=YOUR_API_KEY"');
     return;
   }
 
@@ -100,7 +110,7 @@ export async function applyCommand(args: string[]): Promise<void> {
     // Parse the MCP arguments (filter out --client, --agent, --global and rules args)
     const mcpArgs = args.filter((arg, index) => {
       // Filter out non-MCP arguments
-      if (arg === '--client' || arg === '--agent' || arg === '--global') return false;
+      if (arg === '--client' || arg === '--agent' || arg === '--global' || arg === '--verify-mcp') return false;
       if (arg === '--rules' || arg === '--rule-raw' || arg === '--rules-file' || arg === '--rules-remote' || arg === '--auth') return false;
       if (index > 0 && (args[index - 1] === '--client' || args[index - 1] === '--agent')) return false;
       if (index > 0 && (args[index - 1] === '--rules' || args[index - 1] === '--rule-raw' || args[index - 1] === '--rules-file' || args[index - 1] === '--rules-remote' || args[index - 1] === '--auth')) return false;
@@ -292,6 +302,44 @@ export async function applyCommand(args: string[]): Promise<void> {
       spinner.succeed('Global configuration applied successfully!');
     } else {
       spinner.succeed('Configuration applied successfully!');
+    }
+
+    // Verify MCP servers if requested and MCP servers were configured
+    if (verifyMcp && mcpParsed.servers.length > 0) {
+      logger.info('');
+      const verifySpinner = ora(`Verifying ${mcpParsed.servers.length} MCP server(s)...`).start();
+      
+      try {
+        const verifier = new MCPVerifier();
+        const verificationResults = await verifier.verifyServers(mcpParsed.servers);
+        
+        const successCount = verificationResults.filter(r => r.status === 'success').length;
+        const errorCount = verificationResults.filter(r => r.status === 'error').length;
+        const timeoutCount = verificationResults.filter(r => r.status === 'timeout').length;
+        
+        if (successCount === verificationResults.length) {
+          verifySpinner.succeed(`All ${verificationResults.length} MCP server(s) verified successfully!`);
+        } else if (successCount > 0) {
+          verifySpinner.warn(`${successCount}/${verificationResults.length} MCP server(s) verified successfully`);
+        } else {
+          verifySpinner.fail(`Failed to verify any MCP servers`);
+        }
+        
+        logger.info('');
+        logger.info('MCP Verification Results:');
+        logger.info('');
+        
+        const formattedOutput = verifier.formatResults(verificationResults);
+        console.log(formattedOutput);
+        
+        if (successCount < verificationResults.length) {
+          logger.info('For troubleshooting, run: agentinit verify_mcp --all');
+        }
+        
+      } catch (error) {
+        verifySpinner.fail('MCP verification failed');
+        logger.error(`Verification error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
     }
     
     // Report results

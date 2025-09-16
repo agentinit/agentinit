@@ -164,3 +164,49 @@ Example output: `Rules: 101 tokens (-296)` shows 101 tokens in rules section wit
 
 ---
 *Rules managed by AgentInit. Do not edit this section manually.*
+
+## MCP Verification
+
+AgentInit provides MCP (Model Context Protocol) verification to ensure servers are properly configured and working:
+
+### Verify During Apply
+```bash
+# Verify MCPs immediately after configuration
+agentinit apply --verify-mcp \
+  --mcp-stdio everything "npx -y @modelcontextprotocol/server-everything"
+
+# Multiple servers with verification
+agentinit apply --verify-mcp \
+  --mcp-stdio everything "npx -y @modelcontextprotocol/server-everything" \
+  --mcp-stdio filesystem "npx -y @modelcontextprotocol/server-filesystem" \
+  --args "/workspace"
+```
+
+### Verify Existing MCPs
+```bash
+# Verify all configured MCP servers
+agentinit verify_mcp --all
+
+# Verify specific MCP server by name
+agentinit verify_mcp --mcp-name everything
+
+# Custom timeout for slow servers (15 seconds)
+agentinit verify_mcp --all --timeout 15000
+```
+
+### Verify Direct Configuration
+```bash
+# Test MCP server without configuring it first
+agentinit verify_mcp --mcp-stdio everything "npx -y @modelcontextprotocol/server-everything"
+
+# Test HTTP MCP server
+agentinit verify_mcp --mcp-http github "https://api.github.com/mcp" --auth "Bearer token"
+```
+
+### Expected Output
+Verification shows server status, connection time, and available capabilities:
+- **Tools**: Available functions the MCP server provides
+- **Resources**: Data sources and content the server can access
+- **Prompts**: Template interactions the server supports
+
+Use verification to troubleshoot MCP connection issues and understand what capabilities each server provides.

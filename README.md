@@ -92,6 +92,33 @@ agentinit mcp --search <query>     # Search MCPs
 agentinit mcp --install <name>     # Install specific MCP
 ```
 
+### `agentinit verify_mcp`
+
+Verify MCP server installations and list their capabilities.
+
+```bash
+agentinit verify_mcp --all              # Verify all configured MCP servers
+agentinit verify_mcp --mcp-name <name>  # Verify specific MCP server
+agentinit verify_mcp --timeout <ms>     # Custom timeout (default: 10000ms)
+```
+
+**Examples:**
+```bash
+# Verify all MCPs in project
+agentinit verify_mcp --all
+
+# Verify specific server
+agentinit verify_mcp --mcp-name everything
+
+# Increase timeout for slow servers
+agentinit verify_mcp --all --timeout 15000
+
+# Test MCP configuration directly
+agentinit verify_mcp --mcp-stdio everything "npx -y @modelcontextprotocol/server-everything"
+```
+
+Shows connection status, response time, and available tools/resources/prompts for each MCP server.
+
 ### `agentinit apply`
 
 Apply configurations including MCP server setup.
@@ -100,12 +127,13 @@ Apply configurations including MCP server setup.
 
 
 ```bash
-# Configure STDIO MCP with arguments
+# Configure STDIO MCP with everything server (recommended example)
 npx agentinit apply \
-  --mcp-stdio context7 "npx -y @upstash/context7-mcp" --args "--api-key=YOUR_API_KEY"
+  --mcp-stdio everything "npx -y @modelcontextprotocol/server-everything"
 
 # Configure multiple MCPs in one command
 npx agentinit apply \
+  --mcp-stdio everything "npx -y @modelcontextprotocol/server-everything" \
   --mcp-stdio supabase "npx -y @supabase/mcp-server-supabase@latest" \
     --args "--read-only --project-ref=<project-ref>" \
     --env "SUPABASE_ACCESS_TOKEN=<personal-access-token>" \
@@ -120,9 +148,15 @@ npx agentinit apply \
 npx agentinit apply \
   --mcp-stdio browserbase "docker run -i --rm ghcr.io/metorial/mcp-container--browserbase--mcp-server-browserbase--browserbase node cli.js" \
   --env "BROWSERBASE_API_KEY=browserbase-api-key"
+
+# Verify MCPs immediately after configuration
+npx agentinit apply --verify-mcp \
+  --mcp-stdio everything "npx -y @modelcontextprotocol/server-everything"
 ```
 
 This generates `.agentinit/agentinit.toml` with your MCP configurations.
+
+**MCP Verification**: Use the `--verify-mcp` flag to test MCP servers immediately after configuration. This ensures servers are reachable and shows their available tools, resources, and prompts.
 
 #### Rules Configuration
 

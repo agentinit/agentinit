@@ -5,6 +5,7 @@ import { initCommand } from './commands/init.js';
 import { detectCommand } from './commands/detect.js';
 import { syncCommand } from './commands/sync.js';
 import { applyCommand } from './commands/apply.js';
+import { verifyMcpCommand } from './commands/verifyMcp.js';
 
 const program = new Command();
 
@@ -44,5 +45,17 @@ program
   .option('-d, --dry-run', 'Show what would be changed without making changes')
   .option('-b, --backup', 'Create backup before syncing')
   .action(syncCommand);
+
+program
+  .command('verify_mcp')
+  .description('Verify MCP server installations and list their capabilities')
+  .allowUnknownOption(true)
+  .action((...args) => {
+    // Extract raw arguments, excluding the command name
+    const rawArgs = process.argv.slice(2);
+    const verifyIndex = rawArgs.indexOf('verify_mcp');
+    const commandArgs = verifyIndex >= 0 ? rawArgs.slice(verifyIndex + 1) : [];
+    verifyMcpCommand(commandArgs);
+  });
 
 program.parse();
