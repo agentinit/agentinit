@@ -1,3 +1,4 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ConfigMerger } from '../../src/core/configMerger.js';
 
 describe('ConfigMerger', () => {
@@ -102,7 +103,7 @@ args = ["--old"]
       const invalidToml = 'invalid toml content [[[';
       const newData = { test: 'value' };
       
-      const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
       
       const result = ConfigMerger.mergeTOML(invalidToml, newData);
       
@@ -137,7 +138,7 @@ args = ["--old"]
       const invalidJson = 'invalid json {{{';
       const fallback = { default: true };
       
-      const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
       
       const result = ConfigMerger.parseJSON(invalidJson, fallback);
       
@@ -171,7 +172,7 @@ args = ["--old"]
       const invalidToml = 'invalid toml [[[';
       const fallback = { default: true };
       
-      const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
       
       const result = ConfigMerger.parseTOML(invalidToml, fallback);
       

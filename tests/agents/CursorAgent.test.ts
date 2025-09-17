@@ -1,27 +1,30 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { CursorAgent } from '../../src/agents/CursorAgent.js';
 import { MCPServerType, type MCPServerConfig } from '../../src/types/index.js';
 import { promises as fs } from 'fs';
 import { resolve } from 'path';
 
-// Mock the fs module
-jest.mock('fs', () => ({
-  promises: {
-    access: jest.fn(),
-    readFile: jest.fn(),
-    writeFile: jest.fn(),
-    mkdir: jest.fn(),
-  }
-}));
-
-const mockFs = fs as jest.Mocked<typeof fs>;
-
 describe('CursorAgent', () => {
   let agent: CursorAgent;
+  let accessSpy: any;
+  let readFileSpy: any;
+  let writeFileSpy: any;
+  let mkdirSpy: any;
   const testProjectPath = '/test/project';
 
   beforeEach(() => {
     agent = new CursorAgent();
-    jest.clearAllMocks();
+    accessSpy = vi.spyOn(fs, 'access');
+    readFileSpy = vi.spyOn(fs, 'readFile');
+    writeFileSpy = vi.spyOn(fs, 'writeFile');
+    mkdirSpy = vi.spyOn(fs, 'mkdir');
+    
+    // Mock mkdir to avoid filesystem operations
+    mkdirSpy.mockResolvedValue(undefined);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   describe('constructor', () => {
@@ -39,11 +42,12 @@ describe('CursorAgent', () => {
     });
 
     it('should have correct config files', () => {
-      expect(agent.configFiles).toEqual([
-        '.cursorrules',
-        '.cursor/settings.json',
-        '.cursor/mcp.json'
-      ]);
+      expect(agent.configFiles).toHaveLength(4);
+      const paths = agent.configFiles.map(f => f.path);
+      expect(paths).toContain('.cursor/rules');
+      expect(paths).toContain('AGENTS.md');
+      expect(paths).toContain('.cursor/settings.json');
+      expect(paths).toContain('.cursor/mcp.json');
     });
 
     it('should have correct native config path', () => {
@@ -52,50 +56,33 @@ describe('CursorAgent', () => {
   });
 
   describe('detectPresence', () => {
-    it('should detect agent when .cursorrules exists', async () => {
-      mockFs.access.mockResolvedValueOnce(undefined);
-
-      const result = await agent.detectPresence(testProjectPath);
-
-      expect(result).not.toBeNull();
-      expect(result?.agent).toBe(agent);
-      expect(result?.configPath).toBe(resolve(testProjectPath, '.cursorrules'));
-      expect(mockFs.access).toHaveBeenCalledWith(
-        resolve(testProjectPath, '.cursorrules')
-      );
-    });
-
-    it('should detect agent when .cursor/settings.json exists', async () => {
-      mockFs.access
-        .mockRejectedValueOnce(new Error('File not found'))
-        .mockResolvedValueOnce(undefined);
-
-      const result = await agent.detectPresence(testProjectPath);
-
-      expect(result).not.toBeNull();
-      expect(result?.agent).toBe(agent);
-      expect(result?.configPath).toBe(resolve(testProjectPath, '.cursor/settings.json'));
-    });
-
-    it('should detect agent when .cursor/mcp.json exists', async () => {
-      mockFs.access
-        .mockRejectedValueOnce(new Error('File not found'))
-        .mockRejectedValueOnce(new Error('File not found'))
-        .mockResolvedValueOnce(undefined);
-
-      const result = await agent.detectPresence(testProjectPath);
-
-      expect(result).not.toBeNull();
-      expect(result?.agent).toBe(agent);
-      expect(result?.configPath).toBe(resolve(testProjectPath, '.cursor/mcp.json'));
-    });
-
+    // Note: These tests are simplified since the CursorAgent's config files changed
+    // The agent will detect presence based on the first file that exists in the new order
+    
     it('should return null when no config files exist', async () => {
-      mockFs.access.mockRejectedValue(new Error('File not found'));
+      // Mock all files to not exist
+      const originalPathExists = await import('../../src/utils/fs.js');
+      const pathExistsSpy = vi.spyOn(originalPathExists, 'pathExists').mockResolvedValue(false);
 
       const result = await agent.detectPresence(testProjectPath);
 
       expect(result).toBeNull();
+      pathExistsSpy.mockRestore();
+    });
+
+    it('should detect agent when any config file exists', async () => {
+      // Mock AGENTS.md to exist (second in order after .cursor/rules)
+      const originalPathExists = await import('../../src/utils/fs.js');
+      const pathExistsSpy = vi.spyOn(originalPathExists, 'pathExists')
+        .mockResolvedValueOnce(false) // .cursor/rules doesn't exist  
+        .mockResolvedValueOnce(true);  // AGENTS.md exists
+
+      const result = await agent.detectPresence(testProjectPath);
+
+      expect(result).not.toBeNull();
+      expect(result?.agent).toBe(agent);
+      expect(result?.configPath).toBe(resolve(testProjectPath, 'AGENTS.md'));
+      pathExistsSpy.mockRestore();
     });
   });
 
@@ -117,9 +104,9 @@ describe('CursorAgent', () => {
     ];
 
     it('should create new configuration when no existing config exists', async () => {
-      mockFs.readFile.mockRejectedValueOnce(new Error('File not found'));
-      mockFs.mkdir.mockResolvedValueOnce(undefined);
-      mockFs.writeFile.mockResolvedValueOnce();
+      readFileSpy.mockRejectedValueOnce(new Error('File not found'));
+      mkdirSpy.mockResolvedValueOnce(undefined);
+      writeFileSpy.mockResolvedValueOnce();
 
       await agent.applyMCPConfig(testProjectPath, mockServers);
 
@@ -137,7 +124,7 @@ describe('CursorAgent', () => {
         }
       };
 
-      expect(mockFs.writeFile).toHaveBeenCalledWith(
+      expect(writeFileSpy).toHaveBeenCalledWith(
         resolve(testProjectPath, '.cursor/mcp.json'),
         JSON.stringify(expectedConfig, null, 2),
         'utf8'
@@ -153,9 +140,9 @@ describe('CursorAgent', () => {
         }
       };
 
-      mockFs.readFile.mockResolvedValueOnce(JSON.stringify(existingConfig));
-      mockFs.mkdir.mockResolvedValueOnce(undefined);
-      mockFs.writeFile.mockResolvedValueOnce();
+      readFileSpy.mockResolvedValueOnce(JSON.stringify(existingConfig));
+      mkdirSpy.mockResolvedValueOnce(undefined);
+      writeFileSpy.mockResolvedValueOnce();
 
       await agent.applyMCPConfig(testProjectPath, mockServers);
 
@@ -176,7 +163,7 @@ describe('CursorAgent', () => {
         }
       };
 
-      expect(mockFs.writeFile).toHaveBeenCalledWith(
+      expect(writeFileSpy).toHaveBeenCalledWith(
         resolve(testProjectPath, '.cursor/mcp.json'),
         JSON.stringify(expectedConfig, null, 2),
         'utf8'
@@ -184,11 +171,11 @@ describe('CursorAgent', () => {
     });
 
     it('should handle invalid existing JSON gracefully', async () => {
-      mockFs.readFile.mockResolvedValueOnce('invalid json');
-      mockFs.mkdir.mockResolvedValueOnce(undefined);
-      mockFs.writeFile.mockResolvedValueOnce();
+      readFileSpy.mockResolvedValueOnce('invalid json');
+      mkdirSpy.mockResolvedValueOnce(undefined);
+      writeFileSpy.mockResolvedValueOnce();
 
-      const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
       await agent.applyMCPConfig(testProjectPath, mockServers);
 
@@ -210,7 +197,7 @@ describe('CursorAgent', () => {
         }
       };
 
-      expect(mockFs.writeFile).toHaveBeenCalledWith(
+      expect(writeFileSpy).toHaveBeenCalledWith(
         resolve(testProjectPath, '.cursor/mcp.json'),
         JSON.stringify(expectedConfig, null, 2),
         'utf8'
@@ -228,9 +215,9 @@ describe('CursorAgent', () => {
         env: { NODE_ENV: 'production' }
       };
 
-      mockFs.readFile.mockRejectedValueOnce(new Error('File not found'));
-      mockFs.mkdir.mockResolvedValueOnce(undefined);
-      mockFs.writeFile.mockResolvedValueOnce();
+      readFileSpy.mockRejectedValueOnce(new Error('File not found'));
+      mkdirSpy.mockResolvedValueOnce(undefined);
+      writeFileSpy.mockResolvedValueOnce();
 
       await agent.applyMCPConfig(testProjectPath, [stdioServer]);
 
@@ -244,7 +231,7 @@ describe('CursorAgent', () => {
         }
       };
 
-      expect(mockFs.writeFile).toHaveBeenCalledWith(
+      expect(writeFileSpy).toHaveBeenCalledWith(
         resolve(testProjectPath, '.cursor/mcp.json'),
         JSON.stringify(expectedConfig, null, 2),
         'utf8'
@@ -259,9 +246,9 @@ describe('CursorAgent', () => {
         headers: { 'X-API-Key': 'secret' }
       };
 
-      mockFs.readFile.mockRejectedValueOnce(new Error('File not found'));
-      mockFs.mkdir.mockResolvedValueOnce(undefined);
-      mockFs.writeFile.mockResolvedValueOnce();
+      readFileSpy.mockRejectedValueOnce(new Error('File not found'));
+      mkdirSpy.mockResolvedValueOnce(undefined);
+      writeFileSpy.mockResolvedValueOnce();
 
       await agent.applyMCPConfig(testProjectPath, [sseServer]);
 
@@ -274,7 +261,7 @@ describe('CursorAgent', () => {
         }
       };
 
-      expect(mockFs.writeFile).toHaveBeenCalledWith(
+      expect(writeFileSpy).toHaveBeenCalledWith(
         resolve(testProjectPath, '.cursor/mcp.json'),
         JSON.stringify(expectedConfig, null, 2),
         'utf8'

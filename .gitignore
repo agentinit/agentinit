@@ -99,3 +99,10 @@ apps/extension/.vscode-test/
 
 # apps/extension
 apps/extension/vsix-build/
+
+# agentinit / agent configs.
+.agentinit/
+.claude/
+.gemini/
+.codex/
+.cursor/

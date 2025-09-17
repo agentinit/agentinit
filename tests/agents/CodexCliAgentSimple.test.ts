@@ -1,4 +1,4 @@
-import { describe, it, expect } from '@jest/globals';
+import { describe, it, expect } from 'vitest';
 import { CodexCliAgent } from '../../src/agents/CodexCliAgent.js';
 import { MCPServerType, type MCPServerConfig } from '../../src/types/index.js';
 
