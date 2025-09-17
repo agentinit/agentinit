@@ -181,7 +181,8 @@ export type {
   RulesConfig, 
   RemoteRulesOptions, 
   AppliedRules, 
-  RuleApplicationResult 
+  RuleApplicationResult,
+  RuleSection
 } from './rules.js';
 
 // MCP Verification types

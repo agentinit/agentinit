@@ -10,9 +10,9 @@
   "scripts": {
     "build": "bun build src/index.ts --outdir dist --target node && cp -r src/templates dist/",
     "dev": "bun run src/index.ts",
-    "test": "jest",
-    "test:watch": "jest --watch",
-    "test_all": "jest && tsc --noEmit",
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
+    "test:watch": "node --experimental-vm-modules node_modules/jest/bin/jest.js --watch",
+    "test_all": "node --experimental-vm-modules node_modules/jest/bin/jest.js && tsc --noEmit",
     "lint": "tsc --noEmit",
     "clean": "rm -rf dist",
     "pack": "npm pack --dry-run",

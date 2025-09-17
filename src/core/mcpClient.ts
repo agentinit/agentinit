@@ -131,8 +131,12 @@ export class MCPVerifier {
       if (result.status === 'fulfilled') {
         return result.value;
       } else {
+        const server = servers[index];
+        if (!server) {
+          throw new Error(`Server at index ${index} is undefined`);
+        }
         return {
-          server: servers[index],
+          server,
           status: 'error' as const,
           error: result.reason instanceof Error ? result.reason.message : 'Unknown error'
         };
@@ -151,10 +155,19 @@ export class MCPVerifier {
         }
         
         const isDebugMode = process.env.DEBUG === '1';
+        
+        // Filter out undefined values from process.env
+        const cleanEnv: Record<string, string> = {};
+        for (const [key, value] of Object.entries(process.env)) {
+          if (value !== undefined) {
+            cleanEnv[key] = value;
+          }
+        }
+        
         return new StdioClientTransport({
           command: server.command,
           args: server.args || [],
-          env: server.env ? { ...process.env, ...server.env } : process.env,
+          env: server.env ? { ...cleanEnv, ...server.env } : cleanEnv,
           stderr: isDebugMode ? 'inherit' : 'ignore'
         });
 
@@ -198,11 +211,12 @@ export class MCPVerifier {
       const tools: MCPTool[] = [];
       try {
         const toolsResponse = await client.listTools();
-        tools.push(...toolsResponse.tools.map(tool => ({
-          name: tool.name,
-          description: tool.description,
-          inputSchema: tool.inputSchema
-        })));
+        tools.push(...toolsResponse.tools.map(tool => {
+          const mcpTool: MCPTool = { name: tool.name };
+          if (tool.description !== undefined) mcpTool.description = tool.description;
+          if (tool.inputSchema !== undefined) mcpTool.inputSchema = tool.inputSchema;
+          return mcpTool;
+        }));
       } catch (error) {
         // Tools might not be supported, continue
       }
@@ -211,12 +225,13 @@ export class MCPVerifier {
       const resources: MCPResource[] = [];
       try {
         const resourcesResponse = await client.listResources();
-        resources.push(...resourcesResponse.resources.map(resource => ({
-          uri: resource.uri,
-          name: resource.name,
-          description: resource.description,
-          mimeType: resource.mimeType
-        })));
+        resources.push(...resourcesResponse.resources.map(resource => {
+          const mcpResource: MCPResource = { uri: resource.uri };
+          if (resource.name !== undefined) mcpResource.name = resource.name;
+          if (resource.description !== undefined) mcpResource.description = resource.description;
+          if (resource.mimeType !== undefined) mcpResource.mimeType = resource.mimeType;
+          return mcpResource;
+        }));
       } catch (error) {
         // Resources might not be supported, continue
       }
@@ -225,11 +240,20 @@ export class MCPVerifier {
       const prompts: MCPPrompt[] = [];
       try {
         const promptsResponse = await client.listPrompts();
-        prompts.push(...promptsResponse.prompts.map(prompt => ({
-          name: prompt.name,
-          description: prompt.description,
-          arguments: prompt.arguments
-        })));
+        prompts.push(...promptsResponse.prompts.map(prompt => {
+          const mcpPrompt: MCPPrompt = { name: prompt.name };
+          if (prompt.description !== undefined) mcpPrompt.description = prompt.description;
+          if (prompt.arguments !== undefined) {
+            // Filter and transform arguments to match our type
+            mcpPrompt.arguments = prompt.arguments.map(arg => {
+              const mcpArg: { name: string; description?: string; required?: boolean } = { name: arg.name };
+              if (arg.description !== undefined) mcpArg.description = arg.description;
+              if (arg.required !== undefined) mcpArg.required = arg.required;
+              return mcpArg;
+            });
+          }
+          return mcpPrompt;
+        }));
       } catch (error) {
         // Prompts might not be supported, continue
       }

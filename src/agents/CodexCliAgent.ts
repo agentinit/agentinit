@@ -3,6 +3,7 @@ import * as TOML from '@iarna/toml';
 import { Agent } from './Agent.js';
 import { readFileIfExists, writeFile, ensureDirectoryExists } from '../utils/fs.js';
 import type { MCPServerConfig, AgentDefinition, MCPServerType } from '../types/index.js';
+import type { AppliedRules, RuleSection } from '../types/rules.js';
 
 /**
  * OpenAI Codex CLI agent implementation
@@ -159,6 +160,141 @@ export class CodexCliAgent extends Agent {
           formattedLines.push(''); // Add blank line between servers
         }
         inServerBlock = true;
+        formattedLines.push(trimmedLine);
+      } else if (trimmedLine) {
+        formattedLines.push(trimmedLine);
+      }
+    }
+
+    return formattedLines.join('\n') + '\n';
+  }
+
+  /**
+   * Apply rules configuration to Codex CLI's TOML format
+   */
+  async applyRulesConfig(
+    configPath: string,
+    rules: AppliedRules,
+    existingContent: string
+  ): Promise<string> {
+    let config: any = {};
+    
+    // Parse existing TOML if present
+    if (existingContent.trim()) {
+      try {
+        config = TOML.parse(existingContent);
+      } catch (error) {
+        // If parsing fails, start with empty config
+        config = {};
+      }
+    }
+    
+    // Add or update rules section
+    if (!config.rules) {
+      config.rules = {};
+    }
+    
+    // Convert rule sections to TOML structure
+    for (const section of rules.sections) {
+      config.rules[section.templateId] = {
+        name: section.templateName,
+        rules: section.rules
+      };
+    }
+    
+    return this.formatTOMLRules(TOML.stringify(config));
+  }
+
+  /**
+   * Extract existing rule texts from TOML content
+   */
+  extractExistingRules(content: string): string[] {
+    try {
+      const config = TOML.parse(content);
+      const rules: string[] = [];
+      
+      if (config.rules) {
+        for (const [key, value] of Object.entries(config.rules) as [string, any][]) {
+          if (value.rules && Array.isArray(value.rules)) {
+            rules.push(...value.rules);
+          }
+        }
+      }
+      
+      return rules;
+    } catch (error) {
+      return [];
+    }
+  }
+
+  /**
+   * Extract existing rule sections from TOML content
+   */
+  extractExistingSections(content: string): RuleSection[] {
+    try {
+      const config = TOML.parse(content);
+      const sections: RuleSection[] = [];
+      
+      if (config.rules) {
+        for (const [key, value] of Object.entries(config.rules) as [string, any][]) {
+          if (value.name && value.rules && Array.isArray(value.rules)) {
+            sections.push({
+              templateId: key,
+              templateName: value.name,
+              rules: value.rules
+            });
+          }
+        }
+      }
+      
+      return sections;
+    } catch (error) {
+      return [];
+    }
+  }
+
+  /**
+   * Generate rules content in TOML format
+   */
+  generateRulesContent(sections: RuleSection[]): string {
+    if (!sections || sections.length === 0) {
+      return '';
+    }
+    
+    const config: any = { rules: {} };
+    
+    for (const section of sections) {
+      config.rules[section.templateId] = {
+        name: section.templateName,
+        rules: section.rules
+      };
+    }
+    
+    return this.formatTOMLRules(TOML.stringify(config));
+  }
+
+  /**
+   * Format TOML output for rules with proper structure and comments
+   */
+  private formatTOMLRules(tomlString: string): string {
+    const lines = tomlString.split('\n');
+    const formattedLines: string[] = [];
+    
+    // Add header comment
+    formattedLines.push('# Codex CLI Configuration with Rules');
+    formattedLines.push('# Generated automatically by agentinit');
+    formattedLines.push('');
+
+    let inRulesSection = false;
+    
+    for (const line of lines) {
+      const trimmedLine = line.trim();
+      
+      if (trimmedLine.startsWith('[rules.')) {
+        if (inRulesSection) {
+          formattedLines.push(''); // Add blank line between rule sections
+        }
+        inRulesSection = true;
         formattedLines.push(trimmedLine);
       } else if (trimmedLine) {
         formattedLines.push(trimmedLine);

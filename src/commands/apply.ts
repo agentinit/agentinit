@@ -8,7 +8,27 @@ import { readFileIfExists, writeFile, getAgentInitTomlPath } from '../utils/fs.j
 import { AgentManager } from '../core/agentManager.js';
 import { MCPFilter } from '../core/mcpFilter.js';
 import { MCPVerifier } from '../core/mcpClient.js';
-import { MCPServerType, type AppliedRules } from '../types/index.js';
+import { MCPServerType, type AppliedRules, type RuleApplicationResult, type RuleSection, type MCPTransformation } from '../types/index.js';
+import type { Agent } from '../agents/Agent.js';
+
+// Interface for apply command results
+interface ApplyResult {
+  agent: Agent;
+  serversApplied: number;
+  rulesApplied: number;
+  rulesTokenCount: number;
+  rulesTokenDiff: number;
+  totalFileTokens: number;
+  existingRules: string[];
+  newlyApplied: string[];
+  existingCount: number;
+  newlyAppliedCount: number;
+  appliedSections: RuleSection[];
+  transformations: MCPTransformation[];
+  mcpConfigPath: string | null;
+  rulesConfigPath: string | null;
+  rulesSuccess: boolean;
+}
 
 // Color utility functions for token display
 function colorizeTokenCount(tokenCount: number): string {
@@ -222,7 +242,7 @@ export async function applyCommand(args: string[]): Promise<void> {
     }
 
     // Apply configuration to each target agent
-    const results = [];
+    const results: ApplyResult[] = [];
     
     for (const targetAgent of targetAgents) {
       const { agent } = targetAgent;
@@ -378,14 +398,14 @@ export async function applyCommand(args: string[]): Promise<void> {
       // Show existing sections (if any)
       if (totalExisting > 0) {
         const existingSectionCount = uniqueSections.filter(section => {
-          return section.rules.some(rule => 
+          return section.rules.some((rule: string) => 
             results.some(r => r.existingRules?.includes(rule))
           );
         }).length;
         
         logger.info(`📋 Already exists (${existingSectionCount} sections):`);
         uniqueSections.forEach(section => {
-          const existingRulesInSection = section.rules.filter(rule =>
+          const existingRulesInSection = section.rules.filter((rule: string) =>
             results.some(r => r.existingRules?.includes(rule))
           );
           if (existingRulesInSection.length > 0) {
@@ -399,14 +419,14 @@ export async function applyCommand(args: string[]): Promise<void> {
         if (totalExisting > 0) logger.info('');
         
         const newlySectionCount = uniqueSections.filter(section => {
-          return section.rules.some(rule => 
+          return section.rules.some((rule: string) => 
             results.some(r => r.newlyApplied?.includes(rule))
           );
         }).length;
         
         logger.info(`📋 Applied (${newlySectionCount} sections):`);
         uniqueSections.forEach(section => {
-          const newRulesInSection = section.rules.filter(rule =>
+          const newRulesInSection = section.rules.filter((rule: string) =>
             results.some(r => r.newlyApplied?.includes(rule))
           );
           if (newRulesInSection.length > 0) {
