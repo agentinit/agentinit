@@ -1,27 +1,30 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ClaudeAgent } from '../../src/agents/ClaudeAgent.js';
 import { MCPServerType, type MCPServerConfig } from '../../src/types/index.js';
 import { promises as fs } from 'fs';
 import { resolve } from 'path';
 
-// Mock the fs module
-jest.mock('fs', () => ({
-  promises: {
-    access: jest.fn(),
-    readFile: jest.fn(),
-    writeFile: jest.fn(),
-    mkdir: jest.fn(),
-  }
-}));
-
-const mockFs = fs as jest.Mocked<typeof fs>;
-
 describe('ClaudeAgent', () => {
   let agent: ClaudeAgent;
+  let accessSpy: any;
+  let readFileSpy: any;
+  let writeFileSpy: any;
+  let mkdirSpy: any;
   const testProjectPath = '/test/project';
 
   beforeEach(() => {
     agent = new ClaudeAgent();
-    jest.clearAllMocks();
+    accessSpy = vi.spyOn(fs, 'access');
+    readFileSpy = vi.spyOn(fs, 'readFile');
+    writeFileSpy = vi.spyOn(fs, 'writeFile');
+    mkdirSpy = vi.spyOn(fs, 'mkdir');
+    
+    // Mock mkdir to avoid filesystem operations
+    mkdirSpy.mockResolvedValue(undefined);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   describe('constructor', () => {
@@ -39,7 +42,9 @@ describe('ClaudeAgent', () => {
     });
 
     it('should have correct config files', () => {
-      expect(agent.configFiles).toEqual(['CLAUDE.md', '.claude/config.md']);
+      expect(agent.configFiles).toHaveLength(2);
+      expect(agent.configFiles[0]?.path).toBe('CLAUDE.md');
+      expect(agent.configFiles[1]?.path).toBe('.claude/config.md');
     });
 
     it('should have correct native config path', () => {
@@ -49,7 +54,7 @@ describe('ClaudeAgent', () => {
 
   describe('detectPresence', () => {
     it('should detect agent when CLAUDE.md exists', async () => {
-      mockFs.access.mockResolvedValueOnce(undefined);
+      accessSpy.mockResolvedValueOnce(undefined);
       
       const result = await agent.detectPresence(testProjectPath);
       
@@ -59,7 +64,7 @@ describe('ClaudeAgent', () => {
     });
 
     it('should detect agent when .claude/config.md exists', async () => {
-      mockFs.access
+      accessSpy
         .mockRejectedValueOnce(new Error('CLAUDE.md not found'))
         .mockResolvedValueOnce(undefined);
       
@@ -70,7 +75,7 @@ describe('ClaudeAgent', () => {
     });
 
     it('should return null when no config files exist', async () => {
-      mockFs.access.mockRejectedValue(new Error('not found'));
+      accessSpy.mockRejectedValue(new Error('not found'));
       
       const result = await agent.detectPresence(testProjectPath);
       
@@ -101,20 +106,20 @@ describe('ClaudeAgent', () => {
     ];
 
     it('should create new .mcp.json configuration', async () => {
-      mockFs.readFile.mockRejectedValueOnce(new Error('File not found'));
-      mockFs.mkdir.mockResolvedValueOnce('');
-      mockFs.writeFile.mockResolvedValueOnce(undefined);
+      readFileSpy.mockRejectedValueOnce(new Error('File not found'));
+      mkdirSpy.mockResolvedValueOnce('');
+      writeFileSpy.mockResolvedValueOnce(undefined);
 
       await agent.applyMCPConfig(testProjectPath, mockServers);
 
-      expect(mockFs.writeFile).toHaveBeenCalledWith(
+      expect(writeFileSpy).toHaveBeenCalledWith(
         resolve(testProjectPath, '.mcp.json'),
         expect.stringContaining('"mcpServers"'),
         'utf8'
       );
 
       const writtenConfig = JSON.parse(
-        (mockFs.writeFile as jest.Mock).mock.calls[0][1]
+        writeFileSpy.mock.calls[0][1]
       );
 
       expect(writtenConfig.mcpServers).toHaveProperty('test-stdio');
@@ -155,14 +160,14 @@ describe('ClaudeAgent', () => {
         }
       };
 
-      mockFs.readFile.mockResolvedValueOnce(JSON.stringify(existingConfig));
-      mockFs.mkdir.mockResolvedValueOnce('');
-      mockFs.writeFile.mockResolvedValueOnce(undefined);
+      readFileSpy.mockResolvedValueOnce(JSON.stringify(existingConfig));
+      mkdirSpy.mockResolvedValueOnce('');
+      writeFileSpy.mockResolvedValueOnce(undefined);
 
       await agent.applyMCPConfig(testProjectPath, mockServers);
 
       const writtenConfig = JSON.parse(
-        (mockFs.writeFile as jest.Mock).mock.calls[0][1]
+        writeFileSpy.mock.calls[0][1]
       );
 
       // Should preserve existing server and other settings
@@ -179,11 +184,11 @@ describe('ClaudeAgent', () => {
     });
 
     it('should handle invalid existing JSON gracefully', async () => {
-      mockFs.readFile.mockResolvedValueOnce('invalid json');
-      mockFs.mkdir.mockResolvedValueOnce('');
-      mockFs.writeFile.mockResolvedValueOnce(undefined);
+      readFileSpy.mockResolvedValueOnce('invalid json');
+      mkdirSpy.mockResolvedValueOnce('');
+      writeFileSpy.mockResolvedValueOnce(undefined);
 
-      const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
       await agent.applyMCPConfig(testProjectPath, mockServers);
 
@@ -192,7 +197,7 @@ describe('ClaudeAgent', () => {
       );
 
       const writtenConfig = JSON.parse(
-        (mockFs.writeFile as jest.Mock).mock.calls[0][1]
+        writeFileSpy.mock.calls[0][1]
       );
 
       expect(writtenConfig.mcpServers).toHaveProperty('test-stdio');

@@ -1,19 +1,20 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { CodexCliAgent } from '../../src/agents/CodexCliAgent.js';
 import { MCPServerType, type MCPServerConfig } from '../../src/types/index.js';
 import { promises as fs } from 'fs';
 import { resolve } from 'path';
 
 // Mock the fs module
-jest.mock('fs', () => ({
+vi.mock('fs', () => ({
   promises: {
-    access: jest.fn(),
-    readFile: jest.fn(),
-    writeFile: jest.fn(),
-    mkdir: jest.fn(),
+    access: vi.fn(),
+    readFile: vi.fn(),
+    writeFile: vi.fn(),
+    mkdir: vi.fn(),
   }
 }));
 
-const mockFs = fs as jest.Mocked<typeof fs>;
+const mockFs = fs as any;
 
 describe('CodexCliAgent', () => {
   let agent: CodexCliAgent;
@@ -21,7 +22,7 @@ describe('CodexCliAgent', () => {
 
   beforeEach(() => {
     agent = new CodexCliAgent();
-    jest.clearAllMocks();
+    vi.clearAllMocks();
   });
 
   describe('constructor', () => {
@@ -39,7 +40,8 @@ describe('CodexCliAgent', () => {
     });
 
     it('should have correct config files', () => {
-      expect(agent.configFiles).toEqual(['.codex/config.toml']);
+      expect(agent.configFiles).toHaveLength(1);
+      expect(agent.configFiles[0]?.path).toBe('.codex/config.toml');
     });
 
     it('should have correct native config path', () => {
@@ -230,7 +232,7 @@ describe('CodexCliAgent', () => {
         'utf8'
       );
 
-      const writtenConfig = (mockFs.writeFile as jest.Mock).mock.calls[0][1];
+      const writtenConfig = (mockFs.writeFile as any).mock.calls[0][1];
       expect(writtenConfig).toContain('Generated automatically by agentinit');
       expect(writtenConfig).toContain('Remote MCPs are automatically converted');
       expect(writtenConfig).toContain('[mcp_servers.test-server]');
@@ -258,7 +260,7 @@ args = ["--test"]
 
       await agent.applyMCPConfig(testProjectPath, servers);
 
-      const writtenConfig = (mockFs.writeFile as jest.Mock).mock.calls[0][1];
+      const writtenConfig = (mockFs.writeFile as any).mock.calls[0][1];
       expect(writtenConfig).toContain('[mcp_servers.existing]');
       expect(writtenConfig).toContain('[mcp_servers.new-server]');
     });

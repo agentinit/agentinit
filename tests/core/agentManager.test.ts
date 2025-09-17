@@ -1,3 +1,4 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { AgentManager } from '../../src/core/agentManager.js';
 import { ClaudeAgent } from '../../src/agents/ClaudeAgent.js';
 import { ClaudeDesktopAgent } from '../../src/agents/ClaudeDesktopAgent.js';
@@ -6,22 +7,19 @@ import { GeminiCliAgent } from '../../src/agents/GeminiCliAgent.js';
 import { CursorAgent } from '../../src/agents/CursorAgent.js';
 import { promises as fs } from 'fs';
 
-// Mock the fs module
-jest.mock('fs', () => ({
-  promises: {
-    access: jest.fn(),
-  }
-}));
-
-const mockFs = fs as jest.Mocked<typeof fs>;
 
 describe('AgentManager', () => {
   let manager: AgentManager;
+  let accessSpy: any;
   const testProjectPath = '/test/project';
 
   beforeEach(() => {
     manager = new AgentManager();
-    jest.clearAllMocks();
+    accessSpy = vi.spyOn(fs, 'access');
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   describe('constructor', () => {
@@ -70,7 +68,7 @@ describe('AgentManager', () => {
   describe('detectAgents', () => {
     it('should detect Claude agent when CLAUDE.md exists', async () => {
       // Mock Claude detection (first file exists)
-      mockFs.access.mockImplementation((path) => {
+      accessSpy.mockImplementation((path: string) => {
         if (path.toString().includes('CLAUDE.md')) {
           return Promise.resolve(undefined);
         }
@@ -84,7 +82,7 @@ describe('AgentManager', () => {
     });
 
     it('should detect Codex agent when .codex/config.toml exists', async () => {
-      mockFs.access.mockImplementation((path) => {
+      accessSpy.mockImplementation((path: string) => {
         if (path.toString().includes('.codex/config.toml')) {
           return Promise.resolve(undefined);
         }
@@ -98,7 +96,7 @@ describe('AgentManager', () => {
     });
 
     it('should detect multiple agents when multiple config files exist', async () => {
-      mockFs.access.mockImplementation((path) => {
+      accessSpy.mockImplementation((path: string) => {
         if (path.toString().includes('CLAUDE.md') || 
             path.toString().includes('.codex/config.toml')) {
           return Promise.resolve(undefined);
@@ -114,7 +112,7 @@ describe('AgentManager', () => {
     });
 
     it('should return empty array when no agents detected', async () => {
-      mockFs.access.mockRejectedValue(new Error('not found'));
+      accessSpy.mockRejectedValue(new Error('not found'));
 
       const detected = await manager.detectAgents(testProjectPath);
       
@@ -124,7 +122,7 @@ describe('AgentManager', () => {
 
   describe('detectAgentById', () => {
     it('should detect specific agent by ID', async () => {
-      mockFs.access.mockImplementation((path) => {
+      accessSpy.mockImplementation((path: string) => {
         if (path.toString().includes('CLAUDE.md')) {
           return Promise.resolve(undefined);
         }
@@ -144,7 +142,7 @@ describe('AgentManager', () => {
     });
 
     it('should return null when agent exists but not detected', async () => {
-      mockFs.access.mockRejectedValue(new Error('not found'));
+      accessSpy.mockRejectedValue(new Error('not found'));
 
       const detected = await manager.detectAgentById(testProjectPath, 'claude');
       
@@ -154,7 +152,7 @@ describe('AgentManager', () => {
 
   describe('getPrimaryAgent', () => {
     it('should return first detected agent', async () => {
-      mockFs.access.mockImplementation((path) => {
+      accessSpy.mockImplementation((path: string) => {
         if (path.toString().includes('CLAUDE.md') || 
             path.toString().includes('.codex/config.toml')) {
           return Promise.resolve(undefined);
@@ -169,7 +167,7 @@ describe('AgentManager', () => {
     });
 
     it('should return null when no agents detected', async () => {
-      mockFs.access.mockRejectedValue(new Error('not found'));
+      accessSpy.mockRejectedValue(new Error('not found'));
 
       const primary = await manager.getPrimaryAgent(testProjectPath);
       
@@ -179,7 +177,7 @@ describe('AgentManager', () => {
 
   describe('hasAnyAgents', () => {
     it('should return true when agents are detected', async () => {
-      mockFs.access.mockImplementation((path) => {
+      accessSpy.mockImplementation((path: string) => {
         if (path.toString().includes('CLAUDE.md')) {
           return Promise.resolve(undefined);
         }
@@ -192,7 +190,7 @@ describe('AgentManager', () => {
     });
 
     it('should return false when no agents detected', async () => {
-      mockFs.access.mockRejectedValue(new Error('not found'));
+      accessSpy.mockRejectedValue(new Error('not found'));
 
       const hasAgents = await manager.hasAnyAgents(testProjectPath);
       
@@ -202,7 +200,7 @@ describe('AgentManager', () => {
 
   describe('getDetectionSummary', () => {
     it('should return summary for detected agents', async () => {
-      mockFs.access.mockImplementation((path) => {
+      accessSpy.mockImplementation((path: string) => {
         if (path.toString().includes('CLAUDE.md') || 
             path.toString().includes('.codex/config.toml')) {
           return Promise.resolve(undefined);
@@ -216,7 +214,7 @@ describe('AgentManager', () => {
     });
 
     it('should return single agent summary', async () => {
-      mockFs.access.mockImplementation((path) => {
+      accessSpy.mockImplementation((path: string) => {
         if (path.toString().includes('CLAUDE.md')) {
           return Promise.resolve(undefined);
         }
@@ -229,7 +227,7 @@ describe('AgentManager', () => {
     });
 
     it('should return no agents message', async () => {
-      mockFs.access.mockRejectedValue(new Error('not found'));
+      accessSpy.mockRejectedValue(new Error('not found'));
 
       const summary = await manager.getDetectionSummary(testProjectPath);
       
@@ -246,12 +244,12 @@ describe('AgentManager', () => {
         capabilities: { mcp: { stdio: true, http: false, sse: false }, rules: false, hooks: false, commands: false, subagents: false, statusline: false },
         configFiles: ['.custom/config.json'],
         nativeConfigPath: '.custom/config.json',
-        detectPresence: jest.fn(),
-        applyMCPConfig: jest.fn(),
-        filterMCPServers: jest.fn(),
-        transformMCPServers: jest.fn(),
-        getNativeMcpPath: jest.fn(),
-        toString: jest.fn()
+        detectPresence: vi.fn(),
+        applyMCPConfig: vi.fn(),
+        filterMCPServers: vi.fn(),
+        transformMCPServers: vi.fn(),
+        getNativeMcpPath: vi.fn(),
+        toString: vi.fn()
       } as any;
       
       manager.registerAgent(customAgent);

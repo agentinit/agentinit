@@ -156,18 +156,6 @@ export class RulesApplicator {
     return Array.from(merged.values());
   }
 
-  /**
-   * Count tokens in existing rules from config file
-   */
-  private async countExistingRulesTokens(configPath: string): Promise<number> {
-    try {
-      const existingRules = await this.getExistingRules(configPath);
-      return this.countRulesTokens(existingRules);
-    } catch (error) {
-      console.warn('Failed to count existing rules tokens:', error);
-      return 0;
-    }
-  }
 
   /**
    * Count total tokens in the entire config file
