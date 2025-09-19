@@ -1,6 +1,7 @@
 import { Agent } from './Agent.js';
 import { readFileIfExists, writeFile, ensureDirectoryExists } from '../utils/fs.js';
 import type { MCPServerConfig, AgentDefinition } from '../types/index.js';
+import type { AppliedRules, RuleSection } from '../types/rules.js';
 
 /**
  * Claude Desktop app agent implementation
@@ -130,5 +131,37 @@ export class ClaudeDesktopAgent extends Agent {
    */
   transformMCPServers(servers: MCPServerConfig[]): MCPServerConfig[] {
     return servers; // No transformations needed
+  }
+
+  /**
+   * Claude Desktop doesn't support rules configuration
+   */
+  async applyRulesConfig(
+    configPath: string,
+    rules: AppliedRules,
+    existingContent: string
+  ): Promise<string> {
+    throw new Error('Claude Desktop does not support rules configuration. Rules should be applied to a project-level agent like Claude Code.');
+  }
+
+  /**
+   * Claude Desktop doesn't support rules extraction
+   */
+  extractExistingRules(content: string): string[] {
+    return [];
+  }
+
+  /**
+   * Claude Desktop doesn't support rules sections
+   */
+  extractExistingSections(content: string): RuleSection[] {
+    return [];
+  }
+
+  /**
+   * Claude Desktop doesn't generate rules content
+   */
+  generateRulesContent(sections: RuleSection[]): string {
+    return '';
   }
 }

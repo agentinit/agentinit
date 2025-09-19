@@ -40,7 +40,24 @@ export class YourAgent extends Agent {
         subagents: false,
         statusline: true
       },
-      configFiles: ['.youragent', '.youragent/config.json'],
+      configFiles: [
+        {
+          path: '.youragent',
+          purpose: 'detection',
+          format: 'text',
+          type: 'file',
+          optional: true,
+          description: 'Main configuration file for Your Agent'
+        },
+        {
+          path: '.youragent/config.json',
+          purpose: 'settings',
+          format: 'json',
+          type: 'file',
+          optional: true,
+          description: 'JSON configuration for Your Agent settings'
+        }
+      ],
       nativeConfigPath: '.youragent/mcp.json'
     };
     super(definition);
@@ -109,7 +126,117 @@ transformMCPServers(servers: MCPServerConfig[]): MCPServerConfig[] {
 }
 ```
 
-### 4. Register Agent
+### 4. ConfigFiles Structure
+
+Starting with AgentInit v1.1, `configFiles` uses a structured JSON format with metadata instead of simple strings:
+
+```typescript
+interface ConfigFileDefinition {
+  path: string;           // File/folder path relative to project root
+  purpose: string;        // 'detection' | 'mcp' | 'rules' | 'settings' | 'hooks' | 'commands' | 'subagents' | 'statusline'
+  format: string;         // 'json' | 'toml' | 'markdown' | 'text' | 'yaml'
+  type: 'file' | 'folder'; // Whether it's a file or directory
+  optional?: boolean;     // Whether the file is optional for detection
+  description?: string;   // Human-readable description
+}
+```
+
+**Purpose Types:**
+- `detection` - Files used only for agent detection
+- `mcp` - Model Context Protocol configurations
+- `rules` - AI behavior rules and instructions
+- `settings` - IDE/agent preferences and settings
+- `hooks` - Custom hooks and automation
+- `commands` - Custom commands and scripts
+- `subagents` - Subagent configurations
+- `statusline` - Status line customizations
+
+**Format Types:**
+- `json` - JSON configuration files
+- `toml` - TOML configuration files
+- `markdown` - Markdown documentation/rules
+- `text` - Plain text files
+- `yaml` - YAML configuration files
+
+**Type Support:**
+- `file` - Traditional single file approach
+- `folder` - Directory-based configuration (new!)
+
+**Examples:**
+
+```typescript
+// Modern rules directory (primary method)
+{
+  path: '.cursor/rules',
+  purpose: 'rules',
+  format: 'markdown',
+  type: 'folder',
+  optional: true,
+  description: 'AI rules with MDC files (.mdc format)'
+}
+
+// Simple agent instructions (alternative)
+{
+  path: 'AGENTS.md',
+  purpose: 'rules',
+  format: 'markdown',
+  type: 'file',
+  optional: true,
+  description: 'Simple agent instructions alternative'
+}
+
+// MCP configuration
+{
+  path: '.cursor/mcp.json',
+  purpose: 'mcp',
+  format: 'json',
+  type: 'file',
+  optional: true,
+  description: 'Model Context Protocol servers'
+}
+```
+
+**Benefits:**
+- Better error messages showing file purposes
+- Support for Cursor's modern MDC system with better organization and scoping
+- Alternative simple AGENTS.md approach for basic use cases
+- Future-ready for new features (hooks, commands, etc.)
+- Clear separation of concerns
+- Nested rules support in subdirectories
+
+### 5. Implement Rules Support (Optional)
+
+```typescript
+// Add to your agent class
+import type { AppliedRules, RuleSection } from '../types/rules.js';
+
+async applyRulesConfig(configPath: string, rules: AppliedRules, existingContent: string): Promise<string> {
+  // Agent-specific rules formatting
+  const rulesSection = this.generateRulesContent(rules.sections);
+  return existingContent + '\n\n' + rulesSection;
+}
+
+extractExistingRules(content: string): string[] {
+  // Parse existing rules from agent's format
+  return content.split('\n').filter(line => line.trim() && !line.startsWith('#'));
+}
+
+extractExistingSections(content: string): RuleSection[] {
+  // Parse sections from agent's format
+  const sections: RuleSection[] = [];
+  // ... parsing logic for your format
+  return sections;
+}
+
+generateRulesContent(sections: RuleSection[]): string {
+  // Generate rules in agent's format
+  return sections.map(section => 
+    `# ${section.templateName}\n${section.rules.join('\n')}\n`
+  ).join('\n');
+}
+```
+
+### 5. Register Agent
 
 ```typescript
 // src/core/agentManager.ts
@@ -306,7 +433,40 @@ export class CursorAgent extends Agent {
         subagents: false,
         statusline: false
       },
-      configFiles: ['.cursorrules', '.cursor/settings.json', '.cursor/mcp.json'],
+      configFiles: [
+        {
+          path: '.cursor/rules',
+          purpose: 'rules',
+          format: 'markdown',
+          type: 'folder',
+          optional: true,
+          description: 'AI behavior rules directory with MDC files'
+        },
+        {
+          path: 'AGENTS.md',
+          purpose: 'rules',
+          format: 'markdown',
+          type: 'file',
+          optional: true,
+          description: 'Simple agent instructions in markdown format'
+        },
+        {
+          path: '.cursor/settings.json',
+          purpose: 'settings',
+          format: 'json',
+          type: 'file',
+          optional: true,
+          description: 'Cursor IDE preferences and settings'
+        },
+        {
+          path: '.cursor/mcp.json',
+          purpose: 'mcp',
+          format: 'json',
+          type: 'file',
+          optional: true,
+          description: 'Model Context Protocol server configurations'
+        }
+      ],
       nativeConfigPath: '.cursor/mcp.json'
     };
     super(definition);
@@ -351,9 +511,30 @@ export class CursorAgent extends Agent {
 ### Detection Files
 ```typescript
 configFiles: [
-  '.agent-config',           // Simple config
-  '.agent/settings.json',    // Settings dir
-  '.agent/mcp.json'          // MCP config
+  {
+    path: '.agent-config',
+    purpose: 'detection',
+    format: 'text',
+    type: 'file',
+    optional: true,
+    description: 'Main agent configuration'
+  },
+  {
+    path: '.agent/settings.json',
+    purpose: 'settings',
+    format: 'json',
+    type: 'file',
+    optional: true,
+    description: 'Agent settings and preferences'
+  },
+  {
+    path: '.agent/mcp.json',
+    purpose: 'mcp',
+    format: 'json',
+    type: 'file',
+    optional: true,
+    description: 'MCP server configurations'
+  }
 ]
 ```
 
@@ -420,6 +601,7 @@ agentinit apply --global --agent your-agent --mcp-stdio test "cmd"
 - [ ] Research agent's MCP format and capabilities
 - [ ] Create agent class extending `Agent`
 - [ ] Implement `applyMCPConfig` method
+- [ ] Implement rules methods (if `capabilities.rules: true`)
 - [ ] Add optional filtering/transformation
 - [ ] Register in `AgentManager`
 - [ ] Write comprehensive tests

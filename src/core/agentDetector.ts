@@ -11,7 +11,9 @@ export class AgentDetector {
     { name: 'claude', files: ['CLAUDE.md', '.claude/config.md'] },
     { name: 'windsurf', files: ['.windsurfrules', '.windsurf'] },
     { name: 'copilot', files: ['.github/copilot.yml'] },
-    { name: 'codeium', files: ['.codeium/config.json'] }
+    { name: 'codeium', files: ['.codeium/config.json'] },
+    { name: 'codex', files: ['.codex/config.toml'] },
+    { name: 'gemini', files: ['.gemini/settings.json'] }
   ];
 
   async detectAgents(projectPath: string): Promise<AgentConfig[]> {

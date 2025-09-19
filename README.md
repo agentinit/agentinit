@@ -10,6 +10,7 @@ AgentInit transforms AI agent configuration from a fragmented, manual process in
 - **🔍 Smart Stack Detection**: Automatically detects project language, framework, and tools
 - **🔄 Bidirectional Sync**: Keep agent configurations in sync across Claude, Cursor, Windsurf, and more
 - **📦 MCP Management**: Interactive installation and management of Model Context Protocol tools
+- **📋 Rules Templates**: Apply coding best practices with predefined rule templates (Git, testing, docs, linting)
 - **⚙️ Project Templates**: Pre-built templates for web apps, CLI tools, libraries, and more
 - **🎯 Stack-Aware Guidance**: Customized instructions based on your technology stack
 
@@ -20,9 +21,6 @@ AgentInit transforms AI agent configuration from a fragmented, manual process in
 ```bash
 # Install AgentInit globally
 npm install -g agentinit
-
-# Or use with Bun
-bun install -g agentinit
 ```
 
 ### Basic Usage
@@ -65,9 +63,13 @@ agentinit init --force            # Overwrite existing configuration
 Detect current project stack and existing agent configurations.
 
 ```bash
-agentinit detect           # Basic detection
+agentinit detect           # Basic detection (only shows found agents)
 agentinit detect --verbose # Detailed information
+DEBUG=1 agentinit detect   # Show all supported agents (found and not found)
 ```
+
+**Environment Variables:**
+- `DEBUG=1` - Shows all supported agents, including those not found in the project
 
 ### `agentinit sync`
 
@@ -90,6 +92,31 @@ agentinit mcp --search <query>     # Search MCPs
 agentinit mcp --install <name>     # Install specific MCP
 ```
 
+### `agentinit verify_mcp`
+
+Verify MCP server installations and list their capabilities.
+
+```bash
+agentinit verify_mcp --all              # Verify all configured MCP servers
+agentinit verify_mcp --mcp-name <name>  # Verify specific MCP server
+```
+
+**Examples:**
+```bash
+# Verify all MCPs in project
+agentinit verify_mcp --all
+
+# Verify specific server
+agentinit verify_mcp --mcp-name everything
+
+# Test MCP configuration directly
+agentinit verify_mcp --mcp-stdio everything "npx -y @modelcontextprotocol/server-everything"
+
+agentinit verify_mcp --mcp-http
+```
+
+Shows connection status, response time, and available tools/resources/prompts for each MCP server.
+
 ### `agentinit apply`
 
 Apply configurations including MCP server setup.
@@ -98,12 +125,13 @@ Apply configurations including MCP server setup.
 
 
 ```bash
-# Configure STDIO MCP with arguments
+# Configure STDIO MCP with everything server (recommended example)
 npx agentinit apply \
-  --mcp-stdio context7 "npx -y @upstash/context7-mcp" --args "--api-key=YOUR_API_KEY"
+  --mcp-stdio everything "npx -y @modelcontextprotocol/server-everything"
 
 # Configure multiple MCPs in one command
 npx agentinit apply \
+  --mcp-stdio everything "npx -y @modelcontextprotocol/server-everything" \
   --mcp-stdio supabase "npx -y @supabase/mcp-server-supabase@latest" \
     --args "--read-only --project-ref=<project-ref>" \
     --env "SUPABASE_ACCESS_TOKEN=<personal-access-token>" \
@@ -118,9 +146,46 @@ npx agentinit apply \
 npx agentinit apply \
   --mcp-stdio browserbase "docker run -i --rm ghcr.io/metorial/mcp-container--browserbase--mcp-server-browserbase--browserbase node cli.js" \
   --env "BROWSERBASE_API_KEY=browserbase-api-key"
+
+# Verify MCPs immediately after configuration
+npx agentinit apply --verify-mcp \
+  --mcp-stdio everything "npx -y @modelcontextprotocol/server-everything"
 ```
 
 This generates `.agentinit/agentinit.toml` with your MCP configurations.
+
+**MCP Verification**: Use the `--verify-mcp` flag to test MCP servers immediately after configuration. This ensures servers are reachable and shows their available tools, resources, and prompts.
+
+#### Rules Configuration
+
+Apply coding rules and best practices to your AI agents using predefined templates or custom rules.
+
+```bash
+# Apply rule templates (recommended combinations)
+agentinit apply --rules git,write_tests,use_linter
+
+# Mix templates with custom rules
+agentinit apply --rules git,write_docs --rule-raw "Use TypeScript strict mode"
+
+# Load rules from a file
+agentinit apply --rules-file ./project-rules.md
+
+# Apply globally to all projects using Claude
+agentinit apply --global --agent claude --rules git,write_tests
+
+# Combine with MCP configuration
+agentinit apply --rules git,use_linter --mcp-stdio context7 "npx @context7/mcp"
+```
+
+**Available Rule Templates:**
+- `git` - Enforce Git workflows and commit standards
+- `write_docs` - Require comprehensive documentation
+- `use_git_worktrees` - Enable parallel development with worktrees  
+- `use_subagents` - Delegate work to specialized subagents
+- `use_linter` - Enforce code quality and formatting
+- `write_tests` - Implement test-driven development practices
+
+**Token Tracking:** The apply command automatically tracks and displays token usage with color-coded output (🟢 Green ≤5k, 🟡 Yellow 5k-15k, 🔴 Red >15k) and git-style diffs to help manage AI context size. Example: `Rules: 101 tokens (-296)` shows rule tokens with change tracking.
 
 ## 🏗️ Project Structure
 
@@ -130,7 +195,10 @@ AgentInit creates and manages these key files:
 your-project/
 ├── agents.md                 # Universal agent configuration
 ├── CLAUDE.md                 # Claude-specific config (synced)
-├── .cursorrules              # Cursor-specific config (synced)
+├── .cursor/rules/            # Cursor rules (MDC files)
+│   ├── 001_workspace.mdc
+│   └── 002_frontend.mdc
+├── AGENTS.md                 # Simple agent instructions (alternative)
 └── .windsurfrules           # Windsurf-specific config (synced)
 ```
 
@@ -171,7 +239,7 @@ This is a TypeScript project using Next.js...
 | Agent | Config File | Status |
 |-------|-------------|--------|
 | Claude | `CLAUDE.md` | ✅ |
-| Cursor | `.cursorrules` | ✅ |
+| Cursor | `.cursor/rules/*.mdc` or `AGENTS.md` | ✅ |
 | Windsurf | `.windsurfrules` | ✅ |
 | Copilot | `.github/copilot.yml` | 🚧 |
 | Codeium | `.codeium/config.json` | 🚧 |

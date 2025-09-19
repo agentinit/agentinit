@@ -1,0 +1,30 @@
+[template]
+id = "write_tests"
+name = "Write Tests"
+description = "Enforce comprehensive testing practices"
+category = "testing"
+priority = 1
+
+[[rules]]
+text = "Write tests for all new functionality before or during implementation"
+
+[[rules]]
+text = "Don't use mocks unless absolutely necessary - prefer real implementations"
+
+[[rules]]
+text = "Test edge cases, error conditions, and boundary values"
+
+[[rules]]
+text = "Maintain a minimum of 80% code coverage for all new code"
+
+[[rules]]
+text = "Run the full test suite before committing changes"
+
+[[rules]]
+text = "Write both unit tests for individual components and integration tests"
+
+[[rules]]
+text = "Use descriptive test names that explain what is being tested"
+
+[[rules]]
+text = "Test the actual behavior users will experience, not just implementation details"

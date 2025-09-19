@@ -1,26 +1,29 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ClaudeDesktopAgent } from '../../src/agents/ClaudeDesktopAgent.js';
 import { MCPServerType, type MCPServerConfig } from '../../src/types/index.js';
 import { promises as fs } from 'fs';
 import { resolve } from 'path';
 
-// Mock the fs module
-jest.mock('fs', () => ({
-  promises: {
-    access: jest.fn(),
-    readFile: jest.fn(),
-    writeFile: jest.fn(),
-    mkdir: jest.fn(),
-  }
-}));
-
-const mockFs = fs as jest.Mocked<typeof fs>;
-
 describe('ClaudeDesktopAgent', () => {
   let agent: ClaudeDesktopAgent;
+  let accessSpy: any;
+  let readFileSpy: any;
+  let writeFileSpy: any;
+  let mkdirSpy: any;
 
   beforeEach(() => {
     agent = new ClaudeDesktopAgent();
-    jest.clearAllMocks();
+    accessSpy = vi.spyOn(fs, 'access');
+    readFileSpy = vi.spyOn(fs, 'readFile');
+    writeFileSpy = vi.spyOn(fs, 'writeFile');
+    mkdirSpy = vi.spyOn(fs, 'mkdir');
+    
+    // Mock mkdir to avoid filesystem operations
+    mkdirSpy.mockResolvedValue(undefined);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   describe('constructor', () => {
@@ -89,13 +92,13 @@ describe('ClaudeDesktopAgent', () => {
 
     beforeEach(() => {
       // Mock getGlobalMcpPath to return a test path
-      jest.spyOn(agent, 'getGlobalMcpPath').mockReturnValue('/test/claude_desktop_config.json');
+      vi.spyOn(agent, 'getGlobalMcpPath').mockReturnValue('/test/claude_desktop_config.json');
     });
 
     it('should create new configuration when no existing config exists', async () => {
-      mockFs.readFile.mockRejectedValueOnce(new Error('File not found'));
-      mockFs.mkdir.mockResolvedValueOnce(undefined);
-      mockFs.writeFile.mockResolvedValueOnce();
+      readFileSpy.mockRejectedValueOnce(new Error('File not found'));
+      mkdirSpy.mockResolvedValueOnce(undefined);
+      writeFileSpy.mockResolvedValueOnce();
 
       await agent.applyGlobalMCPConfig(mockServers);
 
@@ -117,7 +120,7 @@ describe('ClaudeDesktopAgent', () => {
         }
       };
 
-      expect(mockFs.writeFile).toHaveBeenCalledWith(
+      expect(writeFileSpy).toHaveBeenCalledWith(
         '/test/claude_desktop_config.json',
         JSON.stringify(expectedConfig, null, 2),
         'utf8'
@@ -133,9 +136,9 @@ describe('ClaudeDesktopAgent', () => {
         }
       };
 
-      mockFs.readFile.mockResolvedValueOnce(JSON.stringify(existingConfig));
-      mockFs.mkdir.mockResolvedValueOnce(undefined);
-      mockFs.writeFile.mockResolvedValueOnce();
+      readFileSpy.mockResolvedValueOnce(JSON.stringify(existingConfig));
+      mkdirSpy.mockResolvedValueOnce(undefined);
+      writeFileSpy.mockResolvedValueOnce();
 
       await agent.applyGlobalMCPConfig(mockServers);
 
@@ -160,7 +163,7 @@ describe('ClaudeDesktopAgent', () => {
         }
       };
 
-      expect(mockFs.writeFile).toHaveBeenCalledWith(
+      expect(writeFileSpy).toHaveBeenCalledWith(
         '/test/claude_desktop_config.json',
         JSON.stringify(expectedConfig, null, 2),
         'utf8'
@@ -168,11 +171,11 @@ describe('ClaudeDesktopAgent', () => {
     });
 
     it('should handle invalid existing JSON gracefully', async () => {
-      mockFs.readFile.mockResolvedValueOnce('invalid json');
-      mockFs.mkdir.mockResolvedValueOnce(undefined);
-      mockFs.writeFile.mockResolvedValueOnce();
+      readFileSpy.mockResolvedValueOnce('invalid json');
+      mkdirSpy.mockResolvedValueOnce(undefined);
+      writeFileSpy.mockResolvedValueOnce();
 
-      const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
       await agent.applyGlobalMCPConfig(mockServers);
 
@@ -184,7 +187,7 @@ describe('ClaudeDesktopAgent', () => {
     });
 
     it('should throw error when global path cannot be determined', async () => {
-      jest.spyOn(agent, 'getGlobalMcpPath').mockReturnValue(null);
+      vi.spyOn(agent, 'getGlobalMcpPath').mockReturnValue(null);
 
       await expect(agent.applyGlobalMCPConfig(mockServers))
         .rejects.toThrow('Claude Desktop global configuration path could not be determined for this platform');
@@ -199,9 +202,9 @@ describe('ClaudeDesktopAgent', () => {
         env: { NODE_ENV: 'production' }
       };
 
-      mockFs.readFile.mockRejectedValueOnce(new Error('File not found'));
-      mockFs.mkdir.mockResolvedValueOnce(undefined);
-      mockFs.writeFile.mockResolvedValueOnce();
+      readFileSpy.mockRejectedValueOnce(new Error('File not found'));
+      mkdirSpy.mockResolvedValueOnce(undefined);
+      writeFileSpy.mockResolvedValueOnce();
 
       await agent.applyGlobalMCPConfig([stdioServer]);
 
@@ -215,7 +218,7 @@ describe('ClaudeDesktopAgent', () => {
         }
       };
 
-      expect(mockFs.writeFile).toHaveBeenCalledWith(
+      expect(writeFileSpy).toHaveBeenCalledWith(
         '/test/claude_desktop_config.json',
         JSON.stringify(expectedConfig, null, 2),
         'utf8'
@@ -230,9 +233,9 @@ describe('ClaudeDesktopAgent', () => {
         headers: { Authorization: 'Bearer token123' }
       };
 
-      mockFs.readFile.mockRejectedValueOnce(new Error('File not found'));
-      mockFs.mkdir.mockResolvedValueOnce(undefined);
-      mockFs.writeFile.mockResolvedValueOnce();
+      readFileSpy.mockRejectedValueOnce(new Error('File not found'));
+      mkdirSpy.mockResolvedValueOnce(undefined);
+      writeFileSpy.mockResolvedValueOnce();
 
       await agent.applyGlobalMCPConfig([httpServer]);
 
@@ -245,7 +248,7 @@ describe('ClaudeDesktopAgent', () => {
         }
       };
 
-      expect(mockFs.writeFile).toHaveBeenCalledWith(
+      expect(writeFileSpy).toHaveBeenCalledWith(
         '/test/claude_desktop_config.json',
         JSON.stringify(expectedConfig, null, 2),
         'utf8'
@@ -262,9 +265,9 @@ describe('ClaudeDesktopAgent', () => {
         headers: {}
       };
 
-      mockFs.readFile.mockRejectedValueOnce(new Error('File not found'));
-      mockFs.mkdir.mockResolvedValueOnce(undefined);
-      mockFs.writeFile.mockResolvedValueOnce();
+      readFileSpy.mockRejectedValueOnce(new Error('File not found'));
+      mkdirSpy.mockResolvedValueOnce(undefined);
+      writeFileSpy.mockResolvedValueOnce();
 
       await agent.applyGlobalMCPConfig([serverWithEmptyProps]);
 
@@ -277,7 +280,7 @@ describe('ClaudeDesktopAgent', () => {
         }
       };
 
-      expect(mockFs.writeFile).toHaveBeenCalledWith(
+      expect(writeFileSpy).toHaveBeenCalledWith(
         '/test/claude_desktop_config.json',
         JSON.stringify(expectedConfig, null, 2),
         'utf8'

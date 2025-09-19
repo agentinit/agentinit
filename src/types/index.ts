@@ -113,12 +113,21 @@ export interface AgentCapabilities {
   statusline: boolean;
 }
 
+export interface ConfigFileDefinition {
+  path: string;
+  purpose: 'detection' | 'mcp' | 'rules' | 'settings' | 'hooks' | 'commands' | 'subagents' | 'statusline';
+  format: 'json' | 'toml' | 'markdown' | 'text' | 'yaml';
+  type: 'file' | 'folder';
+  optional?: boolean;
+  description?: string;
+}
+
 export interface AgentDefinition {
   id: string;
   name: string;
   url?: string;
   capabilities: AgentCapabilities;
-  configFiles: string[];
+  configFiles: ConfigFileDefinition[];
   nativeConfigPath: string;
   globalConfigPath?: string;
   globalConfigPaths?: {
@@ -133,6 +142,28 @@ export interface AgentDetectionResult {
   configPath: string;
 }
 
+// Backward compatibility helpers
+export function createConfigFile(
+  path: string, 
+  purpose: ConfigFileDefinition['purpose'] = 'detection',
+  format: ConfigFileDefinition['format'] = 'text',
+  type: ConfigFileDefinition['type'] = 'file',
+  options?: { optional?: boolean; description?: string }
+): ConfigFileDefinition {
+  return {
+    path,
+    purpose,
+    format,
+    type,
+    ...(options?.optional !== undefined && { optional: options.optional }),
+    ...(options?.description !== undefined && { description: options.description })
+  };
+}
+
+export function legacyConfigFiles(paths: string[]): ConfigFileDefinition[] {
+  return paths.map(path => createConfigFile(path, 'detection'));
+}
+
 export interface FilteredMCPConfig {
   servers: MCPServerConfig[];
   transformations: MCPTransformation[];
@@ -142,4 +173,59 @@ export interface MCPTransformation {
   original: MCPServerConfig;
   transformed: MCPServerConfig;
   reason: string;
+}
+
+// Re-export rules types
+export type { 
+  RuleTemplate, 
+  RulesConfig, 
+  RemoteRulesOptions, 
+  AppliedRules, 
+  RuleApplicationResult,
+  RuleSection
+} from './rules.js';
+
+// MCP Verification types
+export interface MCPTool {
+  name: string;
+  description?: string;
+  inputSchema?: any;
+}
+
+export interface MCPResource {
+  uri: string;
+  name?: string;
+  description?: string;
+  mimeType?: string;
+}
+
+export interface MCPPrompt {
+  name: string;
+  description?: string;
+  arguments?: Array<{
+    name: string;
+    description?: string;
+    required?: boolean;
+  }>;
+}
+
+export interface MCPCapabilities {
+  tools: MCPTool[];
+  resources: MCPResource[];
+  prompts: MCPPrompt[];
+  serverInfo?: {
+    name: string;
+    version: string;
+    protocolVersion?: string;
+  };
+  toolTokenCounts?: Map<string, number>;
+  totalToolTokens?: number;
+}
+
+export interface MCPVerificationResult {
+  server: MCPServerConfig;
+  status: 'success' | 'error' | 'timeout';
+  capabilities?: MCPCapabilities;
+  error?: string;
+  connectionTime?: number;
 }

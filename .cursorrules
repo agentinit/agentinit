@@ -1,90 +1,59 @@
+# Git Enforcement
+Always initialize a Git repository if one doesn't exist (git init)
+Make atomic commits with clear, descriptive commit messages
+Use conventional commit format: type(scope): description
+Create feature branches for new work, don't work directly on main/master
+Never commit sensitive data, API keys, or secrets to the repository
+Review changes with `git diff --staged` before committing
+Keep commits focused on a single logical change
+Use meaningful branch names that describe the feature or fix
 
-// Project Context
-// This is a typescript project. The codebase follows modern development practices with automated testing using jest.
+# Write Tests
+Write tests for all new functionality before or during implementation
+Don't use mocks unless absolutely necessary - prefer real implementations
+Test edge cases, error conditions, and boundary values
+Maintain a minimum of 80% code coverage for all new code
+Run the full test suite before committing changes
+Write both unit tests for individual components and integration tests
+Use descriptive test names that explain what is being tested
+Test the actual behavior users will experience, not just implementation details
 
-// Development Guidelines
+# Enforce Linting
+Run the project's linter before committing any code changes
+Fix all linter errors and warnings before proceeding
+Use the project's existing linter configuration without modification
+Run code formatters (prettier, black, gofmt, etc.) to maintain consistent style
+Ensure all code passes CI linting checks before pushing
+Install and configure linting tools if not already present
+Follow language-specific linting best practices
+Don't disable linting rules without proper justification
 
-// Code Quality
-// Write clean, maintainable code following typescript best practices
-// Use TypeScript for type safety when applicable
-// Follow consistent naming conventions
-// Add comments for complex logic
+# Documentation Requirements
+Document all public APIs, functions, and classes with clear descriptions
+Include practical usage examples in documentation
+Update README.md when adding new features or changing functionality
+Add inline comments for complex logic and algorithms
+Maintain a CHANGELOG.md for user-facing changes
+Document configuration options and environment variables
+Include error handling and troubleshooting information
+Write documentation before or alongside code implementation
 
-// Testing Strategy
-// Write unit tests for all business logic using jest
-// Aim for high test coverage (>80%)
-// Include integration tests for critical paths
-// Test edge cases and error scenarios
+# Git Worktrees Workflow
+Use git worktrees for parallel development of different features
+Keep the main branch clean and stable in the primary worktree
+Create separate worktrees for feature branches: `git worktree add ../feature-branch`
+Clean up worktrees after merging: `git worktree remove ../feature-branch`
+Never modify files across different worktrees simultaneously
+Use `git worktree list` to see all active worktrees
+Each worktree should have its own purpose (feature, hotfix, experiment)
+Switch context by changing directories rather than switching branches
 
-// Git Workflow
-// Use conventional commit messages
-// Create meaningful commit messages that explain the "why"
-// Keep commits atomic and focused
-// Use feature branches for new functionality
-
-// Agent Instructions
-
-// General Behavior
-// Always analyze the existing codebase before making changes
-// Follow the project's established patterns and conventions
-// Ask for clarification when requirements are ambiguous
-// Provide clear explanations for design decisions
-
-// Code Changes
-// Prefer editing existing files over creating new ones
-// Maintain consistency with existing code style
-// Add appropriate error handling
-// Update tests when modifying functionality
-
-// Security & Best Practices
-// Never expose sensitive information in code or logs
-// Follow security best practices for typescript
-// Validate all inputs
-// Use environment variables for configuration
-
-// Sub-Agents
-
-// Code Reviewer
-// Code complexity and maintainability
-// Security vulnerabilities
-// Performance implications
-// typescript-specific best practices
-
-// QA Engineer  
-// Verify test coverage
-// Suggest additional test cases
-// Validate error handling
-// Check for edge cases
-
-// Stack-Specific Instructions
-
-// typescript Guidelines
-// Use modern syntax and features
-// Follow language-specific best practices
-// Use npm for dependency management
-// Implement proper error handling
-// Write comprehensive tests
-// ---
-
-// CLI Tool Specific Guidelines
-
-// Command Design
-// Follow Unix philosophy (do one thing well)
-// Provide helpful error messages
-// Support common flags (--help, --version, --verbose)
-// Use consistent command naming
-// Implement proper exit codes
-
-// User Interface
-// Provide clear usage instructions
-// Use colors and formatting appropriately
-// Show progress for long-running operations
-// Support both interactive and non-interactive modes
-// Handle interrupts gracefully
-
-// Configuration
-// Support configuration files
-// Use environment variables appropriately
-// Provide sensible defaults
-// Allow command-line overrides
-// Document all configuration options
+# Use Subagents
+Break complex tasks into smaller, manageable subtasks
+Delegate code review tasks to the Code Reviewer subagent
+Use the QA Engineer subagent for test coverage and quality assurance
+Coordinate between subagents to ensure consistent approach
+Let specialized subagents handle their domain expertise areas
+Use subagents for parallel work on independent components
+Provide clear context and requirements to subagents
+Review and integrate subagent outputs before finalizing

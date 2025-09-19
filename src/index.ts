@@ -4,17 +4,27 @@ import { Command } from 'commander';
 import { initCommand } from './commands/init.js';
 import { detectCommand } from './commands/detect.js';
 import { syncCommand } from './commands/sync.js';
-import { configCommand } from './commands/config.js';
-import { mcpCommand } from './commands/mcp.js';
 import { applyCommand } from './commands/apply.js';
-import { subagentsCommand } from './commands/subagents.js';
+import { verifyMcpCommand } from './commands/verifyMcp.js';
 
 const program = new Command();
 
 program
   .name('agentinit')
   .description('A CLI tool for managing and configuring AI coding agents')
-  .version('0.1.0');
+  .version('1.0.1');
+
+program
+  .command('apply')
+  .description('Apply configurations (MCP servers, etc.)')
+  .allowUnknownOption(true)
+  .action((...args) => {
+    // Extract raw arguments, excluding the command name
+    const rawArgs = process.argv.slice(2);
+    const applyIndex = rawArgs.indexOf('apply');
+    const configArgs = applyIndex >= 0 ? rawArgs.slice(applyIndex + 1) : [];
+    applyCommand(configArgs);
+  });
 
 program
   .command('init')
@@ -37,42 +47,15 @@ program
   .action(syncCommand);
 
 program
-  .command('config')
-  .description('Manage preferences and configuration')
-  .argument('[key]', 'Configuration key to get/set')
-  .argument('[value]', 'Value to set for the key')
-  .option('-g, --global', 'Use global configuration')
-  .option('-l, --local', 'Use project-specific configuration')
-  .option('--list', 'List all configuration values')
-  .action(configCommand);
-
-program
-  .command('mcp')
-  .description('Manage MCP (Model Context Protocol) installations')
-  .option('-i, --interactive', 'Interactive MCP selection')
-  .option('-s, --search <query>', 'Search MCP registry')
-  .option('--install <name>', 'Install specific MCP')
-  .action(mcpCommand);
-
-program
-  .command('apply')
-  .description('Apply configurations (MCP servers, etc.)')
+  .command('verify_mcp')
+  .description('Verify MCP server installations and list their capabilities')
   .allowUnknownOption(true)
   .action((...args) => {
     // Extract raw arguments, excluding the command name
     const rawArgs = process.argv.slice(2);
-    const applyIndex = rawArgs.indexOf('apply');
-    const configArgs = applyIndex >= 0 ? rawArgs.slice(applyIndex + 1) : [];
-    applyCommand(configArgs);
+    const verifyIndex = rawArgs.indexOf('verify_mcp');
+    const commandArgs = verifyIndex >= 0 ? rawArgs.slice(verifyIndex + 1) : [];
+    verifyMcpCommand(commandArgs);
   });
-
-program
-  .command('subagents')
-  .description('Manage sub-agents for specialized tasks')
-  .option('--list', 'List available sub-agents')
-  .option('--run <agents>', 'Run specific sub-agents')
-  .option('--chain <agents>', 'Run sub-agents in sequence')
-  .option('--parallel <agents>', 'Run sub-agents in parallel')
-  .action(subagentsCommand);
 
 program.parse();

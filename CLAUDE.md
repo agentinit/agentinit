@@ -111,3 +111,275 @@ This is a typescript project. The codebase follows modern development practices 
 - Provide detailed explanations for complex code
 - Break down large tasks into smaller, manageable steps
 - Use Claude's code analysis capabilities effectively
+
+## Rules System
+
+AgentInit provides a rules system to apply coding best practices and standards. Rules can be applied using:
+
+```bash
+# Apply rule templates to this project
+agentinit apply --rules git,write_tests,use_linter
+
+# Add custom rules
+agentinit apply --rule-raw "Use functional programming patterns"
+
+# Load rules from file
+agentinit apply --rules-file ./team-standards.md
+
+# Apply globally to all Claude projects
+agentinit apply --global --agent claude --rules git,write_docs
+```
+
+**Available Rule Templates:**
+- `git` - Git workflow enforcement and commit standards
+- `write_docs` - Comprehensive documentation requirements
+- `use_git_worktrees` - Parallel development with Git worktrees
+- `use_subagents` - Delegate specialized work to subagents
+- `use_linter` - Code quality and formatting enforcement
+- `write_tests` - Test-driven development practices
+
+Rules are automatically merged and managed in the section below. They can be updated by running new `agentinit apply --rules` commands.
+
+### Token Tracking
+
+The apply command provides comprehensive token counting to help manage AI context usage:
+
+- **Color-coded Token Display**: 🟢 Green (≤5k tokens), 🟡 Yellow (5k-15k), 🔴 Red (>15k)
+- **Rules vs Total File**: Shows both rule-specific tokens and complete file size
+- **Change Tracking**: Git-style diffs display token changes (+/- with colors)
+- **Overweight Warnings**: Alerts when total file exceeds 30k tokens
+
+Example output: `Rules: 101 tokens (-296)` shows 101 tokens in rules section with a 296 token decrease from previous state.
+
+## AgentInit Rules
+
+- Always initialize a Git repository if one doesn't exist (git init)
+- Make atomic commits with clear, descriptive commit messages
+- Use conventional commit format: type(scope): description
+- Create feature branches for new work, don't work directly on main/master
+- Never commit sensitive data, API keys, or secrets to the repository
+- Review changes with `git diff --staged` before committing
+- Keep commits focused on a single logical change
+- Use meaningful branch names that describe the feature or fix
+
+---
+*Rules managed by AgentInit. Do not edit this section manually.*
+
+## MCP Verification
+
+AgentInit provides MCP (Model Context Protocol) verification to ensure servers are properly configured and working:
+
+### Verify During Apply
+```bash
+# Verify MCPs immediately after configuration
+agentinit apply --verify-mcp \
+  --mcp-stdio everything "npx -y @modelcontextprotocol/server-everything"
+
+# Multiple servers with verification
+agentinit apply --verify-mcp \
+  --mcp-stdio everything "npx -y @modelcontextprotocol/server-everything" \
+  --mcp-stdio filesystem "npx -y @modelcontextprotocol/server-filesystem" \
+  --args "/workspace"
+```
+
+### Verify Existing MCPs
+```bash
+# Verify all configured MCP servers
+agentinit verify_mcp --all
+
+# Verify specific MCP server by name
+agentinit verify_mcp --mcp-name everything
+
+# Custom timeout for slow servers (15 seconds)
+agentinit verify_mcp --all --timeout 15000
+```
+
+### Verify Direct Configuration
+```bash
+# Test MCP server without configuring it first
+agentinit verify_mcp --mcp-stdio everything "npx -y @modelcontextprotocol/server-everything"
+
+# Test HTTP MCP server
+agentinit verify_mcp --mcp-http github "https://api.github.com/mcp" --auth "Bearer token"
+```
+
+### Expected Output
+Verification shows server status, connection time, and available capabilities:
+- **Tools**: Available functions the MCP server provides
+- **Resources**: Data sources and content the server can access
+- **Prompts**: Template interactions the server supports
+
+Use verification to troubleshoot MCP connection issues and understand what capabilities each server provides.
+
+## Project Context
+
+
+## Development Guidelines
+
+- Write clean, maintainable code following typescript best practices
+- Use TypeScript for type safety when applicable
+- Follow consistent naming conventions
+- Add comments for complex logic
+- Write unit tests for all business logic using jest
+- Aim for high test coverage (>80%)
+- Include integration tests for critical paths
+- Test edge cases and error scenarios
+- Use conventional commit messages
+- Create meaningful commit messages that explain the "why"
+- Keep commits atomic and focused
+- Use feature branches for new functionality
+
+## Agent Instructions
+
+- Always analyze the existing codebase before making changes
+- Follow the project's established patterns and conventions
+- Ask for clarification when requirements are ambiguous
+- Provide clear explanations for design decisions
+- Prefer editing existing files over creating new ones
+- Maintain consistency with existing code style
+- Add appropriate error handling
+- Update tests when modifying functionality
+- Never expose sensitive information in code or logs
+- Follow security best practices for typescript
+- Validate all inputs
+- Use environment variables for configuration
+
+## Sub-Agents
+
+- Code complexity and maintainability
+- Security vulnerabilities
+- Performance implications
+- typescript-specific best practices
+- Verify test coverage
+- Suggest additional test cases
+- Validate error handling
+- Check for edge cases
+
+## Stack-Specific Instructions
+
+- Use modern syntax and features
+- Follow language-specific best practices
+- Use npm for dependency management
+- Implement proper error handling
+- Write comprehensive tests
+
+## CLI Tool Specific Guidelines
+
+- Follow Unix philosophy (do one thing well)
+- Provide helpful error messages
+- Support common flags (--help, --version, --verbose)
+- Use consistent command naming
+- Implement proper exit codes
+- Provide clear usage instructions
+- Use colors and formatting appropriately
+- Show progress for long-running operations
+- Support both interactive and non-interactive modes
+- Handle interrupts gracefully
+- Support configuration files
+- Use environment variables appropriately
+- Provide sensible defaults
+- Allow command-line overrides
+- Document all configuration options
+
+## Additional Claude-Specific Instructions
+
+- Use Claude's long-form thinking when needed for complex problems
+- Provide detailed explanations for complex code
+- Break down large tasks into smaller, manageable steps
+- Use Claude's code analysis capabilities effectively
+
+## Rules System
+
+- `git` - Git workflow enforcement and commit standards
+- `write_docs` - Comprehensive documentation requirements
+- `use_git_worktrees` - Parallel development with Git worktrees
+- `use_subagents` - Delegate specialized work to subagents
+- `use_linter` - Code quality and formatting enforcement
+- `write_tests` - Test-driven development practices
+- **Color-coded Token Display**: 🟢 Green (≤5k tokens), 🟡 Yellow (5k-15k), 🔴 Red (>15k)
+- **Rules vs Total File**: Shows both rule-specific tokens and complete file size
+- **Change Tracking**: Git-style diffs display token changes (+/- with colors)
+- **Overweight Warnings**: Alerts when total file exceeds 30k tokens
+
+## AgentInit Rules
+
+- Always initialize a Git repository if one doesn't exist (git init)
+- Make atomic commits with clear, descriptive commit messages
+- Use conventional commit format: type(scope): description
+- Create feature branches for new work, don't work directly on main/master
+- Never commit sensitive data, API keys, or secrets to the repository
+- Review changes with `git diff --staged` before committing
+- Keep commits focused on a single logical change
+- Use meaningful branch names that describe the feature or fix
+
+## MCP Verification
+
+- **Tools**: Available functions the MCP server provides
+- **Resources**: Data sources and content the server can access
+- **Prompts**: Template interactions the server supports
+
+## Git Enforcement
+
+- Always initialize a Git repository if one doesn't exist (git init)
+- Make atomic commits with clear, descriptive commit messages
+- Use conventional commit format: type(scope): description
+- Create feature branches for new work, don't work directly on main/master
+- Never commit sensitive data, API keys, or secrets to the repository
+- Review changes with `git diff --staged` before committing
+- Keep commits focused on a single logical change
+- Use meaningful branch names that describe the feature or fix
+
+## Documentation Requirements
+
+- Document all public APIs, functions, and classes with clear descriptions
+- Include practical usage examples in documentation
+- Update README.md when adding new features or changing functionality
+- Add inline comments for complex logic and algorithms
+- Maintain a CHANGELOG.md for user-facing changes
+- Document configuration options and environment variables
+- Include error handling and troubleshooting information
+- Write documentation before or alongside code implementation
+
+## Git Worktrees Workflow
+
+- Use git worktrees for parallel development of different features
+- Keep the main branch clean and stable in the primary worktree
+- Create separate worktrees for feature branches: `git worktree add ../feature-branch`
+- Clean up worktrees after merging: `git worktree remove ../feature-branch`
+- Never modify files across different worktrees simultaneously
+- Use `git worktree list` to see all active worktrees
+- Each worktree should have its own purpose (feature, hotfix, experiment)
+- Switch context by changing directories rather than switching branches
+
+## Use Subagents
+
+- Break complex tasks into smaller, manageable subtasks
+- Delegate code review tasks to the Code Reviewer subagent
+- Use the QA Engineer subagent for test coverage and quality assurance
+- Coordinate between subagents to ensure consistent approach
+- Let specialized subagents handle their domain expertise areas
+- Use subagents for parallel work on independent components
+- Provide clear context and requirements to subagents
+- Review and integrate subagent outputs before finalizing
+
+## Enforce Linting
+
+- Run the project's linter before committing any code changes
+- Fix all linter errors and warnings before proceeding
+- Use the project's existing linter configuration without modification
+- Run code formatters (prettier, black, gofmt, etc.) to maintain consistent style
+- Ensure all code passes CI linting checks before pushing
+- Install and configure linting tools if not already present
+- Follow language-specific linting best practices
+- Don't disable linting rules without proper justification
+
+## Write Tests
+
+- Write tests for all new functionality before or during implementation
+- Don't use mocks unless absolutely necessary - prefer real implementations
+- Test edge cases, error conditions, and boundary values
+- Maintain a minimum of 80% code coverage for all new code
+- Run the full test suite before committing changes
+- Write both unit tests for individual components and integration tests
+- Use descriptive test names that explain what is being tested
+- Test the actual behavior users will experience, not just implementation details

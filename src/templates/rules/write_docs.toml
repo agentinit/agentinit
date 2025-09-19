@@ -1,0 +1,30 @@
+[template]
+id = "write_docs"
+name = "Documentation Requirements"
+description = "Ensure comprehensive documentation for all code"
+category = "documentation"
+priority = 2
+
+[[rules]]
+text = "Document all public APIs, functions, and classes with clear descriptions"
+
+[[rules]]
+text = "Include practical usage examples in documentation"
+
+[[rules]]
+text = "Update README.md when adding new features or changing functionality"
+
+[[rules]]
+text = "Add inline comments for complex logic and algorithms"
+
+[[rules]]
+text = "Maintain a CHANGELOG.md for user-facing changes"
+
+[[rules]]
+text = "Document configuration options and environment variables"
+
+[[rules]]
+text = "Include error handling and troubleshooting information"
+
+[[rules]]
+text = "Write documentation before or alongside code implementation"

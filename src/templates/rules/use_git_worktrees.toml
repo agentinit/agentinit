@@ -1,0 +1,30 @@
+[template]
+id = "use_git_worktrees"
+name = "Git Worktrees Workflow"
+description = "Use Git worktrees for parallel development"
+category = "workflow"
+priority = 3
+
+[[rules]]
+text = "Use git worktrees for parallel development of different features"
+
+[[rules]]
+text = "Keep the main branch clean and stable in the primary worktree"
+
+[[rules]]
+text = "Create separate worktrees for feature branches: `git worktree add ../feature-branch`"
+
+[[rules]]
+text = "Clean up worktrees after merging: `git worktree remove ../feature-branch`"
+
+[[rules]]
+text = "Never modify files across different worktrees simultaneously"
+
+[[rules]]
+text = "Use `git worktree list` to see all active worktrees"
+
+[[rules]]
+text = "Each worktree should have its own purpose (feature, hotfix, experiment)"
+
+[[rules]]
+text = "Switch context by changing directories rather than switching branches"

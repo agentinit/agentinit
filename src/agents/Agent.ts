@@ -1,11 +1,14 @@
 import { resolve } from 'path';
-import { fileExists } from '../utils/fs.js';
+import { pathExists } from '../utils/fs.js';
 import { getFullGlobalConfigPath } from '../utils/paths.js';
+import { RulesApplicator } from '../core/rulesApplicator.js';
 import type { 
   AgentDefinition, 
   MCPServerConfig, 
-  AgentDetectionResult 
+  AgentDetectionResult,
+  ConfigFileDefinition
 } from '../types/index.js';
+import type { AppliedRules, RuleApplicationResult, RuleSection } from '../types/rules.js';
 
 /**
  * Abstract base class for AI coding agents
@@ -42,8 +45,15 @@ export abstract class Agent {
   /**
    * Get the agent's configuration files to check for presence
    */
-  get configFiles(): string[] {
+  get configFiles(): ConfigFileDefinition[] {
     return this.definition.configFiles;
+  }
+
+  /**
+   * Get the agent's configuration file paths (backward compatibility)
+   */
+  get configFilePaths(): string[] {
+    return this.definition.configFiles.map(config => config.path);
   }
 
   /**
@@ -58,8 +68,8 @@ export abstract class Agent {
    */
   async detectPresence(projectPath: string): Promise<AgentDetectionResult | null> {
     for (const configFile of this.configFiles) {
-      const fullPath = resolve(projectPath, configFile);
-      if (await fileExists(fullPath)) {
+      const fullPath = resolve(projectPath, configFile.path);
+      if (await pathExists(fullPath, configFile.type)) {
         return {
           agent: this,
           configPath: fullPath
@@ -102,6 +112,14 @@ export abstract class Agent {
     projectPath: string, 
     servers: MCPServerConfig[]
   ): Promise<void>;
+
+  /**
+   * Get existing MCP servers from this agent's configuration
+   * Default implementation returns empty array - should be overridden by agents that support MCP
+   */
+  async getMCPServers(projectPath: string): Promise<MCPServerConfig[]> {
+    return [];
+  }
 
   /**
    * Apply MCP configuration to this agent's global config format
@@ -159,6 +177,65 @@ export abstract class Agent {
   transformMCPServers(servers: MCPServerConfig[]): MCPServerConfig[] {
     // Default: no transformations
     return servers;
+  }
+
+  /**
+   * Apply rules configuration to this agent's config file format
+   * Must be implemented by each specific agent
+   */
+  abstract applyRulesConfig(
+    configPath: string,
+    rules: AppliedRules,
+    existingContent: string
+  ): Promise<string>;
+
+  /**
+   * Extract existing rule texts from config content
+   * Must be implemented by each specific agent
+   */
+  abstract extractExistingRules(content: string): string[];
+
+  /**
+   * Extract existing rule sections from config content
+   * Must be implemented by each specific agent
+   */
+  abstract extractExistingSections(content: string): RuleSection[];
+
+  /**
+   * Generate rules content in this agent's format
+   * Must be implemented by each specific agent
+   */
+  abstract generateRulesContent(sections: RuleSection[]): string;
+
+  /**
+   * Apply rules configuration to this agent
+   */
+  async applyRules(
+    projectPath: string, 
+    rules: AppliedRules
+  ): Promise<RuleApplicationResult> {
+    const applicator = new RulesApplicator();
+    return applicator.applyRulesToAgent(this, rules, projectPath, false);
+  }
+
+  /**
+   * Apply rules configuration to this agent's global config
+   */
+  async applyGlobalRules(rules: AppliedRules): Promise<RuleApplicationResult> {
+    const applicator = new RulesApplicator();
+    
+    if (!this.supportsGlobalConfig()) {
+      return {
+        success: false,
+        rulesApplied: 0,
+        agent: this.name,
+        configPath: '',
+        errors: [`Agent ${this.name} does not support global configuration`]
+      };
+    }
+    
+    // Use empty string as project path for global config
+    return applicator.applyRulesToAgent(this, rules, '', true);
   }
 
   /**

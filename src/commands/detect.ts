@@ -37,10 +37,19 @@ export async function detectCommand(options: DetectOptions): Promise<void> {
     }
     
     logger.subtitle('🤖 Agent Configuration:');
-    if (agents.length === 0) {
-      logger.info('No existing agent configurations found');
+    
+    // Filter agents based on DEBUG environment variable
+    const isDebugMode = process.env.DEBUG === '1';
+    const filteredAgents = isDebugMode ? agents : agents.filter(agent => agent.detected);
+    
+    if (filteredAgents.length === 0) {
+      if (isDebugMode) {
+        logger.info('No agent configurations found');
+      } else {
+        logger.info('No existing agent configurations found');
+      }
     } else {
-      agents.forEach(agent => {
+      filteredAgents.forEach(agent => {
         logger.info(`${agent.name}: ${agent.detected ? '✓ Found' : '✗ Not found'}`);
         if (options.verbose) {
           agent.files.forEach(file => logger.debug(`  - ${file}`));

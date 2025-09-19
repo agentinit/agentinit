@@ -1,0 +1,30 @@
+[template]
+id = "use_linter"
+name = "Enforce Linting"
+description = "Ensure code quality through consistent linting practices"
+category = "quality"
+priority = 1
+
+[[rules]]
+text = "Run the project's linter before committing any code changes"
+
+[[rules]]
+text = "Fix all linter errors and warnings before proceeding"
+
+[[rules]]
+text = "Use the project's existing linter configuration without modification"
+
+[[rules]]
+text = "Run code formatters (prettier, black, gofmt, etc.) to maintain consistent style"
+
+[[rules]]
+text = "Ensure all code passes CI linting checks before pushing"
+
+[[rules]]
+text = "Install and configure linting tools if not already present"
+
+[[rules]]
+text = "Follow language-specific linting best practices"
+
+[[rules]]
+text = "Don't disable linting rules without proper justification"
