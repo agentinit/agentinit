@@ -254,7 +254,7 @@ export class ClaudeAgent extends Agent {
         for (const [name, serverConfig] of Object.entries(config.mcpServers) as [string, any][]) {
           const server: MCPServerConfig = {
             name,
-            type: serverConfig.type as MCPServerType,
+            type: (serverConfig.type || (serverConfig.command ? 'stdio' : serverConfig.type)) as MCPServerType,
           };
 
           if (serverConfig.command) {

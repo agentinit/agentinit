@@ -4,18 +4,6 @@ import { MCPServerType, type MCPServerConfig } from '../../src/types/index.js';
 import { promises as fs } from 'fs';
 import { resolve } from 'path';
 
-// Mock the fs module
-vi.mock('fs', () => ({
-  promises: {
-    access: vi.fn(),
-    readFile: vi.fn(),
-    writeFile: vi.fn(),
-    mkdir: vi.fn(),
-  }
-}));
-
-const mockFs = fs as any;
-
 describe('CodexCliAgent', () => {
   let agent: CodexCliAgent;
   const testProjectPath = '/test/project';
@@ -23,6 +11,10 @@ describe('CodexCliAgent', () => {
   beforeEach(() => {
     agent = new CodexCliAgent();
     vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   describe('constructor', () => {
@@ -51,7 +43,7 @@ describe('CodexCliAgent', () => {
 
   describe('detectPresence', () => {
     it('should detect agent when .codex/config.toml exists', async () => {
-      mockFs.access.mockResolvedValueOnce(undefined);
+      const accessSpy = vi.spyOn(fs, 'access').mockResolvedValueOnce(undefined);
       
       const result = await agent.detectPresence(testProjectPath);
       
@@ -61,7 +53,7 @@ describe('CodexCliAgent', () => {
     });
 
     it('should return null when config file does not exist', async () => {
-      mockFs.access.mockRejectedValue(new Error('not found'));
+      const accessSpy = vi.spyOn(fs, 'access').mockRejectedValue(new Error('not found'));
       
       const result = await agent.detectPresence(testProjectPath);
       
@@ -220,19 +212,19 @@ describe('CodexCliAgent', () => {
         }
       ];
 
-      mockFs.readFile.mockRejectedValueOnce(new Error('File not found'));
-      mockFs.mkdir.mockResolvedValueOnce('');
-      mockFs.writeFile.mockResolvedValueOnce(undefined);
+      const readFileSpy = vi.spyOn(fs, 'readFile').mockRejectedValueOnce(new Error('File not found'));
+      const mkdirSpy = vi.spyOn(fs, 'mkdir').mockImplementation(async () => undefined);
+      const writeFileSpy = vi.spyOn(fs, 'writeFile').mockResolvedValueOnce(undefined);
 
       await agent.applyMCPConfig(testProjectPath, servers);
 
-      expect(mockFs.writeFile).toHaveBeenCalledWith(
+      expect(writeFileSpy).toHaveBeenCalledWith(
         resolve(testProjectPath, '.codex/config.toml'),
         expect.stringContaining('# Codex CLI MCP Configuration'),
         'utf8'
       );
 
-      const writtenConfig = (mockFs.writeFile as any).mock.calls[0][1];
+      const writtenConfig = writeFileSpy.mock.calls[0]![1];
       expect(writtenConfig).toContain('Generated automatically by agentinit');
       expect(writtenConfig).toContain('Remote MCPs are automatically converted');
       expect(writtenConfig).toContain('[mcp_servers.test-server]');
@@ -254,13 +246,13 @@ args = ["--test"]
         }
       ];
 
-      mockFs.readFile.mockResolvedValueOnce(existingToml);
-      mockFs.mkdir.mockResolvedValueOnce('');
-      mockFs.writeFile.mockResolvedValueOnce(undefined);
+      const readFileSpy = vi.spyOn(fs, 'readFile').mockResolvedValueOnce(existingToml);
+      const mkdirSpy = vi.spyOn(fs, 'mkdir').mockImplementation(async () => undefined);
+      const writeFileSpy = vi.spyOn(fs, 'writeFile').mockResolvedValueOnce(undefined);
 
       await agent.applyMCPConfig(testProjectPath, servers);
 
-      const writtenConfig = (mockFs.writeFile as any).mock.calls[0][1];
+      const writtenConfig = writeFileSpy.mock.calls[0]![1];
       expect(writtenConfig).toContain('[mcp_servers.existing]');
       expect(writtenConfig).toContain('[mcp_servers.new-server]');
     });

@@ -12,7 +12,7 @@ const program = new Command();
 program
   .name('agentinit')
   .description('A CLI tool for managing and configuring AI coding agents')
-  .version('0.1.0');
+  .version('1.0.1');
 
 program
   .command('apply')

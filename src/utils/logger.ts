@@ -22,6 +22,10 @@ export class Logger {
     console.log(yellow('⚠'), message);
   }
 
+  warn(message: string): void {
+    this.warning(message);
+  }
+
   error(message: string): void {
     console.log(red('✗'), message);
   }

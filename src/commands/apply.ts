@@ -373,7 +373,7 @@ export async function applyCommand(args: string[]): Promise<void> {
       
       mcpParsed.servers.forEach(server => {
         logger.info(`  • ${server.name} (${server.type.toUpperCase()})`);
-        if (server.type === MCPServerType.STDIO && server.command) {
+        if (server.type === 'stdio' && server.command) {
           logger.info(`    Command: ${server.command} ${server.args?.join(' ') || ''}`);
         } else if (server.url) {
           logger.info(`    URL: ${server.url}`);

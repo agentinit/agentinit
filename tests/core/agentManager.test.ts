@@ -242,7 +242,7 @@ describe('AgentManager', () => {
         id: 'custom',
         name: 'Custom Agent',
         capabilities: { mcp: { stdio: true, http: false, sse: false }, rules: false, hooks: false, commands: false, subagents: false, statusline: false },
-        configFiles: ['.custom/config.json'],
+        configFiles: [{ path: '.custom/config.json', purpose: 'detection', format: 'json', type: 'file' }],
         nativeConfigPath: '.custom/config.json',
         detectPresence: vi.fn(),
         applyMCPConfig: vi.fn(),

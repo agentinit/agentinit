@@ -27,3 +27,33 @@ Ensure all code passes CI linting checks before pushing
 Install and configure linting tools if not already present
 Follow language-specific linting best practices
 Don't disable linting rules without proper justification
+
+# Documentation Requirements
+Document all public APIs, functions, and classes with clear descriptions
+Include practical usage examples in documentation
+Update README.md when adding new features or changing functionality
+Add inline comments for complex logic and algorithms
+Maintain a CHANGELOG.md for user-facing changes
+Document configuration options and environment variables
+Include error handling and troubleshooting information
+Write documentation before or alongside code implementation
+
+# Git Worktrees Workflow
+Use git worktrees for parallel development of different features
+Keep the main branch clean and stable in the primary worktree
+Create separate worktrees for feature branches: `git worktree add ../feature-branch`
+Clean up worktrees after merging: `git worktree remove ../feature-branch`
+Never modify files across different worktrees simultaneously
+Use `git worktree list` to see all active worktrees
+Each worktree should have its own purpose (feature, hotfix, experiment)
+Switch context by changing directories rather than switching branches
+
+# Use Subagents
+Break complex tasks into smaller, manageable subtasks
+Delegate code review tasks to the Code Reviewer subagent
+Use the QA Engineer subagent for test coverage and quality assurance
+Coordinate between subagents to ensure consistent approach
+Let specialized subagents handle their domain expertise areas
+Use subagents for parallel work on independent components
+Provide clear context and requirements to subagents
+Review and integrate subagent outputs before finalizing

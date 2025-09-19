@@ -4,20 +4,27 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { countTokens } from 'contextcalc';
 import { green, yellow, red } from 'kleur/colors';
+import { MCPServerType } from '../types/index.js';
 import type { 
   MCPServerConfig, 
   MCPVerificationResult, 
   MCPCapabilities,
   MCPTool,
   MCPResource,
-  MCPPrompt,
-  MCPServerType
+  MCPPrompt
 } from '../types/index.js';
 
 export class MCPVerificationError extends Error {
   constructor(message: string, public readonly serverName: string) {
     super(message);
     this.name = 'MCPVerificationError';
+  }
+}
+
+export class TimeoutError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'TimeoutError';
   }
 }
 
@@ -75,26 +82,46 @@ export class MCPVerifier {
   async verifyServer(server: MCPServerConfig, timeout?: number): Promise<MCPVerificationResult> {
     const startTime = Date.now();
     const timeoutMs = timeout || this.defaultTimeout;
+    const abortController = new AbortController();
+    let client: Client | null = null;
+    let transport: any = null;
 
     try {
       // Create the appropriate transport based on server type
-      const transport = await this.createTransport(server);
+      transport = await this.createTransport(server);
       
       // Create the MCP client
-      const client = new Client({
+      client = new Client({
         name: "agentinit-verifier",
         version: "1.0.0"
       });
 
-      // Set up timeout promise
+      // Set up timeout promise that properly cancels resources
       const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => {
-          reject(new Error(`Connection timeout after ${timeoutMs}ms`));
+        const timeoutId = setTimeout(async () => {
+          abortController.abort();
+          // Cleanup resources on timeout
+          try {
+            if (client) {
+              await client.close();
+            }
+            if (transport && typeof transport.close === 'function') {
+              await transport.close();
+            }
+          } catch (cleanupError) {
+            // Ignore cleanup errors
+          }
+          reject(new TimeoutError(`Connection timeout after ${timeoutMs}ms`));
         }, timeoutMs);
+        
+        // Clear timeout if operation completes before timeout
+        abortController.signal.addEventListener('abort', () => {
+          clearTimeout(timeoutId);
+        });
       });
 
       // Connect to the server with timeout
-      const connectPromise = this.connectAndVerify(client, transport, server);
+      const connectPromise = this.connectAndVerify(client, transport, server, abortController.signal);
       
       const capabilities = await Promise.race([connectPromise, timeoutPromise]);
       const connectionTime = Date.now() - startTime;
@@ -109,13 +136,27 @@ export class MCPVerifier {
     } catch (error) {
       const connectionTime = Date.now() - startTime;
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const isTimeout = error instanceof TimeoutError || connectionTime >= timeoutMs;
       
       return {
         server,
-        status: connectionTime >= timeoutMs ? 'timeout' : 'error',
+        status: isTimeout ? 'timeout' : 'error',
         error: errorMessage,
         connectionTime
       };
+    } finally {
+      // Ensure cleanup happens in all cases
+      abortController.abort();
+      try {
+        if (client) {
+          await client.close();
+        }
+        if (transport && typeof transport.close === 'function') {
+          await transport.close();
+        }
+      } catch (cleanupError) {
+        // Ignore cleanup errors
+      }
     }
   }
 
@@ -149,7 +190,7 @@ export class MCPVerifier {
    */
   private async createTransport(server: MCPServerConfig) {
     switch (server.type) {
-      case 'stdio':
+      case MCPServerType.STDIO: {
         if (!server.command) {
           throw new MCPVerificationError('STDIO server missing command', server.name);
         }
@@ -170,14 +211,15 @@ export class MCPVerifier {
           env: server.env ? { ...cleanEnv, ...server.env } : cleanEnv,
           stderr: isDebugMode ? 'inherit' : 'ignore'
         });
+      }
 
-      case 'http':
+      case MCPServerType.HTTP:
         if (!server.url) {
           throw new MCPVerificationError('HTTP server missing URL', server.name);
         }
         return new StreamableHTTPClientTransport(new URL(server.url));
 
-      case 'sse':
+      case MCPServerType.SSE:
         if (!server.url) {
           throw new MCPVerificationError('SSE server missing URL', server.name);
         }
@@ -194,9 +236,15 @@ export class MCPVerifier {
   private async connectAndVerify(
     client: Client, 
     transport: any, 
-    server: MCPServerConfig
+    server: MCPServerConfig,
+    abortSignal?: AbortSignal
   ): Promise<MCPCapabilities> {
     try {
+      // Check if operation was aborted before starting
+      if (abortSignal?.aborted) {
+        throw new Error('Operation aborted');
+      }
+      
       // Connect to the server
       await client.connect(transport);
 
@@ -206,6 +254,11 @@ export class MCPVerifier {
         version: "unknown",
         protocolVersion: "unknown"
       };
+
+      // Check for abort before continuing
+      if (abortSignal?.aborted) {
+        throw new Error('Operation aborted');
+      }
 
       // List tools
       const tools: MCPTool[] = [];
@@ -221,6 +274,11 @@ export class MCPVerifier {
         // Tools might not be supported, continue
       }
 
+      // Check for abort before continuing
+      if (abortSignal?.aborted) {
+        throw new Error('Operation aborted');
+      }
+
       // List resources
       const resources: MCPResource[] = [];
       try {
@@ -234,6 +292,11 @@ export class MCPVerifier {
         }));
       } catch (error) {
         // Resources might not be supported, continue
+      }
+
+      // Check for abort before continuing
+      if (abortSignal?.aborted) {
+        throw new Error('Operation aborted');
       }
 
       // List prompts
@@ -343,7 +406,19 @@ export class MCPVerifier {
         if (server.type === 'stdio' && server.command) {
           output.push(`   Command: ${server.command} ${server.args?.join(' ') || ''}`);
         } else if (server.url) {
-          output.push(`   URL: ${server.url}`);
+          // Sanitize URL to remove credentials and sensitive query parameters
+          let sanitizedUrl: string;
+          try {
+            const parsedUrl = new URL(server.url);
+            parsedUrl.username = '';
+            parsedUrl.password = '';
+            parsedUrl.search = ''; // Remove query parameters
+            sanitizedUrl = parsedUrl.toString();
+          } catch (error) {
+            // Fallback to just host+pathname if URL parsing fails
+            sanitizedUrl = server.url.split('?')[0] || 'invalid-url';
+          }
+          output.push(`   URL: ${sanitizedUrl}`);
         }
       }
       

@@ -99,7 +99,6 @@ Verify MCP server installations and list their capabilities.
 ```bash
 agentinit verify_mcp --all              # Verify all configured MCP servers
 agentinit verify_mcp --mcp-name <name>  # Verify specific MCP server
-agentinit verify_mcp --timeout <ms>     # Custom timeout (default: 10000ms)
 ```
 
 **Examples:**
@@ -110,11 +109,10 @@ agentinit verify_mcp --all
 # Verify specific server
 agentinit verify_mcp --mcp-name everything
 
-# Increase timeout for slow servers
-agentinit verify_mcp --all --timeout 15000
-
 # Test MCP configuration directly
 agentinit verify_mcp --mcp-stdio everything "npx -y @modelcontextprotocol/server-everything"
+
+agentinit verify_mcp --mcp-http
 ```
 
 Shows connection status, response time, and available tools/resources/prompts for each MCP server.
