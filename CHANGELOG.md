@@ -1,3 +1,21 @@
+# [1.1.0](https://github.com/agentinit/agentinit/compare/v1.0.1...v1.1.0) (2025-09-19)
+
+
+### Bug Fixes
+
+* resolve all TypeScript compilation errors ([6b8535e](https://github.com/agentinit/agentinit/commit/6b8535e89e5e701587199fce519bd4d449d186e3))
+* tests fix, enhance gitignore ([47ae616](https://github.com/agentinit/agentinit/commit/47ae616559a144ae1c2025060cffeefde494baac))
+
+
+### Features
+
+* add apply cmd ([c813d82](https://github.com/agentinit/agentinit/commit/c813d829aa0ef51029516f9e35af752efbb006e0))
+* add DEBUG=1 flag to show all agents in detect command ([5b6527b](https://github.com/agentinit/agentinit/commit/5b6527bf0174f23be15a9795bb617e303283f5af))
+* add MCP verification with token counting and DEBUG mode support ([b785530](https://github.com/agentinit/agentinit/commit/b78553073756719f40699591f2915190451fa285))
+* add structured config file definitions and Cursor MDC support ([9af939c](https://github.com/agentinit/agentinit/commit/9af939c8102810d8f0a1d562fe5d561cf62af230))
+* enhance MCP verification and project configuration ([8af8a09](https://github.com/agentinit/agentinit/commit/8af8a09a974c2f0f6075fda60e72c120517af13a))
+* less commands ([f5b0795](https://github.com/agentinit/agentinit/commit/f5b07958f3296aa74e1d378d3e66fcf2146a6c00))
+
 ## [1.0.1](https://github.com/agentinit/agentinit/compare/v1.0.0...v1.0.1) (2025-09-06)
 
 
