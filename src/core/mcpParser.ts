@@ -172,7 +172,7 @@ export class MCPParser {
       headers: {}
     };
 
-    // Look for --auth modifier
+    // Look for --auth and --header modifiers
     while (i < args.length) {
       const nextArg = args[i];
       if (!nextArg) {
@@ -187,6 +187,19 @@ export class MCPParser {
             server.headers!['Authorization'] = authHeader;
           } else {
             server.headers!['Authorization'] = `Bearer ${authHeader}`;
+          }
+        }
+        i += 2;
+      } else if (nextArg === '--header' && i + 1 < args.length) {
+        const headerStr = args[i + 1];
+        if (headerStr) {
+          const colonIndex = headerStr.indexOf(':');
+          if (colonIndex > 0 && colonIndex < headerStr.length - 1) {
+            const key = headerStr.substring(0, colonIndex).trim();
+            const value = headerStr.substring(colonIndex + 1).trim();
+            if (key && value) {
+              server.headers![key] = value;
+            }
           }
         }
         i += 2;

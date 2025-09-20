@@ -142,10 +142,32 @@ npx agentinit apply \
 npx agentinit apply \
   --mcp-http github "https://api.githubcopilot.com/mcp/" --auth "Bearer YOUR_GITHUB_PAT"
 
+# Configure HTTP MCP with custom headers
+npx agentinit apply \
+  --mcp-http context7 "https://mcp.context7.com/mcp" \
+  --header "CONTEXT7_API_KEY:YOUR_API_KEY"
+
+# Multiple custom headers
+npx agentinit apply \
+  --mcp-http api_server "https://api.example.com/mcp" \
+  --header "X-API-Key:YOUR_API_KEY" \
+  --header "X-Client-ID:YOUR_CLIENT_ID"
+
+# Combine Bearer auth with custom headers
+npx agentinit apply \
+  --mcp-http advanced_api "https://api.example.com/mcp" \
+  --auth "Bearer YOUR_TOKEN" \
+  --header "X-Custom-Header:custom_value"
+
 # Configure Docker-based MCP with environment
 npx agentinit apply \
   --mcp-stdio browserbase "docker run -i --rm ghcr.io/metorial/mcp-container--browserbase--mcp-server-browserbase--browserbase node cli.js" \
   --env "BROWSERBASE_API_KEY=browserbase-api-key"
+
+# Global configuration with custom headers
+npx agentinit apply --global --client claude \
+  --mcp-http context7 "https://mcp.context7.com/mcp" \
+  --header "CONTEXT7_API_KEY:YOUR_API_KEY"
 
 # Verify MCPs immediately after configuration
 npx agentinit apply --verify-mcp \
@@ -153,6 +175,11 @@ npx agentinit apply --verify-mcp \
 ```
 
 This generates `.agentinit/agentinit.toml` with your MCP configurations.
+
+**MCP Authentication Options**:
+- `--auth "Bearer TOKEN"` - Adds Authorization header for Bearer token authentication
+- `--header "KEY:VALUE"` - Adds custom headers in KEY:VALUE format (can be used multiple times)
+- Both flags can be combined for APIs requiring multiple authentication methods
 
 **MCP Verification**: Use the `--verify-mcp` flag to test MCP servers immediately after configuration. This ensures servers are reachable and shows their available tools, resources, and prompts.
 

@@ -105,6 +105,10 @@ export async function applyCommand(args: string[]): Promise<void> {
     logger.info('  agentinit apply --client claude \\');
     logger.info('    --mcp-http github "https://api.githubcopilot.com/mcp/" --auth "Bearer YOUR_GITHUB_PAT"');
     logger.info('');
+    logger.info('  # HTTP MCP with custom headers');
+    logger.info('  agentinit apply --global --client claude \\');
+    logger.info('    --mcp-http context7 "https://mcp.context7.com/mcp" --header "CONTEXT7_API_KEY:your_api_key"');
+    logger.info('');
     logger.info('  # Multiple MCPs with auto-detection');
     logger.info('  agentinit apply \\');
     logger.info('    --mcp-stdio supabase "npx -y @supabase/mcp-server-supabase@latest" \\');
@@ -131,9 +135,9 @@ export async function applyCommand(args: string[]): Promise<void> {
     const mcpArgs = args.filter((arg, index) => {
       // Filter out non-MCP arguments
       if (arg === '--client' || arg === '--agent' || arg === '--global' || arg === '--verify-mcp') return false;
-      if (arg === '--rules' || arg === '--rule-raw' || arg === '--rules-file' || arg === '--rules-remote' || arg === '--auth') return false;
+      if (arg === '--rules' || arg === '--rule-raw' || arg === '--rules-file' || arg === '--rules-remote') return false;
       if (index > 0 && (args[index - 1] === '--client' || args[index - 1] === '--agent')) return false;
-      if (index > 0 && (args[index - 1] === '--rules' || args[index - 1] === '--rule-raw' || args[index - 1] === '--rules-file' || args[index - 1] === '--rules-remote' || args[index - 1] === '--auth')) return false;
+      if (index > 0 && (args[index - 1] === '--rules' || args[index - 1] === '--rule-raw' || args[index - 1] === '--rules-file' || args[index - 1] === '--rules-remote')) return false;
       return true;
     });
     

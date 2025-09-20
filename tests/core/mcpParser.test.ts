@@ -85,6 +85,97 @@ describe('MCPParser', () => {
       });
     });
 
+    it('should parse HTTP MCP with header modifier', () => {
+      const args = [
+        '--mcp-http', 'context7', 'https://mcp.context7.com/mcp',
+        '--header', 'CONTEXT7_API_KEY:ctx7sk-fb092f73-0fe1-4725-85b9-8e2ca1db344f'
+      ];
+      const result = MCPParser.parseArguments(args);
+      
+      expect(result.servers).toHaveLength(1);
+      expect(result.servers[0]).toEqual({
+        name: 'context7',
+        type: MCPServerType.HTTP,
+        url: 'https://mcp.context7.com/mcp',
+        headers: {
+          'CONTEXT7_API_KEY': 'ctx7sk-fb092f73-0fe1-4725-85b9-8e2ca1db344f'
+        }
+      });
+    });
+
+    it('should parse HTTP MCP with multiple headers', () => {
+      const args = [
+        '--mcp-http', 'api', 'https://api.example.com/mcp',
+        '--header', 'X-API-Key:abc123',
+        '--header', 'X-User-ID:user456'
+      ];
+      const result = MCPParser.parseArguments(args);
+      
+      expect(result.servers).toHaveLength(1);
+      expect(result.servers[0]).toEqual({
+        name: 'api',
+        type: MCPServerType.HTTP,
+        url: 'https://api.example.com/mcp',
+        headers: {
+          'X-API-Key': 'abc123',
+          'X-User-ID': 'user456'
+        }
+      });
+    });
+
+    it('should parse HTTP MCP with both auth and header', () => {
+      const args = [
+        '--mcp-http', 'mixed', 'https://api.example.com/mcp',
+        '--auth', 'Bearer token123',
+        '--header', 'X-Custom-Header:custom-value'
+      ];
+      const result = MCPParser.parseArguments(args);
+      
+      expect(result.servers).toHaveLength(1);
+      expect(result.servers[0]).toEqual({
+        name: 'mixed',
+        type: MCPServerType.HTTP,
+        url: 'https://api.example.com/mcp',
+        headers: {
+          'Authorization': 'Bearer token123',
+          'X-Custom-Header': 'custom-value'
+        }
+      });
+    });
+
+    it('should ignore malformed header (no colon)', () => {
+      const args = [
+        '--mcp-http', 'context7', 'https://mcp.context7.com/mcp',
+        '--header', 'MALFORMED_HEADER_NO_COLON'
+      ];
+      const result = MCPParser.parseArguments(args);
+      
+      expect(result.servers).toHaveLength(1);
+      expect(result.servers[0]).toEqual({
+        name: 'context7',
+        type: MCPServerType.HTTP,
+        url: 'https://mcp.context7.com/mcp',
+        headers: {}
+      });
+    });
+
+    it('should ignore header with empty key or value', () => {
+      const args = [
+        '--mcp-http', 'context7', 'https://mcp.context7.com/mcp',
+        '--header', ':value-without-key',
+        '--header', 'key-without-value:'
+      ];
+      const result = MCPParser.parseArguments(args);
+      
+      expect(result.servers).toHaveLength(1);
+      expect(result.servers[0]).toEqual({
+        name: 'context7',
+        type: MCPServerType.HTTP,
+        url: 'https://mcp.context7.com/mcp',
+        headers: {}
+      });
+    });
+
     it('should parse valid SSE MCP with name and URL', () => {
       const args = ['--mcp-sse', 'events', 'https://mcp.notion.com/sse'];
       const result = MCPParser.parseArguments(args);

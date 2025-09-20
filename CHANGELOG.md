@@ -1,3 +1,9 @@
+# [1.1.1](https://github.com/agentinit/agentinit/compare/v1.1.0...v1.1.1) (TBD)
+
+### Features
+
+* add --header flag support for HTTP MCP custom headers ([COMMIT_HASH](https://github.com/agentinit/agentinit/commit/COMMIT_HASH))
+
 # [1.1.0](https://github.com/agentinit/agentinit/compare/v1.0.1...v1.1.0) (2025-09-19)
 
 
