@@ -1,3 +1,10 @@
+## [1.2.1](https://github.com/agentinit/agentinit/compare/v1.2.0...v1.2.1) (2025-09-20)
+
+
+### Bug Fixes
+
+* upd package ([06fa82f](https://github.com/agentinit/agentinit/commit/06fa82fb67e296e85330806084ecea12f6916f05))
+
 # [1.2.0](https://github.com/agentinit/agentinit/compare/v1.1.0...v1.2.0) (2025-09-20)
 
 
