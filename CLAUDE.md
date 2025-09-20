@@ -112,6 +112,13 @@ This is a typescript project. The codebase follows modern development practices 
 - Break down large tasks into smaller, manageable steps
 - Use Claude's code analysis capabilities effectively
 
+## Release Management
+
+- **CHANGELOG.md is automatically managed** by semantic-release
+- Do NOT manually edit CHANGELOG.md - it will be overwritten during releases
+- The CI/CD pipeline updates CHANGELOG.md based on conventional commit messages
+- Use conventional commit format for all commits to ensure proper changelog generation
+
 ## Rules System
 
 AgentInit provides a rules system to apply coding best practices and standards. Rules can be applied using:
