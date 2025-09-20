@@ -8,7 +8,7 @@
     "agentinit": "dist/index.js"
   },
   "scripts": {
-    "build": "bun build src/index.ts --outdir dist --target node && cp -r src/templates dist/",
+    "build": "bun build src/index.ts --outdir dist --target node --external tiktoken && cp -r src/templates dist/",
     "dev": "bun run src/index.ts",
     "test": "vitest run",
     "test:watch": "vitest",
