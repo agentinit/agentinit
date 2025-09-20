@@ -1,3 +1,15 @@
+# [1.2.0](https://github.com/agentinit/agentinit/compare/v1.1.0...v1.2.0) (2025-09-20)
+
+
+### Bug Fixes
+
+* pckg lock ([ed4acbb](https://github.com/agentinit/agentinit/commit/ed4acbbc27c6342a109c81b91e6a23f264de1b9f))
+
+
+### Features
+
+* add --header flag support for HTTP MCP custom headers ([45a065f](https://github.com/agentinit/agentinit/commit/45a065f3b3876056acc76df4291db1808b94040a))
+
 # [1.1.1](https://github.com/agentinit/agentinit/compare/v1.1.0...v1.1.1) (TBD)
 
 ### Features
