@@ -1,6 +1,9 @@
 .claude
 node_modules
 
+# Bun lock file (use npm for CI/CD compatibility)
+bun.lock
+
 
 # Dependency directories
 node_modules/
