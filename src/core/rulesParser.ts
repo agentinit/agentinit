@@ -2,6 +2,7 @@ import { readFileSync } from 'fs';
 import { fileExists } from '../utils/fs.js';
 import { RulesTemplateLoader } from './rulesTemplateLoader.js';
 import type { RulesConfig, AppliedRules, RemoteRulesOptions } from '../types/rules.js';
+import { DEFAULT_CONNECTION_TIMEOUT_MS } from '../constants/index.js';
 
 export class RulesParseError extends Error {
   constructor(message: string) {
@@ -191,7 +192,7 @@ export class RulesParser {
       }
 
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), options.timeout || 10000);
+      const timeoutId = setTimeout(() => controller.abort(), options.timeout || DEFAULT_CONNECTION_TIMEOUT_MS);
 
       const response = await fetch(options.url, {
         headers,
