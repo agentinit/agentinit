@@ -24,7 +24,7 @@ export async function verifyMcpCommand(args: string[]): Promise<void> {
   const timeoutIndex = args.findIndex(arg => arg === '--timeout');
   const timeoutArg = timeoutIndex >= 0 && timeoutIndex + 1 < args.length ? args[timeoutIndex + 1] : null;
   const parsedTimeout = timeoutArg ? parseInt(timeoutArg, 10) : NaN;
-  const timeout = timeoutArg && !Number.isNaN(parsedTimeout) && Number.isFinite(parsedTimeout) ? parsedTimeout : undefined;
+  const timeout = timeoutArg && Number.isFinite(parsedTimeout) && parsedTimeout > 0 ? parsedTimeout : undefined;
   
   // Check if MCP configuration arguments are present
   const hasMcpArgs = args.some(arg => arg.startsWith('--mcp-'));

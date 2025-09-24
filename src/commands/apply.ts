@@ -35,8 +35,7 @@ interface ApplyResult {
 function colorizeTokenCount(tokenCount: number): string {
   if (tokenCount <= TOKEN_COUNT_THRESHOLDS.LOW) return green(tokenCount.toString());
   if (tokenCount <= TOKEN_COUNT_THRESHOLDS.MEDIUM) return yellow(tokenCount.toString());
-  if (tokenCount <= 30000) return red(tokenCount.toString()); // Light red approximated with red
-  return red(tokenCount.toString()); // Red for >30k
+  return red(tokenCount.toString());
 }
 
 function colorizeTokenDiff(diff: number): string {
@@ -70,7 +69,7 @@ export async function applyCommand(args: string[]): Promise<void> {
   const timeoutIndex = args.findIndex(arg => arg === '--timeout');
   const timeoutArg = timeoutIndex >= 0 && timeoutIndex + 1 < args.length ? args[timeoutIndex + 1] : null;
   const parsedTimeout = timeoutArg ? parseInt(timeoutArg, 10) : NaN;
-  const timeout = timeoutArg && !Number.isNaN(parsedTimeout) && Number.isFinite(parsedTimeout) ? parsedTimeout : undefined;
+  const timeout = timeoutArg && Number.isFinite(parsedTimeout) && parsedTimeout > 0 ? parsedTimeout : undefined;
   
   if (!hasMcpArgs && !hasRulesArgs) {
     logger.info('Usage: agentinit apply [options]');
