@@ -1,3 +1,16 @@
+# [1.3.0](https://github.com/agentinit/agentinit/compare/v1.2.1...v1.3.0) (2025-09-24)
+
+
+### Bug Fixes
+
+* address review comments ([e337f07](https://github.com/agentinit/agentinit/commit/e337f072bd41794756c72a3cdba96ebaff033e5f))
+* address review comments ([6be5b93](https://github.com/agentinit/agentinit/commit/6be5b937ec6fcbf924ea93f378156ba44a46b9d5))
+
+
+### Features
+
+* centralize constants and add timeout support to apply command ([d35a6fc](https://github.com/agentinit/agentinit/commit/d35a6fc2dd76923c82ca7f26b4503260f25e944f))
+
 ## [1.2.1](https://github.com/agentinit/agentinit/compare/v1.2.0...v1.2.1) (2025-09-20)
 
 
