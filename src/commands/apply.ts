@@ -387,7 +387,17 @@ export async function applyCommand(args: string[]): Promise<void> {
         if (server.type === 'stdio' && server.command) {
           logger.info(`    Command: ${server.command} ${server.args?.join(' ') || ''}`);
         } else if (server.url) {
-          logger.info(`    URL: ${server.url}`);
+          let sanitizedUrl: string;
+          try {
+            const parsedUrl = new URL(server.url);
+            parsedUrl.username = '';
+            parsedUrl.password = '';
+            parsedUrl.search = '';
+            sanitizedUrl = parsedUrl.toString();
+          } catch {
+            sanitizedUrl = server.url.split('?')[0] || 'invalid-url';
+          }
+          logger.info(`    URL: ${sanitizedUrl}`);
         }
       });
     }
