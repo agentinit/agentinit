@@ -1,6 +1,7 @@
 import ora from 'ora';
 import { logger } from '../utils/logger.js';
 import { MCPVerifier } from '../core/mcpClient.js';
+import { DEFAULT_CONNECTION_TIMEOUT_MS } from '../constants/index.js';
 import { MCPParser, MCPParseError } from '../core/mcpParser.js';
 import { AgentManager } from '../core/agentManager.js';
 import type { MCPServerConfig } from '../types/index.js';
@@ -23,7 +24,7 @@ export async function verifyMcpCommand(args: string[]): Promise<void> {
   const timeoutIndex = args.findIndex(arg => arg === '--timeout');
   const timeoutArg = timeoutIndex >= 0 && timeoutIndex + 1 < args.length ? args[timeoutIndex + 1] : null;
   const parsedTimeout = timeoutArg ? parseInt(timeoutArg, 10) : NaN;
-  const timeout = timeoutArg && !Number.isNaN(parsedTimeout) && Number.isFinite(parsedTimeout) ? parsedTimeout : undefined;
+  const timeout = timeoutArg && Number.isFinite(parsedTimeout) && parsedTimeout > 0 ? parsedTimeout : undefined;
   
   // Check if MCP configuration arguments are present
   const hasMcpArgs = args.some(arg => arg.startsWith('--mcp-'));
@@ -45,7 +46,7 @@ export async function verifyMcpCommand(args: string[]): Promise<void> {
     logger.info('Verify existing configurations:');
     logger.info('  --mcp-name <name>    Verify specific MCP server by name');
     logger.info('  --all                Verify all configured MCP servers');
-    logger.info('  --timeout <ms>       Connection timeout in milliseconds (default: 10000)');
+    logger.info(`  --timeout <ms>       Connection timeout in milliseconds (default: ${DEFAULT_CONNECTION_TIMEOUT_MS})`);
     logger.info('');
     logger.info('Verify direct MCP configuration:');
     logger.info('  --mcp-stdio <name> <command>     Verify STDIO MCP server');

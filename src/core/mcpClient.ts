@@ -5,6 +5,7 @@ import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { countTokens } from 'contextcalc';
 import { green, yellow, red } from 'kleur/colors';
 import { MCPServerType } from '../types/index.js';
+import { DEFAULT_CONNECTION_TIMEOUT_MS, MCP_VERIFIER_CONFIG, TimeoutError, TOKEN_COUNT_THRESHOLDS } from '../constants/index.js';
 import type { 
   MCPServerConfig, 
   MCPVerificationResult, 
@@ -21,17 +22,11 @@ export class MCPVerificationError extends Error {
   }
 }
 
-export class TimeoutError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'TimeoutError';
-  }
-}
 
 export class MCPVerifier {
   private defaultTimeout: number;
 
-  constructor(defaultTimeout: number = 10000) {
+  constructor(defaultTimeout: number = DEFAULT_CONNECTION_TIMEOUT_MS) {
     this.defaultTimeout = defaultTimeout;
   }
 
@@ -39,8 +34,8 @@ export class MCPVerifier {
    * Color utility function for token display
    */
   private colorizeTokenCount(tokenCount: number): string {
-    if (tokenCount <= 5000) return green(tokenCount.toString());
-    if (tokenCount <= 15000) return yellow(tokenCount.toString());
+    if (tokenCount <= TOKEN_COUNT_THRESHOLDS.LOW) return green(tokenCount.toString());
+    if (tokenCount <= TOKEN_COUNT_THRESHOLDS.MEDIUM) return yellow(tokenCount.toString());
     return red(tokenCount.toString());
   }
 
@@ -92,8 +87,8 @@ export class MCPVerifier {
       
       // Create the MCP client
       client = new Client({
-        name: "agentinit-verifier",
-        version: "1.0.0"
+        name: MCP_VERIFIER_CONFIG.name,
+        version: MCP_VERIFIER_CONFIG.version
       });
 
       // Set up timeout promise that properly cancels resources

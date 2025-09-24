@@ -94,25 +94,16 @@ agentinit mcp --install <name>     # Install specific MCP
 
 ### `agentinit verify_mcp`
 
-Verify MCP server installations and list their capabilities.
-
-```bash
-agentinit verify_mcp --all              # Verify all configured MCP servers
-agentinit verify_mcp --mcp-name <name>  # Verify specific MCP server
-```
+Verify MCP server installations and get their tools with token usage.
 
 **Examples:**
 ```bash
 # Verify all MCPs in project
 agentinit verify_mcp --all
-
-# Verify specific server
-agentinit verify_mcp --mcp-name everything
-
-# Test MCP configuration directly
+# Verify STDIO server
 agentinit verify_mcp --mcp-stdio everything "npx -y @modelcontextprotocol/server-everything"
-
-agentinit verify_mcp --mcp-http
+# Verify HTTP server
+agentinit verify_mcp --mcp-http notion_api "https://mcp.notion.com/mcp"  --timeout 30000
 ```
 
 Shows connection status, response time, and available tools/resources/prompts for each MCP server.
@@ -181,7 +172,13 @@ This generates `.agentinit/agentinit.toml` with your MCP configurations.
 - `--header "KEY:VALUE"` - Adds custom headers in KEY:VALUE format (can be used multiple times)
 - Both flags can be combined for APIs requiring multiple authentication methods
 
-**MCP Verification**: Use the `--verify-mcp` flag to test MCP servers immediately after configuration. This ensures servers are reachable and shows their available tools, resources, and prompts.
+**MCP Verification**: Use the `--verify-mcp` flag to test MCP servers immediately after configuration. This ensures servers are reachable and shows their available tools, resources, and prompts. Use `--timeout <ms>` to set a custom connection timeout (default: 30000ms).
+
+```bash
+# Verify with custom timeout
+npx agentinit apply --verify-mcp --timeout 30000 \
+  --mcp-stdio chrome-mcp "bunx -y chrome-devtools-mcp@latest"
+```
 
 #### Rules Configuration
 

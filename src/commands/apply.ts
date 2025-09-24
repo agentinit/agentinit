@@ -2,6 +2,7 @@ import ora from 'ora';
 import { green, yellow, red, cyan } from 'kleur/colors';
 import { logger } from '../utils/logger.js';
 import { MCPParser, MCPParseError } from '../core/mcpParser.js';
+import { TOKEN_COUNT_THRESHOLDS, DEFAULT_CONNECTION_TIMEOUT_MS } from '../constants/index.js';
 import { RulesParser, RulesParseError } from '../core/rulesParser.js';
 import { TOMLGenerator } from '../core/tomlGenerator.js';
 import { readFileIfExists, writeFile, getAgentInitTomlPath } from '../utils/fs.js';
@@ -32,10 +33,9 @@ interface ApplyResult {
 
 // Color utility functions for token display
 function colorizeTokenCount(tokenCount: number): string {
-  if (tokenCount <= 5000) return green(tokenCount.toString());
-  if (tokenCount <= 15000) return yellow(tokenCount.toString());
-  if (tokenCount <= 30000) return red(tokenCount.toString()); // Light red approximated with red
-  return red(tokenCount.toString()); // Red for >30k
+  if (tokenCount <= TOKEN_COUNT_THRESHOLDS.LOW) return green(tokenCount.toString());
+  if (tokenCount <= TOKEN_COUNT_THRESHOLDS.MEDIUM) return yellow(tokenCount.toString());
+  return red(tokenCount.toString());
 }
 
 function colorizeTokenDiff(diff: number): string {
@@ -65,6 +65,12 @@ export async function applyCommand(args: string[]): Promise<void> {
   // Check if --verify-mcp flag is specified
   const verifyMcp = args.includes('--verify-mcp');
   
+  // Parse timeout argument
+  const timeoutIndex = args.findIndex(arg => arg === '--timeout');
+  const timeoutArg = timeoutIndex >= 0 && timeoutIndex + 1 < args.length ? args[timeoutIndex + 1] : null;
+  const parsedTimeout = timeoutArg ? parseInt(timeoutArg, 10) : NaN;
+  const timeout = timeoutArg && Number.isFinite(parsedTimeout) && parsedTimeout > 0 ? parsedTimeout : undefined;
+  
   if (!hasMcpArgs && !hasRulesArgs) {
     logger.info('Usage: agentinit apply [options]');
     logger.info('');
@@ -74,6 +80,7 @@ export async function applyCommand(args: string[]): Promise<void> {
     logger.info('  --global            Apply configuration globally (requires --agent)');
     logger.info('                      If not specified, auto-detects agents in the project');
     logger.info('  --verify-mcp        Verify MCP servers after configuration');
+    logger.info(`  --timeout <ms>      Connection timeout in milliseconds for MCP verification (default: ${DEFAULT_CONNECTION_TIMEOUT_MS})`);
     logger.info('');
     logger.info('Rules Configuration Options:');
     logger.info('  --rules <templates>     Apply rule templates (comma-separated)');
@@ -134,9 +141,9 @@ export async function applyCommand(args: string[]): Promise<void> {
     // Parse the MCP arguments (filter out --client, --agent, --global and rules args)
     const mcpArgs = args.filter((arg, index) => {
       // Filter out non-MCP arguments
-      if (arg === '--client' || arg === '--agent' || arg === '--global' || arg === '--verify-mcp') return false;
+      if (arg === '--client' || arg === '--agent' || arg === '--global' || arg === '--verify-mcp' || arg === '--timeout') return false;
       if (arg === '--rules' || arg === '--rule-raw' || arg === '--rules-file' || arg === '--rules-remote') return false;
-      if (index > 0 && (args[index - 1] === '--client' || args[index - 1] === '--agent')) return false;
+      if (index > 0 && (args[index - 1] === '--client' || args[index - 1] === '--agent' || args[index - 1] === '--timeout')) return false;
       if (index > 0 && (args[index - 1] === '--rules' || args[index - 1] === '--rule-raw' || args[index - 1] === '--rules-file' || args[index - 1] === '--rules-remote')) return false;
       return true;
     });
@@ -334,8 +341,8 @@ export async function applyCommand(args: string[]): Promise<void> {
       const verifySpinner = ora(`Verifying ${mcpParsed.servers.length} MCP server(s)...`).start();
       
       try {
-        const verifier = new MCPVerifier();
-        const verificationResults = await verifier.verifyServers(mcpParsed.servers);
+        const verifier = new MCPVerifier(timeout);
+        const verificationResults = await verifier.verifyServers(mcpParsed.servers, timeout);
         
         const successCount = verificationResults.filter(r => r.status === 'success').length;
         const errorCount = verificationResults.filter(r => r.status === 'error').length;
@@ -380,7 +387,17 @@ export async function applyCommand(args: string[]): Promise<void> {
         if (server.type === 'stdio' && server.command) {
           logger.info(`    Command: ${server.command} ${server.args?.join(' ') || ''}`);
         } else if (server.url) {
-          logger.info(`    URL: ${server.url}`);
+          let sanitizedUrl: string;
+          try {
+            const parsedUrl = new URL(server.url);
+            parsedUrl.username = '';
+            parsedUrl.password = '';
+            parsedUrl.search = '';
+            sanitizedUrl = parsedUrl.toString();
+          } catch {
+            sanitizedUrl = server.url.split('?')[0] || 'invalid-url';
+          }
+          logger.info(`    URL: ${sanitizedUrl}`);
         }
       });
     }

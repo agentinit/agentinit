@@ -2,6 +2,7 @@ import { readFileSync } from 'fs';
 import { fileExists } from '../utils/fs.js';
 import { RulesTemplateLoader } from './rulesTemplateLoader.js';
 import type { RulesConfig, AppliedRules, RemoteRulesOptions } from '../types/rules.js';
+import { DEFAULT_CONNECTION_TIMEOUT_MS } from '../constants/index.js';
 
 export class RulesParseError extends Error {
   constructor(message: string) {
@@ -191,14 +192,17 @@ export class RulesParser {
       }
 
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), options.timeout || 10000);
-
-      const response = await fetch(options.url, {
-        headers,
-        signal: controller.signal
-      });
-
-      clearTimeout(timeoutId);
+      const timeoutMs = options.timeout ?? DEFAULT_CONNECTION_TIMEOUT_MS;
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+      let response: any;
+      try {
+        response = await fetch(options.url, {
+          headers,
+          signal: controller.signal
+        });
+      } finally {
+        clearTimeout(timeoutId);
+      }
 
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -214,9 +218,9 @@ export class RulesParser {
         // Treat as plain text
         return content
           .split('\n')
-          .map(line => line.trim())
-          .filter(line => line && !line.startsWith('#'))
-          .map(line => line.replace(/^[-*]\s*/, ''));
+          .map((line: string) => line.trim())
+          .filter((line: string) => line && !line.startsWith('#'))
+          .map((line: string) => line.replace(/^[-*]\s*/, ''));
       }
     } catch (error) {
       throw new RulesParseError(`Failed to fetch remote rules from ${options.url}: ${error instanceof Error ? error.message : 'Unknown error'}`);
