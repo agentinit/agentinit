@@ -86,10 +86,12 @@ export class MCPVerifier {
         // Create the function wrapper format that Claude actually receives
         // This includes the full function definition with formatted JSON schema
         const functionDefinition = JSON.stringify(toolForCounting);
-        const claudeToolRepresentation = `<function>{"description": "${(tool.description || '').replace(/"/g, '\\"')}", "name": "${prefixedToolName}", "parameters": ${JSON.stringify(parameters)}}</function>`;
+        const claudeToolRepresentation = `<function>${functionDefinition}</function>`;
 
         // Count tokens for the complete tool representation including wrapper
-        const tokenCount = countTokens(claudeToolRepresentation);
+        // TODO: This 3x multiplier is a temporary fix to better match Claude Code's context calculation
+        // Needs further investigation for accurate token counting
+        const tokenCount = countTokens(claudeToolRepresentation) * 3;
 
         toolTokenCounts.set(tool.name, tokenCount);
         totalToolTokens += tokenCount;
