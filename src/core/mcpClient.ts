@@ -6,9 +6,10 @@ import { countTokens } from 'contextcalc';
 import { green, yellow, red } from 'kleur/colors';
 import { MCPServerType } from '../types/index.js';
 import { DEFAULT_CONNECTION_TIMEOUT_MS, MCP_VERIFIER_CONFIG, TimeoutError, TOKEN_COUNT_THRESHOLDS } from '../constants/index.js';
-import type { 
-  MCPServerConfig, 
-  MCPVerificationResult, 
+import { getPackageVersion } from './packageVersionUtils.js';
+import type {
+  MCPServerConfig,
+  MCPVerificationResult,
   MCPCapabilities,
   MCPTool,
   MCPResource,
@@ -284,10 +285,18 @@ export class MCPVerifier {
       // Connect to the server
       await client.connect(transport);
 
-      // Get server info
+      // Get server info and fetch package version with a short cap and abort awareness
+      const packageVersion = await Promise.race<string>([
+        getPackageVersion(server),
+        new Promise<string>(resolve => setTimeout(() => resolve('unknown'), 1500)),
+        new Promise<string>(resolve => {
+          if (abortSignal?.aborted) return resolve('unknown');
+          abortSignal?.addEventListener('abort', () => resolve('unknown'), { once: true });
+        }),
+      ]);
       const serverInfo = {
         name: server.name,
-        version: "unknown",
+        version: packageVersion,
         protocolVersion: "unknown"
       };
 
