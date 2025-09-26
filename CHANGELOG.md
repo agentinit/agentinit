@@ -1,3 +1,10 @@
+## [1.4.1](https://github.com/agentinit/agentinit/compare/v1.4.0...v1.4.1) (2025-09-26)
+
+
+### Bug Fixes
+
+* context calc ([313f435](https://github.com/agentinit/agentinit/commit/313f435f9e0d34f5df8d50ab34584bb522b9f69e))
+
 # [1.4.0](https://github.com/agentinit/agentinit/compare/v1.3.0...v1.4.0) (2025-09-26)
 
 
