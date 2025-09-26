@@ -40,7 +40,7 @@ export class MCPVerifier {
   }
 
   /**
-   * Calculate token counts for MCP tools
+   * Calculate token counts for MCP tools based on how they appear in Claude's context
    */
   private calculateToolTokens(tools: MCPTool[]): { toolTokenCounts: Map<string, number>; totalToolTokens: number } {
     const toolTokenCounts = new Map<string, number>();
@@ -48,17 +48,27 @@ export class MCPVerifier {
 
     for (const tool of tools) {
       try {
-        // Create a simplified object for token counting
+        // Create a complete tool representation as it would appear in Claude's context
+        // This matches the JSON schema format that Claude receives for function calling
         const toolForCounting = {
           name: tool.name,
           description: tool.description || '',
-          inputSchema: tool.inputSchema || {}
+          parameters: {
+            $schema: "http://json-schema.org/draft-07/schema#",
+            ...((tool.inputSchema && typeof tool.inputSchema === 'object') ? tool.inputSchema : {}),
+            // Ensure we have the full schema structure
+            type: tool.inputSchema?.type || "object",
+            properties: tool.inputSchema?.properties || {},
+            required: tool.inputSchema?.required || [],
+            additionalProperties: tool.inputSchema?.additionalProperties !== undefined ? tool.inputSchema.additionalProperties : false
+          }
         };
-        
-        // Count tokens for this tool
+
+        // Count tokens for the complete tool representation
+        // This includes all the schema metadata, property descriptions, types, and constraints
         const toolText = JSON.stringify(toolForCounting, null, 2);
         const tokenCount = countTokens(toolText);
-        
+
         toolTokenCounts.set(tool.name, tokenCount);
         totalToolTokens += tokenCount;
       } catch (error) {
