@@ -42,7 +42,7 @@ export class MCPVerifier {
   /**
    * Calculate token counts for MCP tools based on how they appear in Claude's context
    */
-  private calculateToolTokens(tools: MCPTool[]): { toolTokenCounts: Map<string, number>; totalToolTokens: number } {
+  private calculateToolTokens(tools: MCPTool[], serverName: string): { toolTokenCounts: Map<string, number>; totalToolTokens: number } {
     const toolTokenCounts = new Map<string, number>();
     let totalToolTokens = 0;
 
@@ -74,16 +74,22 @@ export class MCPVerifier {
             parameters.additionalProperties = false;
         }
 
+        // Create the prefixed tool name as it appears in Claude's context
+        const prefixedToolName = `mcp__${serverName}__${tool.name}`;
+
         const toolForCounting = {
-          name: tool.name,
+          name: prefixedToolName,
           ...(tool.description !== undefined ? { description: tool.description } : {}),
           parameters,
         };
 
-        // Count tokens for the complete tool representation
-        // This includes all the schema metadata, property descriptions, types, and constraints
-        const toolText = JSON.stringify(toolForCounting);
-        const tokenCount = countTokens(toolText);
+        // Create the function wrapper format that Claude actually receives
+        // This includes the full function definition with formatted JSON schema
+        const functionDefinition = JSON.stringify(toolForCounting);
+        const claudeToolRepresentation = `<function>{"description": "${(tool.description || '').replace(/"/g, '\\"')}", "name": "${prefixedToolName}", "parameters": ${JSON.stringify(parameters)}}</function>`;
+
+        // Count tokens for the complete tool representation including wrapper
+        const tokenCount = countTokens(claudeToolRepresentation);
 
         toolTokenCounts.set(tool.name, tokenCount);
         totalToolTokens += tokenCount;
@@ -343,7 +349,7 @@ export class MCPVerifier {
       }
 
       // Calculate token counts for tools
-      const { toolTokenCounts, totalToolTokens } = this.calculateToolTokens(tools);
+      const { toolTokenCounts, totalToolTokens } = this.calculateToolTokens(tools, server.name);
 
       return {
         tools,
