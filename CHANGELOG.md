@@ -1,3 +1,19 @@
+# [1.4.0](https://github.com/agentinit/agentinit/compare/v1.3.0...v1.4.0) (2025-09-26)
+
+
+### Bug Fixes
+
+* address comments ([b4a63e7](https://github.com/agentinit/agentinit/commit/b4a63e79b376d059e2403ad396b779912e8ca50e))
+* dirty fix with token calcs ([e7d3ef9](https://github.com/agentinit/agentinit/commit/e7d3ef98ea700937f2ccbd448ff18da02e65d1cd))
+* **mcp:** improve token calculation accuracy for different schema types ([6f85f8b](https://github.com/agentinit/agentinit/commit/6f85f8b8448e8a391029f7bd50f975be5818ff7e))
+* **mcp:** use minified JSON to prevent token inflation ([c5885c2](https://github.com/agentinit/agentinit/commit/c5885c277ac920781919178786386130b04b7633))
+
+
+### Features
+
+* improve token calc ([107a8d7](https://github.com/agentinit/agentinit/commit/107a8d7b5b849a7dfc4dd776474c7d0bcd11c179))
+* **mcp:** significantly improve token calculation accuracy ([c7c5137](https://github.com/agentinit/agentinit/commit/c7c51377565e2ab110262c859d05a988a39a80ee))
+
 # [1.3.0](https://github.com/agentinit/agentinit/compare/v1.2.1...v1.3.0) (2025-09-24)
 
 
