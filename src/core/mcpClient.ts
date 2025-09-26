@@ -82,7 +82,7 @@ export class MCPVerifier {
 
         // Count tokens for the complete tool representation
         // This includes all the schema metadata, property descriptions, types, and constraints
-        const toolText = JSON.stringify(toolForCounting, null, 2);
+        const toolText = JSON.stringify(toolForCounting);
         const tokenCount = countTokens(toolText);
 
         toolTokenCounts.set(tool.name, tokenCount);
