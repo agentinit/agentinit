@@ -183,6 +183,122 @@ describe('Package Version Detection (Integration)', () => {
       expect(mockFetch).not.toHaveBeenCalled();
       expect(version).toBe('1.7.1');
     });
+
+    it('should accept PEP440 versions for Python packages without API calls', async () => {
+      const testCases = [
+        { version: '0.6', description: 'short version' },
+        { version: '1.2rc1', description: 'release candidate' },
+        { version: '3.0.post1', description: 'post release' },
+        { version: '2.1.dev3', description: 'dev release' },
+        { version: '1.0a2', description: 'alpha release' },
+        { version: '2.0b1', description: 'beta release' }
+      ];
+
+      for (const testCase of testCases) {
+        const server = {
+          name: 'test-server',
+          type: MCPServerType.STDIO,
+          command: 'pipx',
+          args: ['run', '--spec', `poetry==${testCase.version}`, 'poetry']
+        };
+
+        const version = await getPackageVersion(server);
+
+        expect(mockFetch).not.toHaveBeenCalled();
+        expect(version).toBe(testCase.version);
+      }
+    });
+
+    it('should query registry for Python dist tags', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          info: { version: '3.1.4' }
+        })
+      });
+
+      const server = {
+        name: 'test-server',
+        type: MCPServerType.STDIO,
+        command: 'pipx',
+        args: ['run', '--spec', 'poetry==latest', 'poetry']
+      };
+
+      const version = await getPackageVersion(server);
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://pypi.org/pypi/poetry/json',
+        expect.objectContaining({
+          headers: { 'Accept': 'application/json' }
+        })
+      );
+      expect(version).toBe('3.1.4');
+    });
+
+    it('should accept enhanced semver versions for JavaScript packages without API calls', async () => {
+      const testCases = [
+        { version: '1.2.3-alpha.1', description: 'pre-release version' },
+        { version: '2.0.0-beta.2+build.123', description: 'pre-release with build metadata' },
+        { version: '1.0.0+20210101', description: 'version with build metadata' },
+        { version: '3.1.4-rc.1', description: 'release candidate' }
+      ];
+
+      for (const testCase of testCases) {
+        const server = {
+          name: 'test-server',
+          type: MCPServerType.STDIO,
+          command: 'npx',
+          args: [`test-package@${testCase.version}`]
+        };
+
+        const version = await getPackageVersion(server);
+
+        expect(mockFetch).not.toHaveBeenCalled();
+        expect(version).toBe(testCase.version);
+      }
+    });
+
+    it('should extract version directly from npx -p commands without API calls', async () => {
+      const server = {
+        name: 'test-server',
+        type: MCPServerType.STDIO,
+        command: 'npx',
+        args: ['-p', '@scope/cli@2.1.0', 'cli', 'serve']
+      };
+
+      const version = await getPackageVersion(server);
+
+      expect(mockFetch).not.toHaveBeenCalled();
+      expect(version).toBe('2.1.0');
+    });
+
+    it('should extract version directly from bunx -p commands without API calls', async () => {
+      const server = {
+        name: 'test-server',
+        type: MCPServerType.STDIO,
+        command: 'bunx',
+        args: ['-y', '-p', 'test-package@3.0.0', 'test-binary']
+      };
+
+      const version = await getPackageVersion(server);
+
+      expect(mockFetch).not.toHaveBeenCalled();
+      expect(version).toBe('3.0.0');
+    });
+
+    it('should extract version from pipx with global flags', async () => {
+      const server = {
+        name: 'test-server',
+        type: MCPServerType.STDIO,
+        command: 'pipx',
+        args: ['--python', 'python3.11', 'run', '--spec', 'black==23.1.0', 'black']
+      };
+
+      const version = await getPackageVersion(server);
+
+      expect(mockFetch).not.toHaveBeenCalled();
+      expect(version).toBe('23.1.0');
+    });
   });
 
   describe('non-package manager commands', () => {

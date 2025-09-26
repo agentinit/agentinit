@@ -53,6 +53,21 @@ describe('Package Version Detection', () => {
       expect(result).toEqual({ name: 'package-name', version: '1.2.3' });
     });
 
+    it('should parse npx with -p flag for preinstall', () => {
+      const result = parsePackageFromCommand('npx', ['-p', '@scope/cli@1.2.3', 'cli', 'serve']);
+      expect(result).toEqual({ name: '@scope/cli', version: '1.2.3' });
+    });
+
+    it('should parse npx with -p flag without version', () => {
+      const result = parsePackageFromCommand('npx', ['-p', 'some-package', 'binary']);
+      expect(result).toEqual({ name: 'some-package' });
+    });
+
+    it('should parse npx with -p flag and other flags', () => {
+      const result = parsePackageFromCommand('npx', ['-y', '--quiet', '-p', 'package@2.0.0', 'command']);
+      expect(result).toEqual({ name: 'package', version: '2.0.0' });
+    });
+
     // Bunx tests (should work identically to npx)
     it('should parse bunx with explicit version', () => {
       const result = parsePackageFromCommand('bunx', ['chrome-devtools-mcp@0.2.7']);
@@ -74,6 +89,16 @@ describe('Package Version Detection', () => {
       expect(result).toEqual({ name: 'some-package' });
     });
 
+    it('should parse bunx with -p flag for preinstall', () => {
+      const result = parsePackageFromCommand('bunx', ['-p', '@scope/cli@1.2.3', 'cli', 'serve']);
+      expect(result).toEqual({ name: '@scope/cli', version: '1.2.3' });
+    });
+
+    it('should parse bunx with -p flag without version', () => {
+      const result = parsePackageFromCommand('bunx', ['-p', 'some-package', 'binary']);
+      expect(result).toEqual({ name: 'some-package' });
+    });
+
     // Pipx tests
     it('should parse pipx run with package name', () => {
       const result = parsePackageFromCommand('pipx', ['run', 'poetry']);
@@ -88,6 +113,21 @@ describe('Package Version Detection', () => {
     it('should parse pipx run with --python flag', () => {
       const result = parsePackageFromCommand('pipx', ['run', '--python', 'python3.12', 'black']);
       expect(result).toEqual({ name: 'black' });
+    });
+
+    it('should parse pipx with global flags before run', () => {
+      const result = parsePackageFromCommand('pipx', ['--python', 'python3.11', 'run', 'openai-mcp']);
+      expect(result).toEqual({ name: 'openai-mcp' });
+    });
+
+    it('should parse pipx with multiple global flags before run', () => {
+      const result = parsePackageFromCommand('pipx', ['--quiet', '--python', 'python3.11', 'run', 'poetry']);
+      expect(result).toEqual({ name: 'poetry' });
+    });
+
+    it('should parse pipx with global flags and --spec', () => {
+      const result = parsePackageFromCommand('pipx', ['--verbose', 'run', '--spec', 'black==23.1.0', 'black']);
+      expect(result).toEqual({ name: 'black', version: '23.1.0' });
     });
 
     // UVX tests with additional flags

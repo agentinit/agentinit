@@ -10,6 +10,20 @@ export interface PackageInfo {
  * Helper function to match JavaScript package managers (npx/bunx) with shared regex patterns
  */
 function matchJsManager(fullCommand: string, manager: 'npx' | 'bunx'): PackageInfo | null {
+  // Pattern 0: manager -p package@version (preinstall pattern)
+  const preinstallMatch = fullCommand.match(new RegExp(`${manager}\\s+(?:-[ygc]\\s+)?(?:--\\S+\\s+)*-p\\s+([^\\s]+)`));
+  if (preinstallMatch?.[1]) {
+    const spec = preinstallMatch[1];
+    const versionSeparator = spec.lastIndexOf('@');
+    if (versionSeparator > 0) {
+      return {
+        name: spec.slice(0, versionSeparator),
+        version: spec.slice(versionSeparator + 1) || undefined,
+      };
+    }
+    return { name: spec };
+  }
+
   // Pattern 1: manager package-name@version
   const versionMatch = fullCommand.match(new RegExp(`${manager}\\s+(?:-[ygc]\\s+)?(?:--\\S+\\s+)*([^@\\s]+)@([^\\s]+)`));
   if (versionMatch && versionMatch[1] && versionMatch[2]) {
@@ -49,14 +63,14 @@ export function parsePackageFromCommand(command: string, args: string[] = []): P
     return bunxResult;
   }
 
-  // Pattern 7: pipx run --spec package==version binary
-  const pipxSpecMatch = fullCommand.match(/pipx\s+run\s+--spec\s+([^=\s]+)==([^\s]+)/);
+  // Pattern 7: pipx run --spec package==version binary (with optional global flags)
+  const pipxSpecMatch = fullCommand.match(/pipx\s+(?:(?:--\w+(?:\s+[^\s-]+)?|-\w+)\s+)*run\s+--spec\s+([^=\s]+)==([^\s]+)/);
   if (pipxSpecMatch && pipxSpecMatch[1] && pipxSpecMatch[2]) {
     return { name: pipxSpecMatch[1], version: pipxSpecMatch[2] };
   }
 
-  // Pattern 8: pipx run package-name (without version)
-  const pipxMatch = fullCommand.match(/pipx\s+run\s+(?:--python\s+[^\s]+\s+)?([^@\s]+)/);
+  // Pattern 8: pipx run package-name (without version, with optional global flags)
+  const pipxMatch = fullCommand.match(/pipx\s+(?:(?:--\w+(?:\s+[^\s-]+)?|-\w+)\s+)*run\s+(?:--python\s+[^\s]+\s+)?([^@\s]+)/);
   if (pipxMatch && pipxMatch[1]) {
     return { name: pipxMatch[1] };
   }
@@ -162,13 +176,25 @@ export async function getPackageVersion(server: MCPServerConfig): Promise<string
     return "unknown";
   }
 
-  // If we already have a version from the command, use it if it's a valid semver
+  // If we already have a version from the command, validate it based on package manager type
   if (packageInfo.version) {
-    const isSemver = /^\d+\.\d+\.\d+(-[\w.-]+)?$/.test(packageInfo.version);
-    if (isSemver) {
-      return packageInfo.version;
+    const usePyPI = isPythonPackageManager(server.command, server.args);
+
+    if (usePyPI) {
+      // For Python packages, accept any version unless it's a known dist tag
+      const distTags = ['latest', 'next', 'beta', 'alpha', 'rc', 'dev', 'canary'];
+      if (!distTags.includes(packageInfo.version.toLowerCase())) {
+        return packageInfo.version; // Return PEP440 versions unchanged
+      }
+      // For dist tags, fall through to registry lookup
+    } else {
+      // For JavaScript packages, check if it's a valid semver (including pre-release and build metadata)
+      const isSemver = /^\d+\.\d+\.\d+(?:-[\w.-]+)?(?:\+[\w.-]+)?$/.test(packageInfo.version);
+      if (isSemver) {
+        return packageInfo.version;
+      }
+      // For non-semver tags like 'next', 'beta', fall through to registry lookup
     }
-    // For non-semver tags like 'next', 'beta', fall through to registry lookup
   }
 
   // Determine which registry to use based on package manager
