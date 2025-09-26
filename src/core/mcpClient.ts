@@ -96,9 +96,9 @@ export class MCPVerifier {
         const claudeToolRepresentation = `<function>${functionDefinition}</function>`;
 
         // Count tokens for the complete tool representation including wrapper
-        // TODO: This 3x multiplier is a temporary fix to better match Claude Code's context calculation
+        // TODO: This 5x multiplier is a temporary fix to better match Claude Code's context calculation
         // Needs further investigation for accurate token counting
-        const tokenCount = countTokens(claudeToolRepresentation) * 3;
+        const tokenCount = countTokens(claudeToolRepresentation) * 5;
 
         toolTokenCounts.set(tool.name, tokenCount);
         totalToolTokens += tokenCount;
