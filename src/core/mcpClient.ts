@@ -50,18 +50,34 @@ export class MCPVerifier {
       try {
         // Create a complete tool representation as it would appear in Claude's context
         // This matches the JSON schema format that Claude receives for function calling
+        const rawSchema =
+          tool.inputSchema && typeof tool.inputSchema === "object"
+            ? tool.inputSchema
+            : undefined;
+        const schemaType = rawSchema?.type;
+        const parameters = {
+          $schema: "http://json-schema.org/draft-07/schema#",
+          ...(rawSchema ?? {}),
+        };
+
+        const isObjectSchema =
+          schemaType === "object" ||
+          (Array.isArray(schemaType) && schemaType.includes("object")) ||
+          schemaType === undefined;
+
+        // Only apply object-specific defaults when the schema is actually an object type
+        if (isObjectSchema) {
+          if (!("type" in parameters)) parameters.type = "object";
+          if (!("properties" in parameters)) parameters.properties = {};
+          if (!("required" in parameters)) parameters.required = [];
+          if (!("additionalProperties" in parameters))
+            parameters.additionalProperties = false;
+        }
+
         const toolForCounting = {
           name: tool.name,
-          description: tool.description || '',
-          parameters: {
-            $schema: "http://json-schema.org/draft-07/schema#",
-            ...((tool.inputSchema && typeof tool.inputSchema === 'object') ? tool.inputSchema : {}),
-            // Ensure we have the full schema structure
-            type: tool.inputSchema?.type || "object",
-            properties: tool.inputSchema?.properties || {},
-            required: tool.inputSchema?.required || [],
-            additionalProperties: tool.inputSchema?.additionalProperties !== undefined ? tool.inputSchema.additionalProperties : false
-          }
+          ...(tool.description !== undefined ? { description: tool.description } : {}),
+          parameters,
         };
 
         // Count tokens for the complete tool representation
