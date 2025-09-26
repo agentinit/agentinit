@@ -40,25 +40,66 @@ export class MCPVerifier {
   }
 
   /**
-   * Calculate token counts for MCP tools
+   * Calculate token counts for MCP tools based on how they appear in Claude's context
    */
-  private calculateToolTokens(tools: MCPTool[]): { toolTokenCounts: Map<string, number>; totalToolTokens: number } {
+  private calculateToolTokens(tools: MCPTool[], serverName: string): { toolTokenCounts: Map<string, number>; totalToolTokens: number } {
     const toolTokenCounts = new Map<string, number>();
     let totalToolTokens = 0;
 
     for (const tool of tools) {
       try {
-        // Create a simplified object for token counting
-        const toolForCounting = {
-          name: tool.name,
-          description: tool.description || '',
-          inputSchema: tool.inputSchema || {}
+        // Create a complete tool representation as it would appear in Claude's context
+        // This matches the JSON schema format that Claude receives for function calling
+        const rawSchema =
+          tool.inputSchema && typeof tool.inputSchema === "object"
+            ? tool.inputSchema
+            : undefined;
+        const schemaType = rawSchema?.type;
+        const parameters = {
+          $schema: "http://json-schema.org/draft-07/schema#",
+          ...(rawSchema ?? {}),
         };
-        
-        // Count tokens for this tool
-        const toolText = JSON.stringify(toolForCounting, null, 2);
-        const tokenCount = countTokens(toolText);
-        
+
+        const hasObjectHints =
+          rawSchema !== undefined &&
+          ["properties", "required", "additionalProperties", "patternProperties"].some(
+            (key) => key in rawSchema
+          );
+
+        const isObjectSchema =
+          rawSchema === undefined ||
+          schemaType === "object" ||
+          (Array.isArray(schemaType) && schemaType.includes("object")) ||
+          hasObjectHints;
+
+        // Only apply object-specific defaults when the schema is actually an object type
+        if (isObjectSchema) {
+          if (!("type" in parameters)) parameters.type = "object";
+          if (!("properties" in parameters)) parameters.properties = {};
+          if (!("required" in parameters)) parameters.required = [];
+          if (!("additionalProperties" in parameters))
+            parameters.additionalProperties = false;
+        }
+
+        // Create the prefixed tool name as it appears in Claude's context
+        const prefixedToolName = `mcp__${serverName}__${tool.name}`;
+
+        const toolForCounting = {
+          name: prefixedToolName,
+          ...(tool.description !== undefined ? { description: tool.description } : {}),
+          parameters,
+        };
+
+        // Create the function wrapper format that Claude actually receives
+        // This includes the full function definition with formatted JSON schema
+        const functionDefinition = JSON.stringify(toolForCounting);
+        const claudeToolRepresentation = `<function>${functionDefinition}</function>`;
+
+        // Count tokens for the complete tool representation including wrapper
+        // TODO: This 3x multiplier is a temporary fix to better match Claude Code's context calculation
+        // Needs further investigation for accurate token counting
+        const tokenCount = countTokens(claudeToolRepresentation) * 3;
+
         toolTokenCounts.set(tool.name, tokenCount);
         totalToolTokens += tokenCount;
       } catch (error) {
@@ -317,7 +358,7 @@ export class MCPVerifier {
       }
 
       // Calculate token counts for tools
-      const { toolTokenCounts, totalToolTokens } = this.calculateToolTokens(tools);
+      const { toolTokenCounts, totalToolTokens } = this.calculateToolTokens(tools, server.name);
 
       return {
         tools,
