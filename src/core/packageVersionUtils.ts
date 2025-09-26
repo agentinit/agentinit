@@ -7,45 +7,46 @@ export interface PackageInfo {
 }
 
 /**
+ * Helper function to match JavaScript package managers (npx/bunx) with shared regex patterns
+ */
+function matchJsManager(fullCommand: string, manager: 'npx' | 'bunx'): PackageInfo | null {
+  // Pattern 1: manager package-name@version
+  const versionMatch = fullCommand.match(new RegExp(`${manager}\\s+(?:-[ygc]\\s+)?(?:--\\S+\\s+)*([^@\\s]+)@([^\\s]+)`));
+  if (versionMatch && versionMatch[1] && versionMatch[2]) {
+    return { name: versionMatch[1], version: versionMatch[2] };
+  }
+
+  // Pattern 2: manager -y @scope/package@latest or manager @scope/package@latest
+  const scopedMatch = fullCommand.match(new RegExp(`${manager}\\s+(?:-[ygc]\\s+)?(?:--\\S+\\s+)*(@[^/]+\\/[^@\\s]+)(?:@([^\\s]+))?`));
+  if (scopedMatch && scopedMatch[1]) {
+    return { name: scopedMatch[1], version: scopedMatch[2] || undefined };
+  }
+
+  // Pattern 3: manager package-name (without version)
+  const packageMatch = fullCommand.match(new RegExp(`${manager}\\s+(?:-[ygc]\\s+)?(?:--\\S+\\s+)*([^@\\s]+)`));
+  if (packageMatch && packageMatch[1]) {
+    return { name: packageMatch[1] };
+  }
+
+  return null;
+}
+
+/**
  * Parse a command string to extract package information for npx/bunx/pipx/uvx commands
  */
 export function parsePackageFromCommand(command: string, args: string[] = []): PackageInfo | null {
   const fullCommand = [command, ...args].join(' ');
 
-  // Pattern 1: npx package-name@version
-  const npxVersionMatch = fullCommand.match(/npx\s+(?:-[ygc]\s+)?(?:--\S+\s+)*([^@\s]+)@([^\s]+)/);
-  if (npxVersionMatch && npxVersionMatch[1] && npxVersionMatch[2]) {
-    return { name: npxVersionMatch[1], version: npxVersionMatch[2] };
+  // Try npx patterns
+  const npxResult = matchJsManager(fullCommand, 'npx');
+  if (npxResult) {
+    return npxResult;
   }
 
-  // Pattern 2: npx -y @scope/package@latest or npx @scope/package@latest
-  const npxScopedMatch = fullCommand.match(/npx\s+(?:-[ygc]\s+)?(?:--\S+\s+)*(@[^/]+\/[^@\s]+)(?:@([^\s]+))?/);
-  if (npxScopedMatch && npxScopedMatch[1]) {
-    return { name: npxScopedMatch[1], version: npxScopedMatch[2] || undefined };
-  }
-
-  // Pattern 3: npx package-name (without version)
-  const npxMatch = fullCommand.match(/npx\s+(?:-[ygc]\s+)?(?:--\S+\s+)*([^@\s]+)/);
-  if (npxMatch && npxMatch[1]) {
-    return { name: npxMatch[1] };
-  }
-
-  // Pattern 4: bunx package-name@version (same patterns as npx)
-  const bunxVersionMatch = fullCommand.match(/bunx\s+(?:-[ygc]\s+)?(?:--\S+\s+)*([^@\s]+)@([^\s]+)/);
-  if (bunxVersionMatch && bunxVersionMatch[1] && bunxVersionMatch[2]) {
-    return { name: bunxVersionMatch[1], version: bunxVersionMatch[2] };
-  }
-
-  // Pattern 5: bunx -y @scope/package@latest or bunx @scope/package@latest
-  const bunxScopedMatch = fullCommand.match(/bunx\s+(?:-[ygc]\s+)?(?:--\S+\s+)*(@[^/]+\/[^@\s]+)(?:@([^\s]+))?/);
-  if (bunxScopedMatch && bunxScopedMatch[1]) {
-    return { name: bunxScopedMatch[1], version: bunxScopedMatch[2] || undefined };
-  }
-
-  // Pattern 6: bunx package-name (without version)
-  const bunxMatch = fullCommand.match(/bunx\s+(?:-[ygc]\s+)?(?:--\S+\s+)*([^@\s]+)/);
-  if (bunxMatch && bunxMatch[1]) {
-    return { name: bunxMatch[1] };
+  // Try bunx patterns
+  const bunxResult = matchJsManager(fullCommand, 'bunx');
+  if (bunxResult) {
+    return bunxResult;
   }
 
   // Pattern 7: pipx run --spec package==version binary
@@ -61,7 +62,7 @@ export function parsePackageFromCommand(command: string, args: string[] = []): P
   }
 
   // Pattern 9: uvx package-name or uvx --from git+... package-name
-  const uvxMatch = fullCommand.match(/uvx\s+(?:--from\s+[^\s]+\s+)?([^@\s]+)/);
+  const uvxMatch = fullCommand.match(/uvx\s+(?:(?:--\w+(?:\s+[^\s-]+)?|-\w+)\s+)*([^@\s-][^@\s]*)/);
   if (uvxMatch && uvxMatch[1]) {
     return { name: uvxMatch[1] };
   }
@@ -73,17 +74,16 @@ export function parsePackageFromCommand(command: string, args: string[] = []): P
  * Fetch package version from npm registry
  */
 export async function fetchPackageVersionFromNpm(packageName: string, timeoutMs = 5000): Promise<string | null> {
+  let timeoutId: NodeJS.Timeout | undefined;
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
     const url = `https://registry.npmjs.org/${encodeURIComponent(packageName)}`;
     const response = await fetch(url, {
       signal: controller.signal,
       headers: { 'Accept': 'application/json' }
     });
-
-    clearTimeout(timeoutId);
 
     if (!response.ok) {
       return null;
@@ -93,6 +93,10 @@ export async function fetchPackageVersionFromNpm(packageName: string, timeoutMs 
     return data['dist-tags']?.latest || data.version || null;
   } catch (error) {
     return null;
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
   }
 }
 
@@ -100,17 +104,16 @@ export async function fetchPackageVersionFromNpm(packageName: string, timeoutMs 
  * Fetch package version from PyPI registry
  */
 export async function fetchPackageVersionFromPyPI(packageName: string, timeoutMs = 5000): Promise<string | null> {
+  let timeoutId: NodeJS.Timeout | undefined;
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
     const url = `https://pypi.org/pypi/${encodeURIComponent(packageName)}/json`;
     const response = await fetch(url, {
       signal: controller.signal,
       headers: { 'Accept': 'application/json' }
     });
-
-    clearTimeout(timeoutId);
 
     if (!response.ok) {
       return null;
@@ -120,15 +123,19 @@ export async function fetchPackageVersionFromPyPI(packageName: string, timeoutMs
     return data.info?.version || null;
   } catch (error) {
     return null;
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
   }
 }
 
 /**
  * Determine if package should use PyPI or npm registry
  */
-export function isPythonPackageManager(command: string, args: string[] = []): boolean {
-  const fullCommand = [command, ...args].join(' ');
-  return fullCommand.includes('pipx') || fullCommand.includes('uvx');
+export function isPythonPackageManager(command: string, _args: string[] = []): boolean {
+  const firstToken = String(command || '').trim().split(/\s+/)[0];
+  return firstToken === 'pipx' || firstToken === 'uvx';
 }
 
 /**
@@ -155,9 +162,13 @@ export async function getPackageVersion(server: MCPServerConfig): Promise<string
     return "unknown";
   }
 
-  // If we already have a version from the command, use it
-  if (packageInfo.version && packageInfo.version !== 'latest') {
-    return packageInfo.version;
+  // If we already have a version from the command, use it if it's a valid semver
+  if (packageInfo.version) {
+    const isSemver = /^\d+\.\d+\.\d+(-[\w.-]+)?$/.test(packageInfo.version);
+    if (isSemver) {
+      return packageInfo.version;
+    }
+    // For non-semver tags like 'next', 'beta', fall through to registry lookup
   }
 
   // Determine which registry to use based on package manager

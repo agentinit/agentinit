@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parsePackageFromCommand } from '../../src/core/packageVersionUtils.js';
+import { parsePackageFromCommand, isPythonPackageManager } from '../../src/core/packageVersionUtils.js';
 
 describe('Package Version Detection', () => {
   describe('parsePackageFromCommand', () => {
@@ -88,6 +88,49 @@ describe('Package Version Detection', () => {
     it('should parse pipx run with --python flag', () => {
       const result = parsePackageFromCommand('pipx', ['run', '--python', 'python3.12', 'black']);
       expect(result).toEqual({ name: 'black' });
+    });
+
+    // UVX tests with additional flags
+    it('should parse uvx with multiple flags', () => {
+      const result = parsePackageFromCommand('uvx', ['-q', '--isolated', '--from', 'https://github.com/user/repo.git', 'package-name']);
+      expect(result).toEqual({ name: 'package-name' });
+    });
+
+    it('should parse uvx with short flags', () => {
+      const result = parsePackageFromCommand('uvx', ['-v', '--python', '3.11', 'my-package']);
+      expect(result).toEqual({ name: 'my-package' });
+    });
+  });
+
+  describe('isPythonPackageManager', () => {
+    it('should return true for pipx command', () => {
+      const result = isPythonPackageManager('pipx');
+      expect(result).toBe(true);
+    });
+
+    it('should return true for uvx command', () => {
+      const result = isPythonPackageManager('uvx');
+      expect(result).toBe(true);
+    });
+
+    it('should return false for npx command', () => {
+      const result = isPythonPackageManager('npx');
+      expect(result).toBe(false);
+    });
+
+    it('should return false when uvx appears in args but not as command', () => {
+      const result = isPythonPackageManager('node', ['script.js', 'uvx']);
+      expect(result).toBe(false);
+    });
+
+    it('should return false when pipx appears in args but not as command', () => {
+      const result = isPythonPackageManager('npm', ['install', 'pipx']);
+      expect(result).toBe(false);
+    });
+
+    it('should handle command with spaces correctly', () => {
+      const result = isPythonPackageManager('  pipx  ');
+      expect(result).toBe(true);
     });
   });
 });
