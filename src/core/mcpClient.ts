@@ -60,10 +60,17 @@ export class MCPVerifier {
           ...(rawSchema ?? {}),
         };
 
+        const hasObjectHints =
+          rawSchema !== undefined &&
+          ["properties", "required", "additionalProperties", "patternProperties"].some(
+            (key) => key in rawSchema
+          );
+
         const isObjectSchema =
+          rawSchema === undefined ||
           schemaType === "object" ||
           (Array.isArray(schemaType) && schemaType.includes("object")) ||
-          schemaType === undefined;
+          hasObjectHints;
 
         // Only apply object-specific defaults when the schema is actually an object type
         if (isObjectSchema) {
