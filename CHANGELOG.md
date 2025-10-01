@@ -1,3 +1,15 @@
+# [1.5.0](https://github.com/agentinit/agentinit/compare/v1.4.1...v1.5.0) (2025-10-01)
+
+
+### Bug Fixes
+
+* use npx tsc in build and fix Commander argument parsing ([4fa51f9](https://github.com/agentinit/agentinit/commit/4fa51f941c0fbeee2880850add90af038c3623cf))
+
+
+### Features
+
+* add library API for programmatic MCP verification ([8cf70d7](https://github.com/agentinit/agentinit/commit/8cf70d7395987221eb33c6575885d07a45717df0))
+
 ## [1.4.1](https://github.com/agentinit/agentinit/compare/v1.4.0...v1.4.1) (2025-09-26)
 
 
