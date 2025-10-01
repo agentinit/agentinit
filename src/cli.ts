@@ -18,12 +18,10 @@ program
   .command('apply')
   .description('Apply configurations (MCP servers, etc.)')
   .allowUnknownOption(true)
-  .action((...args) => {
-    // Extract raw arguments, excluding the command name
-    const rawArgs = process.argv.slice(2);
-    const applyIndex = rawArgs.indexOf('apply');
-    const configArgs = applyIndex >= 0 ? rawArgs.slice(applyIndex + 1) : [];
-    applyCommand(configArgs);
+  .action((options, command) => {
+    // Let Commander parse the arguments properly
+    const parsed = command.parseOptions(command.parent.rawArgs.slice(3));
+    applyCommand(parsed.unknown);
   });
 
 program
@@ -50,12 +48,10 @@ program
   .command('verify_mcp')
   .description('Verify MCP server installations and list their capabilities')
   .allowUnknownOption(true)
-  .action((...args) => {
-    // Extract raw arguments, excluding the command name
-    const rawArgs = process.argv.slice(2);
-    const verifyIndex = rawArgs.indexOf('verify_mcp');
-    const commandArgs = verifyIndex >= 0 ? rawArgs.slice(verifyIndex + 1) : [];
-    verifyMcpCommand(commandArgs);
+  .action((options, command) => {
+    // Let Commander parse the arguments properly
+    const parsed = command.parseOptions(command.parent.rawArgs.slice(3));
+    verifyMcpCommand(parsed.unknown);
   });
 
 program.parse();
