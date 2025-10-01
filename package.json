@@ -1,15 +1,34 @@
 {
   "name": "agentinit",
   "version": "1.4.1",
-  "description": "A CLI tool for managing and configuring AI coding agents",
+  "description": "CLI tool and library for managing AI coding agents and verifying MCP servers",
   "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "type": "module",
   "bin": {
-    "agentinit": "dist/index.js"
+    "agentinit": "dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./verifier": {
+      "import": "./dist/lib/verifier/index.js",
+      "types": "./dist/lib/verifier/index.d.ts"
+    },
+    "./types": {
+      "import": "./dist/lib/types/index.js",
+      "types": "./dist/lib/types/index.d.ts"
+    },
+    "./utils": {
+      "import": "./dist/lib/utils/index.js",
+      "types": "./dist/lib/utils/index.d.ts"
+    }
   },
   "scripts": {
-    "build": "bun build src/index.ts --outdir dist --target node --external tiktoken && cp -r src/templates dist/",
-    "dev": "bun run src/index.ts",
+    "build": "npx tsc -p tsconfig.build.json && cp -r src/templates dist/ && bun build dist/cli.js --outfile dist/cli-bundled.js --target node --external tiktoken && mv dist/cli-bundled.js dist/cli.js",
+    "dev": "bun run src/cli.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test_all": "vitest run && tsc --noEmit",
@@ -22,8 +41,13 @@
     "ai",
     "agents",
     "cli",
+    "library",
+    "sdk",
+    "mcp",
+    "model-context-protocol",
     "configuration",
-    "automation"
+    "automation",
+    "verification"
   ],
   "author": "AgentInit Team",
   "license": "MIT",

@@ -298,6 +298,215 @@ AgentInit includes a curated registry of popular MCPs:
 | supabase-mcp | database | Supabase integration |
 | git-mcp | version-control | Enhanced Git operations |
 
+## 📚 Library API
+
+AgentInit can be used as a library in your Node.js/TypeScript applications for programmatic MCP server verification and management.
+
+### Installation
+
+```bash
+npm install agentinit
+# or
+yarn add agentinit
+# or
+bun add agentinit
+```
+
+### Basic Usage
+
+```typescript
+import { MCPVerifier, MCPServerType } from 'agentinit';
+
+const verifier = new MCPVerifier();
+
+const result = await verifier.verifyServer({
+  name: 'everything',
+  type: MCPServerType.STDIO,
+  command: 'npx',
+  args: ['-y', '@modelcontextprotocol/server-everything']
+});
+
+if (result.status === 'success') {
+  console.log(`✅ Connected to ${result.server.name}`);
+  console.log(`Tools: ${result.capabilities?.tools.length}`);
+  console.log(`Total tokens: ${result.capabilities?.totalToolTokens}`);
+}
+```
+
+### Submodule Imports
+
+For better tree-shaking, import from specific submodules:
+
+```typescript
+// Import specific modules
+import { MCPVerifier } from 'agentinit/verifier';
+import { MCPServerType } from 'agentinit/types';
+import type { MCPServerConfig, MCPVerificationResult } from 'agentinit/types';
+import { countTokens, MCPParser } from 'agentinit/utils';
+```
+
+### Examples
+
+#### Verify STDIO MCP Server
+
+```typescript
+import { MCPVerifier, MCPServerType } from 'agentinit';
+
+const verifier = new MCPVerifier(10000); // 10 second timeout
+
+const result = await verifier.verifyServer({
+  name: 'filesystem',
+  type: MCPServerType.STDIO,
+  command: 'npx',
+  args: ['-y', '@modelcontextprotocol/server-filesystem', '/workspace'],
+  env: {
+    NODE_ENV: 'production'
+  }
+});
+
+if (result.status === 'success') {
+  result.capabilities?.tools.forEach(tool => {
+    const tokens = result.capabilities?.toolTokenCounts?.get(tool.name) || 0;
+    console.log(`  • ${tool.name} (${tokens} tokens)`);
+  });
+}
+```
+
+#### Verify HTTP MCP Server
+
+```typescript
+import { MCPVerifier, MCPServerType } from 'agentinit';
+
+const result = await verifier.verifyServer({
+  name: 'github-api',
+  type: MCPServerType.HTTP,
+  url: 'https://api.example.com/mcp',
+  headers: {
+    'Authorization': 'Bearer YOUR_TOKEN',
+    'Content-Type': 'application/json'
+  }
+});
+```
+
+#### Verify Multiple Servers
+
+```typescript
+import { MCPVerifier, MCPServerType } from 'agentinit';
+
+const servers = [
+  {
+    name: 'everything',
+    type: MCPServerType.STDIO,
+    command: 'npx',
+    args: ['-y', '@modelcontextprotocol/server-everything']
+  },
+  {
+    name: 'api-server',
+    type: MCPServerType.HTTP,
+    url: 'https://api.example.com/mcp'
+  }
+];
+
+const verifier = new MCPVerifier();
+const results = await verifier.verifyServers(servers);
+
+// Display formatted results
+console.log(verifier.formatResults(results));
+
+// Or process results programmatically
+const successful = results.filter(r => r.status === 'success').length;
+console.log(`${successful}/${results.length} servers verified`);
+```
+
+#### Count Tokens
+
+```typescript
+import { countTokens } from 'agentinit/utils';
+
+const text = 'Hello, world!';
+const tokens = countTokens(text);
+console.log(`Token count: ${tokens}`);
+```
+
+#### Parse MCP Configuration
+
+```typescript
+import { MCPParser } from 'agentinit/utils';
+
+const args = ['--mcp-stdio', 'test', 'node', 'server.js', '--args', 'arg1 arg2'];
+const parsed = MCPParser.parseArguments(args);
+
+console.log(parsed.servers); // Array of MCPServerConfig
+```
+
+### API Reference
+
+#### MCPVerifier
+
+**Constructor**
+```typescript
+new MCPVerifier(defaultTimeout?: number)
+```
+
+**Methods**
+- `verifyServer(config: MCPServerConfig, timeout?: number): Promise<MCPVerificationResult>` - Verify a single MCP server
+- `verifyServers(configs: MCPServerConfig[], timeout?: number): Promise<MCPVerificationResult[]>` - Verify multiple servers in parallel
+- `formatResults(results: MCPVerificationResult[]): string` - Format verification results for display
+
+#### Types
+
+**MCPServerType**
+```typescript
+enum MCPServerType {
+  STDIO = 'stdio',
+  HTTP = 'http',
+  SSE = 'sse'
+}
+```
+
+**MCPServerConfig**
+```typescript
+interface MCPServerConfig {
+  name: string;
+  type: MCPServerType;
+
+  // For STDIO servers
+  command?: string;
+  args?: string[];
+  env?: Record<string, string>;
+
+  // For HTTP/SSE servers
+  url?: string;
+  headers?: Record<string, string>;
+}
+```
+
+**MCPVerificationResult**
+```typescript
+interface MCPVerificationResult {
+  server: MCPServerConfig;
+  status: 'success' | 'error' | 'timeout';
+  capabilities?: MCPCapabilities;
+  error?: string;
+  connectionTime?: number;
+}
+```
+
+**MCPCapabilities**
+```typescript
+interface MCPCapabilities {
+  tools: MCPTool[];
+  resources: MCPResource[];
+  prompts: MCPPrompt[];
+  serverInfo?: {
+    name: string;
+    version: string;
+  };
+  totalToolTokens?: number;
+  toolTokenCounts?: Map<string, number>;
+}
+```
+
 ## 🛠️ Development
 
 ### Building from Source
