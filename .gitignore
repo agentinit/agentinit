@@ -47,6 +47,12 @@ tests/**/*.db
 tests/**/*.sqlite
 tests/**/*.sqlite3
 
+# Compiled TypeScript test files
+tests/**/*.js
+tests/**/*.d.ts
+tests/**/*.js.map
+tests/**/*.d.ts.map
+
 # Optional npm cache directory
 .npm
 
