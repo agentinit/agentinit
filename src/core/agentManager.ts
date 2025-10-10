@@ -3,6 +3,7 @@ import { ClaudeDesktopAgent } from '../agents/ClaudeDesktopAgent.js';
 import { CodexCliAgent } from '../agents/CodexCliAgent.js';
 import { GeminiCliAgent } from '../agents/GeminiCliAgent.js';
 import { CursorAgent } from '../agents/CursorAgent.js';
+import { DroidAgent } from '../agents/DroidAgent.js';
 import { Agent } from '../agents/Agent.js';
 import type { AgentDetectionResult } from '../types/index.js';
 
@@ -26,7 +27,8 @@ export class AgentManager {
       new ClaudeDesktopAgent(),
       new CodexCliAgent(),
       new GeminiCliAgent(),
-      new CursorAgent()
+      new CursorAgent(),
+      new DroidAgent()
     ];
   }
 

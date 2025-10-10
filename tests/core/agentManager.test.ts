@@ -25,13 +25,14 @@ describe('AgentManager', () => {
   describe('constructor', () => {
     it('should register default agents', () => {
       const agents = manager.getAllAgents();
-      
-      expect(agents).toHaveLength(5);
+
+      expect(agents).toHaveLength(6);
       expect(agents.some(agent => agent.id === 'claude')).toBe(true);
       expect(agents.some(agent => agent.id === 'claude-desktop')).toBe(true);
       expect(agents.some(agent => agent.id === 'codex')).toBe(true);
       expect(agents.some(agent => agent.id === 'gemini')).toBe(true);
       expect(agents.some(agent => agent.id === 'cursor')).toBe(true);
+      expect(agents.some(agent => agent.id === 'droid')).toBe(true);
     });
   });
 
@@ -60,8 +61,8 @@ describe('AgentManager', () => {
   describe('getSupportedAgentIds', () => {
     it('should return all supported agent IDs', () => {
       const ids = manager.getSupportedAgentIds();
-      
-      expect(ids).toEqual(['claude', 'claude-desktop', 'codex', 'gemini', 'cursor']);
+
+      expect(ids).toEqual(['claude', 'claude-desktop', 'codex', 'gemini', 'cursor', 'droid']);
     });
   });
 
@@ -255,7 +256,7 @@ describe('AgentManager', () => {
       manager.registerAgent(customAgent);
       
       const agents = manager.getAllAgents();
-      expect(agents).toHaveLength(6); // 5 default + 1 custom
+      expect(agents).toHaveLength(7); // 6 default + 1 custom
       expect(manager.getAgentById('custom')).toBe(customAgent);
     });
 
@@ -274,8 +275,8 @@ describe('AgentManager', () => {
   describe('getAgentsByCapability', () => {
     it('should return agents with MCP capabilities', () => {
       const mcpAgents = manager.getAgentsByCapability('mcp');
-      
-      expect(mcpAgents).toHaveLength(5); // All agents support some MCP
+
+      expect(mcpAgents).toHaveLength(6); // All agents support some MCP
     });
 
     it('should return agents with hooks capability', () => {
@@ -287,8 +288,8 @@ describe('AgentManager', () => {
 
     it('should return agents with rules capability', () => {
       const ruleAgents = manager.getAgentsByCapability('rules');
-      
-      expect(ruleAgents).toHaveLength(4); // All agents except claude-desktop support rules
+
+      expect(ruleAgents).toHaveLength(5); // All agents except claude-desktop support rules
     });
 
     it('should return agents with subagents capability', () => {
