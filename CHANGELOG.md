@@ -1,3 +1,10 @@
+# [1.6.0](https://github.com/agentinit/agentinit/compare/v1.5.0...v1.6.0) (2025-10-10)
+
+
+### Features
+
+* **agents:** add Droid (Factory AI) agent support ([73e5529](https://github.com/agentinit/agentinit/commit/73e5529703af36781c06e840faf38227d2ce79ac))
+
 # [1.5.0](https://github.com/agentinit/agentinit/compare/v1.4.1...v1.5.0) (2025-10-01)
 
 
