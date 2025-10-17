@@ -230,8 +230,8 @@ export interface MCPCapabilities {
     version: string;
     protocolVersion?: string;
   };
-  toolTokenCounts?: Map<string, number> | undefined;
-  totalToolTokens?: number | undefined;
+  toolTokenCounts?: Map<string, number>;
+  totalToolTokens?: number;
 }
 
 export interface MCPVerificationResult {

@@ -476,7 +476,7 @@ describe('MCPVerifier', () => {
 
       expect(result.status).toBe('success');
       expect(result.capabilities?.resources).toHaveLength(1);
-      expect(result.capabilities!.resources![0]!.contents).toBe('Sample content from test.txt');
+      expect(result.capabilities?.resources?.[0]?.contents).toBe('Sample content from test.txt');
       expect(mockClient.readResource).toHaveBeenCalledWith({ uri: 'file:///test.txt' });
     });
 
@@ -506,7 +506,7 @@ describe('MCPVerifier', () => {
 
       expect(result.status).toBe('success');
       expect(result.capabilities?.resources).toHaveLength(1);
-      expect(result.capabilities!.resources![0]!.contents).toBeUndefined();
+      expect(result.capabilities?.resources?.[0]?.contents).toBeUndefined();
       expect(mockClient.readResource).not.toHaveBeenCalled();
     });
 
@@ -532,7 +532,7 @@ describe('MCPVerifier', () => {
       const result = await verifier.verifyServer(testServer, { timeout: 5000 });
 
       expect(result.status).toBe('success');
-      expect(result.capabilities!.resources![0]!.contents).toBeUndefined();
+      expect(result.capabilities?.resources?.[0]?.contents).toBeUndefined();
       expect(mockClient.readResource).not.toHaveBeenCalled();
     });
 
@@ -561,7 +561,7 @@ describe('MCPVerifier', () => {
       });
 
       expect(result.status).toBe('success');
-      expect(result.capabilities!.resources![0]!.contents).toBe('# Documentation\n\nThis is a test document.');
+      expect(result.capabilities?.resources?.[0]?.contents).toBe('# Documentation\n\nThis is a test document.');
     });
 
     it('should handle binary blob content', async () => {
@@ -590,7 +590,7 @@ describe('MCPVerifier', () => {
       });
 
       expect(result.status).toBe('success');
-      expect(result.capabilities!.resources![0]!.contents).toBeInstanceOf(Uint8Array);
+      expect(result.capabilities?.resources?.[0]?.contents).toBeInstanceOf(Uint8Array);
     });
 
     it('should handle content exceeding size limit', async () => {
@@ -621,7 +621,7 @@ describe('MCPVerifier', () => {
 
       expect(result.status).toBe('success');
       // Content should be skipped due to size limit
-      expect(result.capabilities!.resources![0]!.contents).toBeUndefined();
+      expect(result.capabilities?.resources?.[0]?.contents).toBeUndefined();
     });
 
     it('should continue on failed resource fetch', async () => {
@@ -649,7 +649,7 @@ describe('MCPVerifier', () => {
       // Should still succeed despite failed resource fetch
       expect(result.status).toBe('success');
       expect(result.capabilities?.resources).toHaveLength(1);
-      expect(result.capabilities!.resources![0]!.contents).toBeUndefined();
+      expect(result.capabilities?.resources?.[0]?.contents).toBeUndefined();
     });
 
     it('should handle resources without contents field', async () => {
@@ -677,7 +677,7 @@ describe('MCPVerifier', () => {
       });
 
       expect(result.status).toBe('success');
-      expect(result.capabilities!.resources![0]!.contents).toBeUndefined();
+      expect(result.capabilities?.resources?.[0]?.contents).toBeUndefined();
     });
   });
 
@@ -717,7 +717,7 @@ describe('MCPVerifier', () => {
 
       expect(result.status).toBe('success');
       expect(result.capabilities?.prompts).toHaveLength(1);
-      expect(result.capabilities!.prompts![0]!.template).toBe('Hello, how are you?');
+      expect(result.capabilities?.prompts?.[0]?.template).toBe('Hello, how are you?');
       expect(mockClient.getPrompt).toHaveBeenCalledWith({ name: 'greeting', arguments: {} });
     });
 
@@ -749,7 +749,7 @@ describe('MCPVerifier', () => {
 
       expect(result.status).toBe('success');
       expect(result.capabilities?.prompts).toHaveLength(1);
-      expect(result.capabilities!.prompts![0]!.template).toBeUndefined();
+      expect(result.capabilities?.prompts?.[0]?.template).toBeUndefined();
       expect(mockClient.getPrompt).not.toHaveBeenCalled();
     });
 
@@ -775,7 +775,7 @@ describe('MCPVerifier', () => {
       const result = await verifier.verifyServer(testServer, { timeout: 5000 });
 
       expect(result.status).toBe('success');
-      expect(result.capabilities!.prompts![0]!.template).toBeUndefined();
+      expect(result.capabilities?.prompts?.[0]?.template).toBeUndefined();
       expect(mockClient.getPrompt).not.toHaveBeenCalled();
     });
 
@@ -806,7 +806,7 @@ describe('MCPVerifier', () => {
       });
 
       expect(result.status).toBe('success');
-      expect(result.capabilities!.prompts![0]!.template).toBe('This is a string message');
+      expect(result.capabilities?.prompts?.[0]?.template).toBe('This is a string message');
     });
 
     it('should handle object content with text property', async () => {
@@ -836,7 +836,7 @@ describe('MCPVerifier', () => {
       });
 
       expect(result.status).toBe('success');
-      expect(result.capabilities!.prompts![0]!.template).toBe('This is object text content');
+      expect(result.capabilities?.prompts?.[0]?.template).toBe('This is object text content');
     });
 
     it('should handle JSON content', async () => {
@@ -866,7 +866,7 @@ describe('MCPVerifier', () => {
       });
 
       expect(result.status).toBe('success');
-      expect(result.capabilities!.prompts![0]!.template).toContain('"type":"complex"');
+      expect(result.capabilities?.prompts?.[0]?.template).toContain('"type":"complex"');
     });
 
     it('should combine multiple messages', async () => {
@@ -898,7 +898,7 @@ describe('MCPVerifier', () => {
       });
 
       expect(result.status).toBe('success');
-      expect(result.capabilities!.prompts![0]!.template).toBe('First message\n\nSecond message\n\nThird message');
+      expect(result.capabilities?.prompts?.[0]?.template).toBe('First message\n\nSecond message\n\nThird message');
     });
 
     it('should continue on failed prompt fetch', async () => {
@@ -926,7 +926,7 @@ describe('MCPVerifier', () => {
       // Should still succeed despite failed prompt fetch
       expect(result.status).toBe('success');
       expect(result.capabilities?.prompts).toHaveLength(1);
-      expect(result.capabilities!.prompts![0]!.template).toBeUndefined();
+      expect(result.capabilities?.prompts?.[0]?.template).toBeUndefined();
     });
 
     it('should handle prompts with arguments', async () => {
@@ -963,13 +963,13 @@ describe('MCPVerifier', () => {
       });
 
       expect(result.status).toBe('success');
-      expect(result.capabilities!.prompts![0]!.arguments).toHaveLength(2);
-      expect(result.capabilities!.prompts![0]!.arguments?.[0]).toEqual({
+      expect(result.capabilities?.prompts?.[0]?.arguments).toHaveLength(2);
+      expect(result.capabilities?.prompts?.[0]?.arguments?.[0]).toEqual({
         name: 'userName',
         description: 'User name',
         required: true
       });
-      expect(result.capabilities!.prompts![0]!.template).toBe('Hello {userName}! {greeting}');
+      expect(result.capabilities?.prompts?.[0]?.template).toBe('Hello {userName}! {greeting}');
     });
   });
 
@@ -1089,7 +1089,7 @@ describe('MCPVerifier', () => {
       expect(result.capabilities?.toolTokenCounts).toBeUndefined();
       expect(result.capabilities?.totalToolTokens).toBeUndefined();
       expect(result.capabilities?.tools).toHaveLength(1);
-      expect(result.capabilities!.tools![0]!.name).toBe('large-tool');
+      expect(result.capabilities?.tools?.[0]?.name).toBe('large-tool');
     });
 
     it('should return undefined for both token fields when disabled', async () => {
@@ -1214,8 +1214,8 @@ describe('MCPVerifier', () => {
 
       expect(result.status).toBe('success');
       // Resources and prompts should be fetched
-      expect(result.capabilities!.resources![0]!.contents).toBe('Test content');
-      expect(result.capabilities!.prompts![0]!.template).toBe('Test');
+      expect(result.capabilities?.resources?.[0]?.contents).toBe('Test content');
+      expect(result.capabilities?.prompts?.[0]?.template).toBe('Test');
       // But tokens should not be calculated
       expect(result.capabilities?.toolTokenCounts).toBeUndefined();
       expect(result.capabilities?.totalToolTokens).toBeUndefined();

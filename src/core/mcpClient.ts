@@ -97,8 +97,11 @@ export class MCPVerifier {
     const constraints: string[] = [];
 
     if (schema.items) {
-      const itemType = schema.items.type || 'any';
-      constraints.push(`items: ${itemType}`);
+      const itemType = schema.items.type;
+      const itemTypeStr = itemType
+        ? (Array.isArray(itemType) ? itemType.join(' | ') : itemType)
+        : 'any';
+      constraints.push(`items: ${itemTypeStr}`);
 
       if (schema.minItems !== undefined || schema.maxItems !== undefined) {
         const minItems = schema.minItems !== undefined ? schema.minItems : 0;
@@ -141,8 +144,11 @@ export class MCPVerifier {
       constraints.push(`pattern: ${schema.pattern}`);
     }
 
-    // Array items
-    if (typeInfo === 'array') {
+    // Array items - handle both single type and union types
+    const isArray = Array.isArray(schema.type)
+      ? schema.type.includes('array')
+      : schema.type === 'array';
+    if (isArray) {
       constraints.push(...this.formatArrayConstraints(schema));
     }
 
@@ -270,7 +276,7 @@ export class MCPVerifier {
         totalToolTokens += tokenCount;
       } catch (error) {
         // If token counting fails for a specific tool, default to 0
-        console.warn(`Failed to count tokens for tool ${tool.name}:`, error);
+        logger.error(`Failed to count tokens for tool ${tool.name}: ${error instanceof Error ? error.message : String(error)}`);
         toolTokenCounts.set(tool.name, 0);
       }
     }
@@ -645,23 +651,25 @@ export class MCPVerifier {
       }
 
       // Calculate token counts for tools (unless disabled)
-      let toolTokenCounts: Map<string, number> | undefined;
-      let totalToolTokens: number | undefined;
+      const shouldIncludeTokenCounts = options?.includeTokenCounts !== false;
+      const tokenData = shouldIncludeTokenCounts
+        ? this.calculateToolTokens(tools, server.name)
+        : undefined;
 
-      if (options?.includeTokenCounts !== false) {
-        const tokenCounts = this.calculateToolTokens(tools, server.name);
-        toolTokenCounts = tokenCounts.toolTokenCounts;
-        totalToolTokens = tokenCounts.totalToolTokens;
-      }
-
-      return {
+      const capabilities: MCPCapabilities = {
         tools,
         resources,
         prompts,
-        serverInfo,
-        toolTokenCounts,
-        totalToolTokens
+        serverInfo
       };
+
+      // Only include token fields when they're calculated
+      if (tokenData) {
+        capabilities.toolTokenCounts = tokenData.toolTokenCounts;
+        capabilities.totalToolTokens = tokenData.totalToolTokens;
+      }
+
+      return capabilities;
 
     } finally {
       // Clean up the connection
