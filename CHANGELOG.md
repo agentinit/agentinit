@@ -1,3 +1,17 @@
+# [1.7.0](https://github.com/agentinit/agentinit/compare/v1.6.0...v1.7.0) (2025-10-17)
+
+
+### Bug Fixes
+
+* resolve TypeScript errors in MCP verifier ([469f886](https://github.com/agentinit/agentinit/commit/469f886ad0b6517b2eb1622b84a6b24b39614f3f))
+* **tests:** remove duplicate getServerVersion properties in mock objects ([26106a7](https://github.com/agentinit/agentinit/commit/26106a7ddaad77a6e3ef37802bf01c8e2e580839))
+
+
+### Features
+
+* add automatic MCP server version detection ([3980599](https://github.com/agentinit/agentinit/commit/3980599539b8175384f0377765a0373c0315535c))
+* **verifier:** add advanced MCP verification options ([d89d5da](https://github.com/agentinit/agentinit/commit/d89d5da9fe177aee19a92f9e441f2dbeba60a1b1))
+
 # [1.6.0](https://github.com/agentinit/agentinit/compare/v1.5.0...v1.6.0) (2025-10-10)
 
 
