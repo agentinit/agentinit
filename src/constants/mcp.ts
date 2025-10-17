@@ -4,6 +4,9 @@ import { dirname, join } from 'path';
 
 export const DEFAULT_CONNECTION_TIMEOUT_MS = 30000;
 
+// Maximum size for resource content fetching (10MB)
+export const MAX_RESOURCE_CONTENT_SIZE = 10 * 1024 * 1024;
+
 // Dynamic version from package.json
 function getPackageVersion(): string {
   try {

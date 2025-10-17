@@ -25,6 +25,11 @@ export async function verifyMcpCommand(args: string[]): Promise<void> {
   const timeoutArg = timeoutIndex >= 0 && timeoutIndex + 1 < args.length ? args[timeoutIndex + 1] : null;
   const parsedTimeout = timeoutArg ? parseInt(timeoutArg, 10) : NaN;
   const timeout = timeoutArg && Number.isFinite(parsedTimeout) && parsedTimeout > 0 ? parsedTimeout : undefined;
+
+  // Parse optional feature flags
+  const includeResources = args.includes('--include-resources');
+  const includePrompts = args.includes('--include-prompts');
+  const noTokens = args.includes('--no-tokens');
   
   // Check if MCP configuration arguments are present
   const hasMcpArgs = args.some(arg => arg.startsWith('--mcp-'));
@@ -44,9 +49,9 @@ export async function verifyMcpCommand(args: string[]): Promise<void> {
     logger.info('Usage: agentinit verify_mcp [options]');
     logger.info('');
     logger.info('Verify existing configurations:');
-    logger.info('  --mcp-name <name>    Verify specific MCP server by name');
-    logger.info('  --all                Verify all configured MCP servers');
-    logger.info(`  --timeout <ms>       Connection timeout in milliseconds (default: ${DEFAULT_CONNECTION_TIMEOUT_MS})`);
+    logger.info('  --mcp-name <name>       Verify specific MCP server by name');
+    logger.info('  --all                   Verify all configured MCP servers');
+    logger.info(`  --timeout <ms>          Connection timeout in milliseconds (default: ${DEFAULT_CONNECTION_TIMEOUT_MS})`);
     logger.info('');
     logger.info('Verify direct MCP configuration:');
     logger.info('  --mcp-stdio <name> <command>     Verify STDIO MCP server');
@@ -56,6 +61,11 @@ export async function verifyMcpCommand(args: string[]): Promise<void> {
     logger.info('  --env <env_vars>                 Environment variables for server');
     logger.info('  --auth <token>                   Authentication token for HTTP/SSE');
     logger.info('');
+    logger.info('Advanced options:');
+    logger.info('  --include-resources     Fetch actual resource contents (may be slow)');
+    logger.info('  --include-prompts       Fetch prompt templates');
+    logger.info('  --no-tokens             Skip token counting');
+    logger.info('');
     logger.info('Examples:');
     logger.info('  # Verify existing configurations');
     logger.info('  agentinit verify_mcp --all');
@@ -64,6 +74,9 @@ export async function verifyMcpCommand(args: string[]): Promise<void> {
     logger.info('  # Verify direct configuration');
     logger.info('  agentinit verify_mcp --mcp-stdio everything "npx -y @modelcontextprotocol/server-everything"');
     logger.info('  agentinit verify_mcp --mcp-http github "https://api.github.com/mcp" --auth "Bearer token"');
+    logger.info('');
+    logger.info('  # Fetch resource contents and prompt templates');
+    logger.info('  agentinit verify_mcp --all --include-resources --include-prompts');
     return;
   }
 
@@ -170,7 +183,21 @@ export async function verifyMcpCommand(args: string[]): Promise<void> {
 
     // Initialize verifier and verify servers
     const verifier = new MCPVerifier(timeout);
-    const results = await verifier.verifyServers(serversToVerify, timeout);
+
+    // Build options object
+    const options: {
+      timeout?: number;
+      includeResourceContents?: boolean;
+      includePromptDetails?: boolean;
+      includeTokenCounts?: boolean;
+    } = {};
+
+    if (timeout) options.timeout = timeout;
+    if (includeResources) options.includeResourceContents = true;
+    if (includePrompts) options.includePromptDetails = true;
+    if (noTokens) options.includeTokenCounts = false;
+
+    const results = await verifier.verifyServers(serversToVerify, Object.keys(options).length > 0 ? options : undefined);
 
     // Count results
     const successCount = results.filter(r => r.status === 'success').length;

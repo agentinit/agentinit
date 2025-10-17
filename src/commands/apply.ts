@@ -341,8 +341,11 @@ export async function applyCommand(args: string[]): Promise<void> {
       const verifySpinner = ora(`Verifying ${mcpParsed.servers.length} MCP server(s)...`).start();
       
       try {
-        const verifier = new MCPVerifier(timeout);
-        const verificationResults = await verifier.verifyServers(mcpParsed.servers, timeout);
+        const verifier = new MCPVerifier();
+        const verificationResults = await verifier.verifyServers(
+          mcpParsed.servers,
+          timeout ? { timeout } : undefined
+        );
         
         const successCount = verificationResults.filter(r => r.status === 'success').length;
         const errorCount = verificationResults.filter(r => r.status === 'error').length;
