@@ -8,17 +8,15 @@ import {
   getVersionCacheStats
 } from '../../src/utils/packageVersion.js';
 
-// Mock fetch globally
-global.fetch = vi.fn();
-
 describe('Package Version Utilities', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.stubGlobal('fetch', vi.fn());
     clearVersionCache();
   });
 
   afterEach(() => {
     clearVersionCache();
+    vi.unstubAllGlobals();
   });
 
   describe('extractExplicitVersion', () => {
