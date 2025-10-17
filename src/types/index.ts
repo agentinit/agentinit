@@ -219,6 +219,7 @@ export interface MCPVerificationOptions {
   includeResourceContents?: boolean;  // Fetch actual resource data
   includePromptDetails?: boolean;     // Fetch prompt templates
   includeTokenCounts?: boolean;       // Calculate token usage (default: true)
+  maxConcurrentFetches?: number;      // Max concurrent resource/prompt fetches (default: 5)
 }
 
 export interface MCPCapabilities {

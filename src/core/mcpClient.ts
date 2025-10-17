@@ -281,6 +281,7 @@ export class MCPVerifier {
    * @param options.includeResourceContents - Fetch actual resource data (may be slow for large resources)
    * @param options.includePromptDetails - Fetch prompt templates with full message content
    * @param options.includeTokenCounts - Calculate token usage for tools (default: true)
+   * @param options.maxConcurrentFetches - Max concurrent resource/prompt fetches (default: 5)
    * @returns Verification result with server capabilities, connection time, and status
    *
    * @example
@@ -296,7 +297,8 @@ export class MCPVerifier {
    *   {
    *     timeout: 10000,
    *     includeResourceContents: true,
-   *     includePromptDetails: true
+   *     includePromptDetails: true,
+   *     maxConcurrentFetches: 10  // Use 10 concurrent fetches for fast servers
    *   }
    * );
    *
@@ -569,7 +571,8 @@ export class MCPVerifier {
         const resourcesResponse = await client.listResources();
 
         // Fetch resources with concurrency limiting to avoid overwhelming servers
-        const limit = pLimit(MAX_CONCURRENT_FETCHES);
+        const concurrencyLimit = options?.maxConcurrentFetches || MAX_CONCURRENT_FETCHES;
+        const limit = pLimit(concurrencyLimit);
         const resourcePromises = resourcesResponse.resources.map((resource) => limit(async () => {
           const mcpResource: MCPResource = { uri: resource.uri };
           if (resource.name !== undefined) mcpResource.name = resource.name;
@@ -625,7 +628,8 @@ export class MCPVerifier {
         const promptsResponse = await client.listPrompts();
 
         // Fetch prompts with concurrency limiting to avoid overwhelming servers
-        const limit = pLimit(MAX_CONCURRENT_FETCHES);
+        const concurrencyLimit = options?.maxConcurrentFetches || MAX_CONCURRENT_FETCHES;
+        const limit = pLimit(concurrencyLimit);
         const promptPromises = promptsResponse.prompts.map((prompt) => limit(async () => {
           const mcpPrompt: MCPPrompt = { name: prompt.name };
           if (prompt.description !== undefined) mcpPrompt.description = prompt.description;

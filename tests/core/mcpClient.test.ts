@@ -1262,6 +1262,79 @@ describe('MCPVerifier', () => {
     });
   });
 
+  describe('verifyServer with configurable concurrency', () => {
+    const testServer: MCPServerConfig = {
+      name: 'test-server',
+      type: MCPServerType.STDIO,
+      command: 'test-command',
+      args: []
+    };
+
+    it('should use default MAX_CONCURRENT_FETCHES when option not specified', async () => {
+      const mockClient = createMockClient({
+        listResources: vi.fn().mockResolvedValue({
+          resources: [
+            { uri: 'file:///test1.txt' },
+            { uri: 'file:///test2.txt' },
+            { uri: 'file:///test3.txt' }
+          ]
+        })
+      });
+
+      const { Client } = await import('@modelcontextprotocol/sdk/client/index.js');
+      vi.mocked(Client).mockImplementation(() => mockClient as any);
+
+      const result = await verifier.verifyServer(testServer, { timeout: 5000 });
+
+      expect(result.status).toBe('success');
+      // Verify resources were fetched (concurrency limit was applied)
+      expect(result.capabilities?.resources).toHaveLength(3);
+    });
+
+    it('should use custom maxConcurrentFetches when provided', async () => {
+      const mockClient = createMockClient({
+        listResources: vi.fn().mockResolvedValue({
+          resources: Array.from({ length: 20 }, (_, i) => ({ uri: `file:///test${i}.txt` }))
+        })
+      });
+
+      const { Client } = await import('@modelcontextprotocol/sdk/client/index.js');
+      vi.mocked(Client).mockImplementation(() => mockClient as any);
+
+      const result = await verifier.verifyServer(testServer, {
+        timeout: 5000,
+        maxConcurrentFetches: 2  // Very low limit
+      });
+
+      expect(result.status).toBe('success');
+      // Verify all resources were fetched despite low concurrency
+      expect(result.capabilities?.resources).toHaveLength(20);
+    });
+
+    it('should apply maxConcurrentFetches to prompt fetching as well', async () => {
+      const mockClient = createMockClient({
+        listPrompts: vi.fn().mockResolvedValue({
+          prompts: Array.from({ length: 15 }, (_, i) => ({
+            name: `prompt-${i}`,
+            description: `Test prompt ${i}`
+          }))
+        })
+      });
+
+      const { Client } = await import('@modelcontextprotocol/sdk/client/index.js');
+      vi.mocked(Client).mockImplementation(() => mockClient as any);
+
+      const result = await verifier.verifyServer(testServer, {
+        timeout: 5000,
+        maxConcurrentFetches: 3
+      });
+
+      expect(result.status).toBe('success');
+      // Verify all prompts were fetched
+      expect(result.capabilities?.prompts).toHaveLength(15);
+    });
+  });
+
   describe('verifyServer with version detection', () => {
     const testServer: MCPServerConfig = {
       name: 'test-server',
