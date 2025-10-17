@@ -72,6 +72,7 @@ async verifyServer(
   - `includeResourceContents`: Fetch actual resource data (default: false)
   - `includePromptDetails`: Fetch prompt templates (default: false)
   - `includeTokenCounts`: Calculate token usage (default: true)
+  - `maxConcurrentFetches`: Max concurrent resource/prompt fetches (default: 5)
 
 **Returns:** `MCPVerificationResult` containing:
 - `server`: The server configuration
@@ -264,6 +265,24 @@ console.log(result.capabilities?.toolTokenCounts); // undefined
 console.log(result.capabilities?.totalToolTokens); // undefined
 ```
 
+### Tune Concurrency for Server Performance
+
+Control how many resources/prompts are fetched in parallel. Use higher values for fast servers, lower for slow or rate-limited servers:
+
+```typescript
+// Fast server - increase concurrency
+const result = await verifier.verifyServer(serverConfig, {
+  includeResourceContents: true,
+  maxConcurrentFetches: 10
+});
+
+// Slow or rate-limited server - decrease concurrency
+const result2 = await verifier.verifyServer(slowServer, {
+  includeResourceContents: true,
+  maxConcurrentFetches: 2
+});
+```
+
 ## Version Detection
 
 The verifier automatically detects MCP server versions using a multi-layered approach:
@@ -404,6 +423,7 @@ interface MCPVerificationOptions {
   includeResourceContents?: boolean;
   includePromptDetails?: boolean;
   includeTokenCounts?: boolean;
+  maxConcurrentFetches?: number;
 }
 ```
 
@@ -451,6 +471,8 @@ interface MCPPrompt {
 - **Prompt Templates**: Fetching prompt templates requires additional round trips to the MCP server. Only enable `includePromptDetails` when needed.
 
 - **Token Counting**: Token counting adds minimal overhead and is enabled by default. Disable with `includeTokenCounts: false` if you don't need it.
+
+- **Concurrency Tuning**: Adjust `maxConcurrentFetches` (default: 5) based on server performance. Use higher values (10-20) for fast servers, lower (1-3) for slow or rate-limited servers.
 
 - **Parallel Verification**: Use `verifyServers()` to verify multiple servers in parallel for better performance.
 
