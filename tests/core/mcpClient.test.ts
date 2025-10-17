@@ -22,6 +22,32 @@ vi.mock('contextcalc', () => ({
   countTokens: vi.fn().mockReturnValue(42)
 }));
 
+// Helper function to create a mock Client with optional overrides
+type MockClient = {
+  connect: ReturnType<typeof vi.fn>;
+  getServerVersion: ReturnType<typeof vi.fn>;
+  close: ReturnType<typeof vi.fn>;
+  listTools: ReturnType<typeof vi.fn>;
+  listResources: ReturnType<typeof vi.fn>;
+  listPrompts: ReturnType<typeof vi.fn>;
+  readResource: ReturnType<typeof vi.fn>;
+  getPrompt: ReturnType<typeof vi.fn>;
+};
+
+function createMockClient(overrides: Partial<MockClient> = {}): MockClient {
+  return {
+    connect: vi.fn().mockResolvedValue(undefined),
+    getServerVersion: vi.fn().mockReturnValue(undefined),
+    close: vi.fn().mockResolvedValue(undefined),
+    listTools: vi.fn().mockResolvedValue({ tools: [] }),
+    listResources: vi.fn().mockResolvedValue({ resources: [] }),
+    listPrompts: vi.fn().mockResolvedValue({ prompts: [] }),
+    readResource: vi.fn().mockResolvedValue({ contents: [] }),
+    getPrompt: vi.fn().mockResolvedValue({ messages: [] }),
+    ...overrides
+  };
+}
+
 describe('MCPVerifier', () => {
   let verifier: MCPVerifier;
 
@@ -452,11 +478,7 @@ describe('MCPVerifier', () => {
     };
 
     it('should fetch resource contents when includeResourceContents is true', async () => {
-      const mockClient = {
-        connect: vi.fn().mockResolvedValue(undefined),
-        getServerVersion: vi.fn().mockReturnValue(undefined),
-        close: vi.fn().mockResolvedValue(undefined),
-        listTools: vi.fn().mockResolvedValue({ tools: [] }),
+      const mockClient = createMockClient({
         listResources: vi.fn().mockResolvedValue({
           resources: [
             { uri: 'file:///test.txt', name: 'test.txt', description: 'Test file' }
@@ -464,9 +486,8 @@ describe('MCPVerifier', () => {
         }),
         readResource: vi.fn().mockResolvedValue({
           contents: [{ text: 'Sample content from test.txt' }]
-        }),
-        listPrompts: vi.fn().mockResolvedValue({ prompts: [] })
-      };
+        })
+      });
 
       const { Client } = await import('@modelcontextprotocol/sdk/client/index.js');
       vi.mocked(Client).mockImplementation(() => mockClient as any);
@@ -483,11 +504,7 @@ describe('MCPVerifier', () => {
     });
 
     it('should skip resource contents when includeResourceContents is false', async () => {
-      const mockClient = {
-        connect: vi.fn().mockResolvedValue(undefined),
-        getServerVersion: vi.fn().mockReturnValue(undefined),
-        close: vi.fn().mockResolvedValue(undefined),
-        listTools: vi.fn().mockResolvedValue({ tools: [] }),
+      const mockClient = createMockClient({
         listResources: vi.fn().mockResolvedValue({
           resources: [
             { uri: 'file:///test.txt', name: 'test.txt' }
@@ -495,9 +512,8 @@ describe('MCPVerifier', () => {
         }),
         readResource: vi.fn().mockResolvedValue({
           contents: [{ text: 'Sample content' }]
-        }),
-        listPrompts: vi.fn().mockResolvedValue({ prompts: [] })
-      };
+        })
+      });
 
       const { Client } = await import('@modelcontextprotocol/sdk/client/index.js');
       vi.mocked(Client).mockImplementation(() => mockClient as any);

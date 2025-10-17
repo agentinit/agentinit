@@ -4,10 +4,11 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { countTokens } from 'contextcalc';
 import { green, yellow, red } from 'kleur/colors';
+import pLimit from 'p-limit';
 import { logger } from '../utils/logger.js';
 import { extractPackageFromCommand, fetchLatestVersion } from '../utils/packageVersion.js';
 import { MCPServerType } from '../types/index.js';
-import { DEFAULT_CONNECTION_TIMEOUT_MS, MAX_RESOURCE_CONTENT_SIZE, MCP_VERIFIER_CONFIG, TimeoutError, TOKEN_COUNT_THRESHOLDS } from '../constants/index.js';
+import { DEFAULT_CONNECTION_TIMEOUT_MS, MAX_RESOURCE_CONTENT_SIZE, MAX_CONCURRENT_FETCHES, MCP_VERIFIER_CONFIG, TimeoutError, TOKEN_COUNT_THRESHOLDS, MCP_TOOL_TOKEN_MULTIPLIER } from '../constants/index.js';
 import type {
   MCPServerConfig,
   MCPVerificationResult,
@@ -255,23 +256,9 @@ export class MCPVerifier {
         const claudeToolRepresentation = `<function>${functionDefinition}</function>`;
 
         // Count tokens for the complete tool representation including wrapper
-        //
-        // Token Counting Methodology:
-        // We use a 9x multiplier based on empirical testing against Claude Code v2.x /context command.
-        // Base calculation counts JSON schema representation, but Claude Code adds significant overhead:
-        // - System instructions for MCP tool usage patterns
-        // - Additional formatting and metadata per tool
-        // - Function calling protocol overhead
-        //
-        // Example (everything MCP server):
-        //   Our base count: ~340 tokens (echo tool)
-        //   Claude Code actual: 596 tokens (echo tool)
-        //   Ratio: 596/340 = 1.75x
-        //   Applied multiplier: 5x * 1.75 = 8.75x ≈ 9x
-        //
-        // This multiplier was validated against @modelcontextprotocol/server-everything v0.6.2
-        // on Claude Code v2.x in October 2025.
-        const tokenCount = countTokens(claudeToolRepresentation) * 9;
+        // The MCP_TOOL_TOKEN_MULTIPLIER accounts for Claude Code's system overhead
+        // (see constants/tokens.ts for detailed methodology and validation)
+        const tokenCount = countTokens(claudeToolRepresentation) * MCP_TOOL_TOKEN_MULTIPLIER;
 
         toolTokenCounts.set(tool.name, tokenCount);
         totalToolTokens += tokenCount;
@@ -581,8 +568,9 @@ export class MCPVerifier {
       try {
         const resourcesResponse = await client.listResources();
 
-        // Fetch all resources in parallel for better performance
-        const resourcePromises = resourcesResponse.resources.map(async (resource) => {
+        // Fetch resources with concurrency limiting to avoid overwhelming servers
+        const limit = pLimit(MAX_CONCURRENT_FETCHES);
+        const resourcePromises = resourcesResponse.resources.map((resource) => limit(async () => {
           const mcpResource: MCPResource = { uri: resource.uri };
           if (resource.name !== undefined) mcpResource.name = resource.name;
           if (resource.description !== undefined) mcpResource.description = resource.description;
@@ -619,7 +607,7 @@ export class MCPVerifier {
           }
 
           return mcpResource;
-        });
+        }));
 
         resources.push(...await Promise.all(resourcePromises));
       } catch (error) {
@@ -636,8 +624,9 @@ export class MCPVerifier {
       try {
         const promptsResponse = await client.listPrompts();
 
-        // Fetch all prompts in parallel for better performance
-        const promptPromises = promptsResponse.prompts.map(async (prompt) => {
+        // Fetch prompts with concurrency limiting to avoid overwhelming servers
+        const limit = pLimit(MAX_CONCURRENT_FETCHES);
+        const promptPromises = promptsResponse.prompts.map((prompt) => limit(async () => {
           const mcpPrompt: MCPPrompt = { name: prompt.name };
           if (prompt.description !== undefined) mcpPrompt.description = prompt.description;
           if (prompt.arguments !== undefined) {
@@ -672,7 +661,7 @@ export class MCPVerifier {
           }
 
           return mcpPrompt;
-        });
+        }));
 
         prompts.push(...await Promise.all(promptPromises));
       } catch (error) {
@@ -823,7 +812,7 @@ export class MCPVerifier {
         }
         
         // Show connection details for debugging
-        if (server.type === 'stdio' && server.command) {
+        if (server.type === MCPServerType.STDIO && server.command) {
           output.push(`   Command: ${server.command} ${server.args?.join(' ') || ''}`);
         } else if (server.url) {
           // Sanitize URL to remove credentials and sensitive query parameters

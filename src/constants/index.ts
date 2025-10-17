@@ -1,2 +1,2 @@
-export { DEFAULT_CONNECTION_TIMEOUT_MS, MAX_RESOURCE_CONTENT_SIZE, MCP_VERIFIER_CONFIG, TimeoutError } from './mcp.js';
-export { TOKEN_COUNT_THRESHOLDS, type TokenCountThreshold } from './tokens.js';
+export { DEFAULT_CONNECTION_TIMEOUT_MS, MAX_RESOURCE_CONTENT_SIZE, MAX_CONCURRENT_FETCHES, MCP_VERIFIER_CONFIG, TimeoutError } from './mcp.js';
+export { TOKEN_COUNT_THRESHOLDS, MCP_TOOL_TOKEN_MULTIPLIER, type TokenCountThreshold } from './tokens.js';
