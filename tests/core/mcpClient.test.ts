@@ -6,6 +6,8 @@ import { MCPServerType, type MCPServerConfig, type MCPTool } from '../../src/typ
 vi.mock('@modelcontextprotocol/sdk/client/index.js', () => ({
   Client: vi.fn().mockImplementation(() => ({
     connect: vi.fn().mockResolvedValue(undefined),
+        getServerVersion: vi.fn().mockReturnValue(undefined),
+    getServerVersion: vi.fn().mockReturnValue(undefined),
     close: vi.fn().mockResolvedValue(undefined),
     listTools: vi.fn().mockResolvedValue({ tools: [] }),
     listResources: vi.fn().mockResolvedValue({ resources: [] }),
@@ -453,6 +455,7 @@ describe('MCPVerifier', () => {
     it('should fetch resource contents when includeResourceContents is true', async () => {
       const mockClient = {
         connect: vi.fn().mockResolvedValue(undefined),
+        getServerVersion: vi.fn().mockReturnValue(undefined),
         close: vi.fn().mockResolvedValue(undefined),
         listTools: vi.fn().mockResolvedValue({ tools: [] }),
         listResources: vi.fn().mockResolvedValue({
@@ -483,6 +486,7 @@ describe('MCPVerifier', () => {
     it('should skip resource contents when includeResourceContents is false', async () => {
       const mockClient = {
         connect: vi.fn().mockResolvedValue(undefined),
+        getServerVersion: vi.fn().mockReturnValue(undefined),
         close: vi.fn().mockResolvedValue(undefined),
         listTools: vi.fn().mockResolvedValue({ tools: [] }),
         listResources: vi.fn().mockResolvedValue({
@@ -513,6 +517,7 @@ describe('MCPVerifier', () => {
     it('should skip resource contents by default', async () => {
       const mockClient = {
         connect: vi.fn().mockResolvedValue(undefined),
+        getServerVersion: vi.fn().mockReturnValue(undefined),
         close: vi.fn().mockResolvedValue(undefined),
         listTools: vi.fn().mockResolvedValue({ tools: [] }),
         listResources: vi.fn().mockResolvedValue({
@@ -539,6 +544,7 @@ describe('MCPVerifier', () => {
     it('should handle text content', async () => {
       const mockClient = {
         connect: vi.fn().mockResolvedValue(undefined),
+        getServerVersion: vi.fn().mockReturnValue(undefined),
         close: vi.fn().mockResolvedValue(undefined),
         listTools: vi.fn().mockResolvedValue({ tools: [] }),
         listResources: vi.fn().mockResolvedValue({
@@ -568,6 +574,7 @@ describe('MCPVerifier', () => {
       const binaryData = Buffer.from('binary data content').toString('base64');
       const mockClient = {
         connect: vi.fn().mockResolvedValue(undefined),
+        getServerVersion: vi.fn().mockReturnValue(undefined),
         close: vi.fn().mockResolvedValue(undefined),
         listTools: vi.fn().mockResolvedValue({ tools: [] }),
         listResources: vi.fn().mockResolvedValue({
@@ -598,6 +605,7 @@ describe('MCPVerifier', () => {
       const largeContent = 'x'.repeat(11 * 1024 * 1024);
       const mockClient = {
         connect: vi.fn().mockResolvedValue(undefined),
+        getServerVersion: vi.fn().mockReturnValue(undefined),
         close: vi.fn().mockResolvedValue(undefined),
         listTools: vi.fn().mockResolvedValue({ tools: [] }),
         listResources: vi.fn().mockResolvedValue({
@@ -627,6 +635,7 @@ describe('MCPVerifier', () => {
     it('should continue on failed resource fetch', async () => {
       const mockClient = {
         connect: vi.fn().mockResolvedValue(undefined),
+        getServerVersion: vi.fn().mockReturnValue(undefined),
         close: vi.fn().mockResolvedValue(undefined),
         listTools: vi.fn().mockResolvedValue({ tools: [] }),
         listResources: vi.fn().mockResolvedValue({
@@ -655,6 +664,7 @@ describe('MCPVerifier', () => {
     it('should handle resources without contents field', async () => {
       const mockClient = {
         connect: vi.fn().mockResolvedValue(undefined),
+        getServerVersion: vi.fn().mockReturnValue(undefined),
         close: vi.fn().mockResolvedValue(undefined),
         listTools: vi.fn().mockResolvedValue({ tools: [] }),
         listResources: vi.fn().mockResolvedValue({
@@ -692,6 +702,7 @@ describe('MCPVerifier', () => {
     it('should fetch prompt templates when includePromptDetails is true', async () => {
       const mockClient = {
         connect: vi.fn().mockResolvedValue(undefined),
+        getServerVersion: vi.fn().mockReturnValue(undefined),
         close: vi.fn().mockResolvedValue(undefined),
         listTools: vi.fn().mockResolvedValue({ tools: [] }),
         listResources: vi.fn().mockResolvedValue({ resources: [] }),
@@ -724,6 +735,7 @@ describe('MCPVerifier', () => {
     it('should skip prompt templates when includePromptDetails is false', async () => {
       const mockClient = {
         connect: vi.fn().mockResolvedValue(undefined),
+        getServerVersion: vi.fn().mockReturnValue(undefined),
         close: vi.fn().mockResolvedValue(undefined),
         listTools: vi.fn().mockResolvedValue({ tools: [] }),
         listResources: vi.fn().mockResolvedValue({ resources: [] }),
@@ -756,6 +768,7 @@ describe('MCPVerifier', () => {
     it('should skip prompt templates by default', async () => {
       const mockClient = {
         connect: vi.fn().mockResolvedValue(undefined),
+        getServerVersion: vi.fn().mockReturnValue(undefined),
         close: vi.fn().mockResolvedValue(undefined),
         listTools: vi.fn().mockResolvedValue({ tools: [] }),
         listResources: vi.fn().mockResolvedValue({ resources: [] }),
@@ -782,6 +795,7 @@ describe('MCPVerifier', () => {
     it('should handle string content in messages', async () => {
       const mockClient = {
         connect: vi.fn().mockResolvedValue(undefined),
+        getServerVersion: vi.fn().mockReturnValue(undefined),
         close: vi.fn().mockResolvedValue(undefined),
         listTools: vi.fn().mockResolvedValue({ tools: [] }),
         listResources: vi.fn().mockResolvedValue({ resources: [] }),
@@ -812,6 +826,7 @@ describe('MCPVerifier', () => {
     it('should handle object content with text property', async () => {
       const mockClient = {
         connect: vi.fn().mockResolvedValue(undefined),
+        getServerVersion: vi.fn().mockReturnValue(undefined),
         close: vi.fn().mockResolvedValue(undefined),
         listTools: vi.fn().mockResolvedValue({ tools: [] }),
         listResources: vi.fn().mockResolvedValue({ resources: [] }),
@@ -842,6 +857,7 @@ describe('MCPVerifier', () => {
     it('should handle JSON content', async () => {
       const mockClient = {
         connect: vi.fn().mockResolvedValue(undefined),
+        getServerVersion: vi.fn().mockReturnValue(undefined),
         close: vi.fn().mockResolvedValue(undefined),
         listTools: vi.fn().mockResolvedValue({ tools: [] }),
         listResources: vi.fn().mockResolvedValue({ resources: [] }),
@@ -872,6 +888,7 @@ describe('MCPVerifier', () => {
     it('should combine multiple messages', async () => {
       const mockClient = {
         connect: vi.fn().mockResolvedValue(undefined),
+        getServerVersion: vi.fn().mockReturnValue(undefined),
         close: vi.fn().mockResolvedValue(undefined),
         listTools: vi.fn().mockResolvedValue({ tools: [] }),
         listResources: vi.fn().mockResolvedValue({ resources: [] }),
@@ -904,6 +921,7 @@ describe('MCPVerifier', () => {
     it('should continue on failed prompt fetch', async () => {
       const mockClient = {
         connect: vi.fn().mockResolvedValue(undefined),
+        getServerVersion: vi.fn().mockReturnValue(undefined),
         close: vi.fn().mockResolvedValue(undefined),
         listTools: vi.fn().mockResolvedValue({ tools: [] }),
         listResources: vi.fn().mockResolvedValue({ resources: [] }),
@@ -932,6 +950,7 @@ describe('MCPVerifier', () => {
     it('should handle prompts with arguments', async () => {
       const mockClient = {
         connect: vi.fn().mockResolvedValue(undefined),
+        getServerVersion: vi.fn().mockReturnValue(undefined),
         close: vi.fn().mockResolvedValue(undefined),
         listTools: vi.fn().mockResolvedValue({ tools: [] }),
         listResources: vi.fn().mockResolvedValue({ resources: [] }),
@@ -984,6 +1003,7 @@ describe('MCPVerifier', () => {
     it('should calculate token counts by default', async () => {
       const mockClient = {
         connect: vi.fn().mockResolvedValue(undefined),
+        getServerVersion: vi.fn().mockReturnValue(undefined),
         close: vi.fn().mockResolvedValue(undefined),
         listTools: vi.fn().mockResolvedValue({
           tools: [
@@ -1019,6 +1039,7 @@ describe('MCPVerifier', () => {
     it('should calculate token counts when explicitly enabled', async () => {
       const mockClient = {
         connect: vi.fn().mockResolvedValue(undefined),
+        getServerVersion: vi.fn().mockReturnValue(undefined),
         close: vi.fn().mockResolvedValue(undefined),
         listTools: vi.fn().mockResolvedValue({
           tools: [
@@ -1055,6 +1076,7 @@ describe('MCPVerifier', () => {
     it('should skip token counting when includeTokenCounts is false', async () => {
       const mockClient = {
         connect: vi.fn().mockResolvedValue(undefined),
+        getServerVersion: vi.fn().mockReturnValue(undefined),
         close: vi.fn().mockResolvedValue(undefined),
         listTools: vi.fn().mockResolvedValue({
           tools: [
@@ -1095,6 +1117,7 @@ describe('MCPVerifier', () => {
     it('should return undefined for both token fields when disabled', async () => {
       const mockClient = {
         connect: vi.fn().mockResolvedValue(undefined),
+        getServerVersion: vi.fn().mockReturnValue(undefined),
         close: vi.fn().mockResolvedValue(undefined),
         listTools: vi.fn().mockResolvedValue({
           tools: [
@@ -1126,6 +1149,7 @@ describe('MCPVerifier', () => {
     it('should calculate correct total token count for multiple tools', async () => {
       const mockClient = {
         connect: vi.fn().mockResolvedValue(undefined),
+        getServerVersion: vi.fn().mockReturnValue(undefined),
         close: vi.fn().mockResolvedValue(undefined),
         listTools: vi.fn().mockResolvedValue({
           tools: [
@@ -1172,6 +1196,7 @@ describe('MCPVerifier', () => {
     it('should work with combined options', async () => {
       const mockClient = {
         connect: vi.fn().mockResolvedValue(undefined),
+        getServerVersion: vi.fn().mockReturnValue(undefined),
         close: vi.fn().mockResolvedValue(undefined),
         listTools: vi.fn().mockResolvedValue({
           tools: [
@@ -1219,6 +1244,279 @@ describe('MCPVerifier', () => {
       // But tokens should not be calculated
       expect(result.capabilities?.toolTokenCounts).toBeUndefined();
       expect(result.capabilities?.totalToolTokens).toBeUndefined();
+    });
+  });
+
+  describe('verifyServer with version detection', () => {
+    const testServer: MCPServerConfig = {
+      name: 'test-server',
+      type: MCPServerType.STDIO,
+      command: 'npx',
+      args: ['-y', 'chrome-devtools-mcp@latest']
+    };
+
+    // Mock fetch for npm registry tests
+    const originalFetch = global.fetch;
+    beforeEach(async () => {
+      global.fetch = vi.fn();
+      // Clear version cache between tests
+      const { clearVersionCache } = await import('../../src/utils/packageVersion.js');
+      clearVersionCache();
+    });
+
+    afterEach(() => {
+      global.fetch = originalFetch;
+    });
+
+    it('should extract version from MCP protocol getServerVersion', async () => {
+      const mockClient = {
+        connect: vi.fn().mockResolvedValue(undefined),
+        getServerVersion: vi.fn().mockReturnValue(undefined),
+        getServerVersion: vi.fn().mockReturnValue({
+          name: 'test-server',
+          version: '1.2.3'
+        }),
+        close: vi.fn().mockResolvedValue(undefined),
+        listTools: vi.fn().mockResolvedValue({ tools: [] }),
+        listResources: vi.fn().mockResolvedValue({ resources: [] }),
+        listPrompts: vi.fn().mockResolvedValue({ prompts: [] })
+      };
+
+      const { Client } = await import('@modelcontextprotocol/sdk/client/index.js');
+      vi.mocked(Client).mockImplementation(() => mockClient as any);
+
+      const result = await verifier.verifyServer(testServer, { timeout: 5000 });
+
+      expect(result.status).toBe('success');
+      expect(result.capabilities?.serverInfo?.version).toBe('1.2.3');
+      expect(result.capabilities?.serverInfo?.name).toBe('test-server');
+      expect(mockClient.getServerVersion).toHaveBeenCalled();
+    });
+
+    it('should fallback to npm registry when version is unknown', async () => {
+      const mockClient = {
+        connect: vi.fn().mockResolvedValue(undefined),
+        getServerVersion: vi.fn().mockReturnValue(undefined),
+        getServerVersion: vi.fn().mockReturnValue(undefined),
+        close: vi.fn().mockResolvedValue(undefined),
+        listTools: vi.fn().mockResolvedValue({ tools: [] }),
+        listResources: vi.fn().mockResolvedValue({ resources: [] }),
+        listPrompts: vi.fn().mockResolvedValue({ prompts: [] })
+      };
+
+      const { Client } = await import('@modelcontextprotocol/sdk/client/index.js');
+      vi.mocked(Client).mockImplementation(() => mockClient as any);
+
+      // Mock npm registry response
+      vi.mocked(fetch).mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ version: '0.7.0' })
+      } as Response);
+
+      const result = await verifier.verifyServer(testServer, { timeout: 5000 });
+
+      expect(result.status).toBe('success');
+      expect(result.capabilities?.serverInfo?.version).toBe('0.7.0');
+      expect(fetch).toHaveBeenCalledWith(
+        'https://registry.npmjs.org/chrome-devtools-mcp/latest',
+        expect.any(Object)
+      );
+    });
+
+    it('should extract explicit version from command without API call', async () => {
+      const serverWithExplicitVersion: MCPServerConfig = {
+        name: 'test-server',
+        type: MCPServerType.STDIO,
+        command: 'npx',
+        args: ['-y', 'chrome-devtools-mcp@0.7.5']
+      };
+
+      const mockClient = {
+        connect: vi.fn().mockResolvedValue(undefined),
+        getServerVersion: vi.fn().mockReturnValue(undefined),
+        getServerVersion: vi.fn().mockReturnValue(undefined),
+        close: vi.fn().mockResolvedValue(undefined),
+        listTools: vi.fn().mockResolvedValue({ tools: [] }),
+        listResources: vi.fn().mockResolvedValue({ resources: [] }),
+        listPrompts: vi.fn().mockResolvedValue({ prompts: [] })
+      };
+
+      const { Client } = await import('@modelcontextprotocol/sdk/client/index.js');
+      vi.mocked(Client).mockImplementation(() => mockClient as any);
+
+      const result = await verifier.verifyServer(serverWithExplicitVersion, { timeout: 5000 });
+
+      expect(result.status).toBe('success');
+      expect(result.capabilities?.serverInfo?.version).toBe('0.7.5');
+      expect(fetch).not.toHaveBeenCalled();
+    });
+
+    it('should skip npm fallback for HTTP servers', async () => {
+      const httpServer: MCPServerConfig = {
+        name: 'http-server',
+        type: MCPServerType.HTTP,
+        url: 'https://api.example.com/mcp'
+      };
+
+      const mockClient = {
+        connect: vi.fn().mockResolvedValue(undefined),
+        getServerVersion: vi.fn().mockReturnValue(undefined),
+        getServerVersion: vi.fn().mockReturnValue(undefined),
+        close: vi.fn().mockResolvedValue(undefined),
+        listTools: vi.fn().mockResolvedValue({ tools: [] }),
+        listResources: vi.fn().mockResolvedValue({ resources: [] }),
+        listPrompts: vi.fn().mockResolvedValue({ prompts: [] })
+      };
+
+      const { Client } = await import('@modelcontextprotocol/sdk/client/index.js');
+      vi.mocked(Client).mockImplementation(() => mockClient as any);
+
+      const result = await verifier.verifyServer(httpServer, { timeout: 5000 });
+
+      expect(result.status).toBe('success');
+      expect(result.capabilities?.serverInfo?.version).toBe('unknown');
+      expect(fetch).not.toHaveBeenCalled();
+    });
+
+    it('should skip npm fallback for SSE servers', async () => {
+      const sseServer: MCPServerConfig = {
+        name: 'sse-server',
+        type: MCPServerType.SSE,
+        url: 'https://api.example.com/sse'
+      };
+
+      const mockClient = {
+        connect: vi.fn().mockResolvedValue(undefined),
+        getServerVersion: vi.fn().mockReturnValue(undefined),
+        getServerVersion: vi.fn().mockReturnValue(undefined),
+        close: vi.fn().mockResolvedValue(undefined),
+        listTools: vi.fn().mockResolvedValue({ tools: [] }),
+        listResources: vi.fn().mockResolvedValue({ resources: [] }),
+        listPrompts: vi.fn().mockResolvedValue({ prompts: [] })
+      };
+
+      const { Client } = await import('@modelcontextprotocol/sdk/client/index.js');
+      vi.mocked(Client).mockImplementation(() => mockClient as any);
+
+      const result = await verifier.verifyServer(sseServer, { timeout: 5000 });
+
+      expect(result.status).toBe('success');
+      expect(result.capabilities?.serverInfo?.version).toBe('unknown');
+      expect(fetch).not.toHaveBeenCalled();
+    });
+
+    it('should handle npm registry fetch failure gracefully', async () => {
+      const mockClient = {
+        connect: vi.fn().mockResolvedValue(undefined),
+        getServerVersion: vi.fn().mockReturnValue(undefined),
+        getServerVersion: vi.fn().mockReturnValue(undefined),
+        close: vi.fn().mockResolvedValue(undefined),
+        listTools: vi.fn().mockResolvedValue({ tools: [] }),
+        listResources: vi.fn().mockResolvedValue({ resources: [] }),
+        listPrompts: vi.fn().mockResolvedValue({ prompts: [] })
+      };
+
+      const { Client } = await import('@modelcontextprotocol/sdk/client/index.js');
+      vi.mocked(Client).mockImplementation(() => mockClient as any);
+
+      // Mock npm registry failure
+      vi.mocked(fetch).mockRejectedValueOnce(new Error('Network error'));
+
+      const result = await verifier.verifyServer(testServer, { timeout: 5000 });
+
+      // Should still succeed with "unknown" version
+      expect(result.status).toBe('success');
+      expect(result.capabilities?.serverInfo?.version).toBe('unknown');
+    });
+
+    it('should handle scoped packages with fallback', async () => {
+      const scopedServer: MCPServerConfig = {
+        name: 'scoped-server',
+        type: MCPServerType.STDIO,
+        command: 'npx',
+        args: ['-y', '@modelcontextprotocol/server-everything']
+      };
+
+      const mockClient = {
+        connect: vi.fn().mockResolvedValue(undefined),
+        getServerVersion: vi.fn().mockReturnValue(undefined),
+        getServerVersion: vi.fn().mockReturnValue(undefined),
+        close: vi.fn().mockResolvedValue(undefined),
+        listTools: vi.fn().mockResolvedValue({ tools: [] }),
+        listResources: vi.fn().mockResolvedValue({ resources: [] }),
+        listPrompts: vi.fn().mockResolvedValue({ prompts: [] })
+      };
+
+      const { Client } = await import('@modelcontextprotocol/sdk/client/index.js');
+      vi.mocked(Client).mockImplementation(() => mockClient as any);
+
+      // Mock npm registry for scoped package
+      vi.mocked(fetch).mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ version: '0.6.2' })
+      } as Response);
+
+      const result = await verifier.verifyServer(scopedServer, { timeout: 5000 });
+
+      expect(result.status).toBe('success');
+      expect(result.capabilities?.serverInfo?.version).toBe('0.6.2');
+      expect(fetch).toHaveBeenCalledWith(
+        'https://registry.npmjs.org/@modelcontextprotocol/server-everything/latest',
+        expect.any(Object)
+      );
+    });
+
+    it('should prefer MCP protocol version over npm fallback', async () => {
+      const mockClient = {
+        connect: vi.fn().mockResolvedValue(undefined),
+        getServerVersion: vi.fn().mockReturnValue(undefined),
+        getServerVersion: vi.fn().mockReturnValue({
+          name: 'chrome-devtools-mcp',
+          version: '0.8.0'
+        }),
+        close: vi.fn().mockResolvedValue(undefined),
+        listTools: vi.fn().mockResolvedValue({ tools: [] }),
+        listResources: vi.fn().mockResolvedValue({ resources: [] }),
+        listPrompts: vi.fn().mockResolvedValue({ prompts: [] })
+      };
+
+      const { Client } = await import('@modelcontextprotocol/sdk/client/index.js');
+      vi.mocked(Client).mockImplementation(() => mockClient as any);
+
+      const result = await verifier.verifyServer(testServer, { timeout: 5000 });
+
+      expect(result.status).toBe('success');
+      expect(result.capabilities?.serverInfo?.version).toBe('0.8.0');
+      // Should not call npm registry when MCP provides version
+      expect(fetch).not.toHaveBeenCalled();
+    });
+
+    it('should handle package extraction failure', async () => {
+      const nonPackageServer: MCPServerConfig = {
+        name: 'non-package-server',
+        type: MCPServerType.STDIO,
+        command: 'python',
+        args: ['-m', 'mcp_server']
+      };
+
+      const mockClient = {
+        connect: vi.fn().mockResolvedValue(undefined),
+        getServerVersion: vi.fn().mockReturnValue(undefined),
+        getServerVersion: vi.fn().mockReturnValue(undefined),
+        close: vi.fn().mockResolvedValue(undefined),
+        listTools: vi.fn().mockResolvedValue({ tools: [] }),
+        listResources: vi.fn().mockResolvedValue({ resources: [] }),
+        listPrompts: vi.fn().mockResolvedValue({ prompts: [] })
+      };
+
+      const { Client } = await import('@modelcontextprotocol/sdk/client/index.js');
+      vi.mocked(Client).mockImplementation(() => mockClient as any);
+
+      const result = await verifier.verifyServer(nonPackageServer, { timeout: 5000 });
+
+      expect(result.status).toBe('success');
+      expect(result.capabilities?.serverInfo?.version).toBe('unknown');
+      expect(fetch).not.toHaveBeenCalled();
     });
   });
 });

@@ -5,6 +5,7 @@ import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { countTokens } from 'contextcalc';
 import { green, yellow, red } from 'kleur/colors';
 import { logger } from '../utils/logger.js';
+import { extractPackageFromCommand, fetchLatestVersion } from '../utils/packageVersion.js';
 import { MCPServerType } from '../types/index.js';
 import { DEFAULT_CONNECTION_TIMEOUT_MS, MAX_RESOURCE_CONTENT_SIZE, MCP_VERIFIER_CONFIG, TimeoutError, TOKEN_COUNT_THRESHOLDS } from '../constants/index.js';
 import type {
@@ -515,12 +516,40 @@ export class MCPVerifier {
       // Connect to the server
       await client.connect(transport);
 
-      // Get server info
+      // Extract server version from MCP protocol
+      const serverVersion = client.getServerVersion();
+      logger.debug(`[Version Detection] MCP protocol returned: ${JSON.stringify(serverVersion)}`);
+
+      // Get server info from MCP protocol or fallback to defaults
       const serverInfo = {
-        name: server.name,
-        version: "unknown",
+        name: serverVersion?.name || server.name,
+        version: serverVersion?.version || "unknown",
         protocolVersion: "unknown"
       };
+
+      // If version is still unknown and this is a STDIO server, try npm registry fallback
+      if (serverInfo.version === "unknown" && server.type === MCPServerType.STDIO) {
+        logger.debug(`[Version Detection] Version unknown, attempting npm registry fallback for STDIO server`);
+
+        const packageSpec = extractPackageFromCommand(server.command, server.args);
+        if (packageSpec) {
+          logger.debug(`[Version Detection] Extracted package: ${packageSpec}`);
+
+          try {
+            const registryVersion = await fetchLatestVersion(packageSpec, { timeout: 3000 });
+            if (registryVersion) {
+              serverInfo.version = registryVersion;
+              logger.debug(`[Version Detection] npm registry returned: ${registryVersion}`);
+            } else {
+              logger.debug(`[Version Detection] npm registry returned no version for: ${packageSpec}`);
+            }
+          } catch (error) {
+            logger.debug(`[Version Detection] npm registry lookup failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+          }
+        } else {
+          logger.debug(`[Version Detection] Could not extract package name from command: ${server.command} ${server.args?.join(' ')}`);
+        }
+      }
 
       // Check for abort before continuing
       if (abortSignal?.aborted) {

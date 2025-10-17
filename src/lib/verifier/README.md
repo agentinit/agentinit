@@ -264,6 +264,93 @@ console.log(result.capabilities?.toolTokenCounts); // undefined
 console.log(result.capabilities?.totalToolTokens); // undefined
 ```
 
+## Version Detection
+
+The verifier automatically detects MCP server versions using a multi-layered approach:
+
+### 1. MCP Protocol Version (Primary)
+
+The verifier first attempts to extract the server version from the MCP protocol's initialization handshake:
+
+```typescript
+const result = await verifier.verifyServer(serverConfig);
+
+if (result.status === 'success' && result.capabilities) {
+  console.log(`Server: ${result.capabilities.serverInfo?.name}`);
+  console.log(`Version: ${result.capabilities.serverInfo?.version}`);
+}
+```
+
+Most properly implemented MCP servers report their version through the protocol.
+
+### 2. NPM Registry Fallback (STDIO servers only)
+
+For STDIO servers that don't report their version through the protocol, the verifier automatically falls back to querying the npm registry:
+
+```typescript
+// This will query npm registry if MCP protocol doesn't provide version
+const result = await verifier.verifyServer({
+  name: 'chrome-devtools',
+  type: MCPServerType.STDIO,
+  command: 'npx',
+  args: ['-y', 'chrome-devtools-mcp@latest']
+});
+
+// Version will be extracted from npm registry (e.g., "0.7.0")
+console.log(result.capabilities?.serverInfo?.version);
+```
+
+**Supported package formats:**
+- `chrome-devtools-mcp@latest` → queries npm for latest version
+- `chrome-devtools-mcp@0.7.0` → extracts explicit version "0.7.0"
+- `@org/package@latest` → handles scoped packages
+- `package` → queries npm for latest version
+
+**Version extraction from command:**
+```typescript
+import { extractPackageFromCommand, fetchLatestVersion } from 'agentinit/utils';
+
+// Extract package name from command arguments
+const packageName = extractPackageFromCommand('npx', ['-y', 'chrome-devtools-mcp@latest']);
+// Returns: "chrome-devtools-mcp@latest"
+
+// Fetch version from npm registry
+const version = await fetchLatestVersion('chrome-devtools-mcp');
+// Returns: "0.7.0"
+```
+
+### 3. Version Cache
+
+The npm registry fallback includes an in-memory cache with a 5-minute TTL to minimize API calls:
+
+```typescript
+import { getVersionCacheStats, clearVersionCache } from 'agentinit/utils';
+
+// Check cache statistics
+const stats = getVersionCacheStats();
+console.log(`Cache size: ${stats.size} entries`);
+stats.entries.forEach(entry => {
+  console.log(`${entry.package}@${entry.version} (cached ${entry.age}ms ago)`);
+});
+
+// Clear cache if needed
+clearVersionCache();
+```
+
+### Debug Logging
+
+Enable debug logging to see the version detection flow:
+
+```bash
+DEBUG=1 agentinit verify_mcp --all
+```
+
+Debug output includes:
+- MCP protocol version response
+- Package extraction from command
+- npm registry queries and results
+- Fallback activation
+
 ## Token Counting Methodology
 
 The verifier calculates token usage for MCP tools based on empirical testing against Claude Code v2.x. The calculation includes:
