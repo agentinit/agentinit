@@ -6,7 +6,6 @@ import { MCPServerType, type MCPServerConfig, type MCPTool } from '../../src/typ
 vi.mock('@modelcontextprotocol/sdk/client/index.js', () => ({
   Client: vi.fn().mockImplementation(() => ({
     connect: vi.fn().mockResolvedValue(undefined),
-        getServerVersion: vi.fn().mockReturnValue(undefined),
     getServerVersion: vi.fn().mockReturnValue(undefined),
     close: vi.fn().mockResolvedValue(undefined),
     listTools: vi.fn().mockResolvedValue({ tools: [] }),
@@ -1271,7 +1270,6 @@ describe('MCPVerifier', () => {
     it('should extract version from MCP protocol getServerVersion', async () => {
       const mockClient = {
         connect: vi.fn().mockResolvedValue(undefined),
-        getServerVersion: vi.fn().mockReturnValue(undefined),
         getServerVersion: vi.fn().mockReturnValue({
           name: 'test-server',
           version: '1.2.3'
@@ -1296,7 +1294,6 @@ describe('MCPVerifier', () => {
     it('should fallback to npm registry when version is unknown', async () => {
       const mockClient = {
         connect: vi.fn().mockResolvedValue(undefined),
-        getServerVersion: vi.fn().mockReturnValue(undefined),
         getServerVersion: vi.fn().mockReturnValue(undefined),
         close: vi.fn().mockResolvedValue(undefined),
         listTools: vi.fn().mockResolvedValue({ tools: [] }),
@@ -1334,7 +1331,6 @@ describe('MCPVerifier', () => {
       const mockClient = {
         connect: vi.fn().mockResolvedValue(undefined),
         getServerVersion: vi.fn().mockReturnValue(undefined),
-        getServerVersion: vi.fn().mockReturnValue(undefined),
         close: vi.fn().mockResolvedValue(undefined),
         listTools: vi.fn().mockResolvedValue({ tools: [] }),
         listResources: vi.fn().mockResolvedValue({ resources: [] }),
@@ -1360,7 +1356,6 @@ describe('MCPVerifier', () => {
 
       const mockClient = {
         connect: vi.fn().mockResolvedValue(undefined),
-        getServerVersion: vi.fn().mockReturnValue(undefined),
         getServerVersion: vi.fn().mockReturnValue(undefined),
         close: vi.fn().mockResolvedValue(undefined),
         listTools: vi.fn().mockResolvedValue({ tools: [] }),
@@ -1388,7 +1383,6 @@ describe('MCPVerifier', () => {
       const mockClient = {
         connect: vi.fn().mockResolvedValue(undefined),
         getServerVersion: vi.fn().mockReturnValue(undefined),
-        getServerVersion: vi.fn().mockReturnValue(undefined),
         close: vi.fn().mockResolvedValue(undefined),
         listTools: vi.fn().mockResolvedValue({ tools: [] }),
         listResources: vi.fn().mockResolvedValue({ resources: [] }),
@@ -1408,7 +1402,6 @@ describe('MCPVerifier', () => {
     it('should handle npm registry fetch failure gracefully', async () => {
       const mockClient = {
         connect: vi.fn().mockResolvedValue(undefined),
-        getServerVersion: vi.fn().mockReturnValue(undefined),
         getServerVersion: vi.fn().mockReturnValue(undefined),
         close: vi.fn().mockResolvedValue(undefined),
         listTools: vi.fn().mockResolvedValue({ tools: [] }),
@@ -1440,7 +1433,6 @@ describe('MCPVerifier', () => {
       const mockClient = {
         connect: vi.fn().mockResolvedValue(undefined),
         getServerVersion: vi.fn().mockReturnValue(undefined),
-        getServerVersion: vi.fn().mockReturnValue(undefined),
         close: vi.fn().mockResolvedValue(undefined),
         listTools: vi.fn().mockResolvedValue({ tools: [] }),
         listResources: vi.fn().mockResolvedValue({ resources: [] }),
@@ -1469,7 +1461,6 @@ describe('MCPVerifier', () => {
     it('should prefer MCP protocol version over npm fallback', async () => {
       const mockClient = {
         connect: vi.fn().mockResolvedValue(undefined),
-        getServerVersion: vi.fn().mockReturnValue(undefined),
         getServerVersion: vi.fn().mockReturnValue({
           name: 'chrome-devtools-mcp',
           version: '0.8.0'
@@ -1501,7 +1492,6 @@ describe('MCPVerifier', () => {
 
       const mockClient = {
         connect: vi.fn().mockResolvedValue(undefined),
-        getServerVersion: vi.fn().mockReturnValue(undefined),
         getServerVersion: vi.fn().mockReturnValue(undefined),
         close: vi.fn().mockResolvedValue(undefined),
         listTools: vi.fn().mockResolvedValue({ tools: [] }),
