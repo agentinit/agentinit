@@ -528,7 +528,8 @@ export class MCPVerifier {
         tools.push(...toolsResponse.tools.map(tool => {
           const mcpTool: MCPTool = { name: tool.name };
           if (tool.description !== undefined) mcpTool.description = tool.description;
-          if (tool.inputSchema !== undefined) mcpTool.inputSchema = tool.inputSchema;
+          // Cast to any since MCP SDK type doesn't exactly match our JSONSchema interface
+          if (tool.inputSchema !== undefined) mcpTool.inputSchema = tool.inputSchema as any;
           return mcpTool;
         }));
       } catch (error) {
