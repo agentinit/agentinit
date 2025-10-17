@@ -302,6 +302,8 @@ AgentInit includes a curated registry of popular MCPs:
 
 AgentInit can be used as a library in your Node.js/TypeScript applications for programmatic MCP server verification and management.
 
+> **📖 Full Documentation:** See [src/lib/verifier/README.md](src/lib/verifier/README.md) for complete API reference, examples, and advanced usage.
+
 ### Installation
 
 ```bash
@@ -315,7 +317,8 @@ bun add agentinit
 ### Basic Usage
 
 ```typescript
-import { MCPVerifier, MCPServerType } from 'agentinit';
+import { MCPVerifier } from 'agentinit/verifier';
+import { MCPServerType } from 'agentinit/types';
 
 const verifier = new MCPVerifier();
 
@@ -333,6 +336,34 @@ if (result.status === 'success') {
 }
 ```
 
+### Advanced Features
+
+The verifier supports additional options for detailed inspection:
+
+```typescript
+// Fetch resource contents and prompt templates
+const result = await verifier.verifyServer(
+  serverConfig,
+  {
+    timeout: 15000,
+    includeResourceContents: true,  // Fetch actual resource data
+    includePromptDetails: true,     // Fetch prompt templates
+    includeTokenCounts: true        // Calculate token usage (default)
+  }
+);
+
+// Access detailed tool parameters
+result.capabilities?.tools.forEach(tool => {
+  console.log(`\nTool: ${tool.name}`);
+
+  if (tool.inputSchema?.properties) {
+    Object.entries(tool.inputSchema.properties).forEach(([name, schema]) => {
+      console.log(`  - ${name}: ${schema.type} ${schema.description || ''}`);
+    });
+  }
+});
+```
+
 ### Submodule Imports
 
 For better tree-shaking, import from specific submodules:
@@ -341,7 +372,11 @@ For better tree-shaking, import from specific submodules:
 // Import specific modules
 import { MCPVerifier } from 'agentinit/verifier';
 import { MCPServerType } from 'agentinit/types';
-import type { MCPServerConfig, MCPVerificationResult } from 'agentinit/types';
+import type {
+  MCPServerConfig,
+  MCPVerificationResult,
+  MCPVerificationOptions
+} from 'agentinit/types';
 import { countTokens, MCPParser } from 'agentinit/utils';
 ```
 
@@ -391,7 +426,7 @@ const result = await verifier.verifyServer({
 #### Verify Multiple Servers
 
 ```typescript
-import { MCPVerifier, MCPServerType } from 'agentinit';
+import { MCPVerifier, MCPServerType } from 'agentinit/verifier';
 
 const servers = [
   {
@@ -416,6 +451,17 @@ console.log(verifier.formatResults(results));
 // Or process results programmatically
 const successful = results.filter(r => r.status === 'success').length;
 console.log(`${successful}/${results.length} servers verified`);
+
+// Inspect tool parameters and token usage
+results.forEach(result => {
+  if (result.status === 'success' && result.capabilities) {
+    console.log(`\n${result.server.name}:`);
+    result.capabilities.tools.forEach(tool => {
+      const tokens = result.capabilities?.toolTokenCounts?.get(tool.name) || 0;
+      console.log(`  • ${tool.name} (${tokens} tokens)`);
+    });
+  }
+});
 ```
 
 #### Count Tokens
@@ -449,9 +495,19 @@ new MCPVerifier(defaultTimeout?: number)
 ```
 
 **Methods**
-- `verifyServer(config: MCPServerConfig, timeout?: number): Promise<MCPVerificationResult>` - Verify a single MCP server
-- `verifyServers(configs: MCPServerConfig[], timeout?: number): Promise<MCPVerificationResult[]>` - Verify multiple servers in parallel
+- `verifyServer(config: MCPServerConfig, options?: MCPVerificationOptions): Promise<MCPVerificationResult>` - Verify a single MCP server
+- `verifyServers(configs: MCPServerConfig[], options?: MCPVerificationOptions): Promise<MCPVerificationResult[]>` - Verify multiple servers in parallel
 - `formatResults(results: MCPVerificationResult[]): string` - Format verification results for display
+
+**MCPVerificationOptions**
+```typescript
+interface MCPVerificationOptions {
+  timeout?: number;                    // Connection timeout (ms)
+  includeResourceContents?: boolean;   // Fetch resource data
+  includePromptDetails?: boolean;      // Fetch prompt templates
+  includeTokenCounts?: boolean;        // Calculate tokens (default: true)
+}
+```
 
 #### Types
 
@@ -495,17 +551,44 @@ interface MCPVerificationResult {
 **MCPCapabilities**
 ```typescript
 interface MCPCapabilities {
-  tools: MCPTool[];
-  resources: MCPResource[];
-  prompts: MCPPrompt[];
+  tools: MCPTool[];           // Available tools with input schemas
+  resources: MCPResource[];   // Available resources (with optional contents)
+  prompts: MCPPrompt[];       // Available prompts (with optional templates)
   serverInfo?: {
     name: string;
     version: string;
   };
-  totalToolTokens?: number;
-  toolTokenCounts?: Map<string, number>;
+  totalToolTokens?: number;         // Total token usage for all tools
+  toolTokenCounts?: Map<string, number>;  // Token count per tool
+}
+
+interface MCPTool {
+  name: string;
+  description?: string;
+  inputSchema?: any;  // JSON Schema defining parameters
+}
+
+interface MCPResource {
+  uri: string;
+  name?: string;
+  description?: string;
+  mimeType?: string;
+  contents?: string | Uint8Array;  // Only if includeResourceContents is true
+}
+
+interface MCPPrompt {
+  name: string;
+  description?: string;
+  arguments?: Array<{
+    name: string;
+    description?: string;
+    required?: boolean;
+  }>;
+  template?: string;  // Only if includePromptDetails is true
 }
 ```
+
+> **📝 Note:** For detailed examples on working with tool parameters, resource contents, and prompt templates, see the [full library documentation](src/lib/verifier/README.md).
 
 ## 🛠️ Development
 

@@ -176,20 +176,23 @@ export interface MCPTransformation {
 }
 
 // Re-export rules types
-export type { 
-  RuleTemplate, 
-  RulesConfig, 
-  RemoteRulesOptions, 
-  AppliedRules, 
+export type {
+  RuleTemplate,
+  RulesConfig,
+  RemoteRulesOptions,
+  AppliedRules,
   RuleApplicationResult,
   RuleSection
 } from './rules.js';
+
+// Re-export JSON Schema types
+export type { JSONSchema, JSONSchemaProperty } from './jsonSchema.js';
 
 // MCP Verification types
 export interface MCPTool {
   name: string;
   description?: string;
-  inputSchema?: any;
+  inputSchema?: import('./jsonSchema.js').JSONSchema;
 }
 
 export interface MCPResource {
@@ -197,6 +200,7 @@ export interface MCPResource {
   name?: string;
   description?: string;
   mimeType?: string;
+  contents?: string | Uint8Array;  // Actual resource data when fetched
 }
 
 export interface MCPPrompt {
@@ -207,6 +211,14 @@ export interface MCPPrompt {
     description?: string;
     required?: boolean;
   }>;
+  template?: string;  // The actual prompt template when fetched
+}
+
+export interface MCPVerificationOptions {
+  timeout?: number;
+  includeResourceContents?: boolean;  // Fetch actual resource data
+  includePromptDetails?: boolean;     // Fetch prompt templates
+  includeTokenCounts?: boolean;       // Calculate token usage (default: true)
 }
 
 export interface MCPCapabilities {
@@ -218,8 +230,8 @@ export interface MCPCapabilities {
     version: string;
     protocolVersion?: string;
   };
-  toolTokenCounts?: Map<string, number>;
-  totalToolTokens?: number;
+  toolTokenCounts?: Map<string, number> | undefined;
+  totalToolTokens?: number | undefined;
 }
 
 export interface MCPVerificationResult {
