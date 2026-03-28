@@ -114,5 +114,6 @@ apps/extension/vsix-build/
 .agentinit/
 .claude/
 .gemini/
+.ii/
 .codex/
 .cursor/

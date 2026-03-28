@@ -25,7 +25,8 @@ export class CursorAgent extends Agent {
         hooks: false,
         commands: false,
         subagents: false,
-        statusline: false
+        statusline: false,
+        skills: true
       },
       configFiles: [
         {
@@ -62,7 +63,12 @@ export class CursorAgent extends Agent {
         }
       ],
       nativeConfigPath: '.cursor/mcp.json',
-      globalConfigPath: '~/.cursor/mcp.json'
+      globalConfigPath: '~/.cursor/mcp.json',
+      rulesPath: '.cursorrules',
+      skillPaths: {
+        project: '.agents/skills/',
+        global: '~/.cursor/skills/'
+      }
     };
 
     super(definition);
@@ -131,6 +137,25 @@ export class CursorAgent extends Agent {
   }
 
   /**
+   * Remove an MCP server by name from Cursor's mcp.json
+   */
+  async removeMCPServer(projectPath: string, serverName: string): Promise<boolean> {
+    const mcpConfigPath = this.getNativeMcpPath(projectPath);
+    const content = await readFileIfExists(mcpConfigPath);
+    if (!content) return false;
+
+    try {
+      const config = JSON.parse(content);
+      if (!config.mcpServers || !(serverName in config.mcpServers)) return false;
+      delete config.mcpServers[serverName];
+      await writeFile(mcpConfigPath, JSON.stringify(config, null, 2));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
    * Cursor supports all MCP server types, so no filtering needed
    */
   filterMCPServers(servers: MCPServerConfig[]): MCPServerConfig[] {
@@ -152,41 +177,14 @@ export class CursorAgent extends Agent {
     rules: AppliedRules,
     existingContent: string
   ): Promise<string> {
-    // Extract all existing rule texts (ignore section headers)
-    const existingRules = this.extractAllRuleTexts(existingContent);
-    
-    // Filter new sections to only include rules that don't already exist
-    const filteredSections = rules.sections.map(section => ({
-      ...section,
-      rules: section.rules.filter(rule => !existingRules.includes(rule))
-    })).filter(section => section.rules.length > 0); // Remove empty sections
-    
-    if (filteredSections.length === 0) {
-      // No new rules to add
-      return existingContent;
-    }
-    
-    // Append new sections to existing content
-    let content = existingContent;
-    if (content && !content.endsWith('\n')) {
-      content += '\n';
-    }
-    if (content) {
-      content += '\n';
-    }
-    
-    // Add only the new sections with unique rules
-    const sectionsContent = this.generateRulesContent(filteredSections);
-    content += sectionsContent;
-    
-    return content.trim() + '\n';
+    return this.replaceMarkdownRulesSections(existingContent, rules.sections, /^#\s+(.+)$/);
   }
 
   /**
    * Extract existing rule texts from .cursorrules content (ignoring headers and comments)
    */
   extractExistingRules(content: string): string[] {
-    return this.extractAllRuleTexts(content);
+    return this.extractExistingSections(content).flatMap(section => section.rules);
   }
 
   /**
@@ -203,7 +201,7 @@ export class CursorAgent extends Agent {
       // Check if it's a section header
       if (trimmed.startsWith('#') && trimmed.includes(' ')) {
         // Start new section
-        if (currentSection) {
+        if (currentSection && currentSection.rules.length > 0) {
           sections.push(currentSection);
         }
         const sectionName = trimmed.replace(/^#\s*/, '');
@@ -219,7 +217,7 @@ export class CursorAgent extends Agent {
     }
     
     // Add the last section
-    if (currentSection) {
+    if (currentSection && currentSection.rules.length > 0) {
       sections.push(currentSection);
     }
     
@@ -244,23 +242,5 @@ export class CursorAgent extends Agent {
     }
     
     return content;
-  }
-
-  /**
-   * Extract all rule texts from file content (ignoring headers and comments)
-   */
-  private extractAllRuleTexts(content: string): string[] {
-    const rules: string[] = [];
-    const lines = content.split('\n');
-    
-    for (const line of lines) {
-      const trimmed = line.trim();
-      // Skip empty lines, headers (starting with #), and other comments
-      if (trimmed && !trimmed.startsWith('#') && !trimmed.startsWith('//')) {
-        rules.push(trimmed);
-      }
-    }
-    
-    return rules;
   }
 }

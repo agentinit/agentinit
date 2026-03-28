@@ -53,6 +53,10 @@ describe('CursorAgent', () => {
     it('should have correct native config path', () => {
       expect(agent.nativeConfigPath).toBe('.cursor/mcp.json');
     });
+
+    it('should have correct project rules path', () => {
+      expect(agent.getProjectRulesPath(testProjectPath)).toBe(resolve(testProjectPath, '.cursorrules'));
+    });
   });
 
   describe('detectPresence', () => {
@@ -266,6 +270,38 @@ describe('CursorAgent', () => {
         JSON.stringify(expectedConfig, null, 2),
         'utf8'
       );
+    });
+  });
+
+  describe('rules configuration', () => {
+    it('should replace existing rule sections instead of appending duplicates', async () => {
+      const existingContent = [
+        '// comment',
+        '',
+        '# Git',
+        'Commit often',
+        ''
+      ].join('\n');
+
+      const updated = await agent.applyRulesConfig('/tmp/.cursorrules', {
+        templateRules: ['Commit with context'],
+        rawRules: [],
+        fileRules: [],
+        remoteRules: [],
+        merged: ['Commit with context'],
+        sections: [
+          {
+            templateId: 'git',
+            templateName: 'Git',
+            rules: ['Commit with context']
+          }
+        ]
+      }, existingContent);
+
+      expect(updated).toContain('// comment');
+      expect(updated).toContain('Commit with context');
+      expect(updated).not.toContain('Commit often');
+      expect(updated.match(/# Git/g)).toHaveLength(1);
     });
   });
 

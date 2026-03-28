@@ -111,6 +111,7 @@ export interface AgentCapabilities {
   commands: boolean;
   subagents: boolean;
   statusline: boolean;
+  skills: boolean;
 }
 
 export interface ConfigFileDefinition {
@@ -134,6 +135,17 @@ export interface AgentDefinition {
     windows?: string;
     darwin?: string;
     linux?: string;
+  };
+  rulesPath?: string;
+  globalRulesPath?: string;
+  globalRulesPaths?: {
+    windows?: string;
+    darwin?: string;
+    linux?: string;
+  };
+  skillPaths?: {
+    project: string;
+    global: string;
   };
 }
 
@@ -184,6 +196,32 @@ export type {
   RuleApplicationResult,
   RuleSection
 } from './rules.js';
+
+// Re-export skills types
+export type {
+  SkillInfo,
+  InstalledSkill,
+  SkillsAddOptions,
+  SkillsAddResult,
+  SkillsListOptions,
+  SkillsRemoveOptions,
+  SkillSource
+} from './skills.js';
+
+// Re-export plugins types
+export type {
+  PluginFormat,
+  NormalizedPlugin,
+  PluginSource,
+  MarketplaceRegistry,
+  MarketplacePlugin,
+  InstalledPlugin,
+  PluginRegistry,
+  PluginInstallOptions,
+  PluginInstallResult,
+  ClaudePluginManifest,
+  CursorPluginManifest,
+} from './plugins.js';
 
 // Re-export JSON Schema types
 export type { JSONSchema, JSONSchemaProperty } from './jsonSchema.js';

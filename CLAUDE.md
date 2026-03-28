@@ -125,16 +125,16 @@ AgentInit provides a rules system to apply coding best practices and standards. 
 
 ```bash
 # Apply rule templates to this project
-agentinit apply --rules git,write_tests,use_linter
+agentinit rules add --template git,write_tests,use_linter
 
 # Add custom rules
-agentinit apply --rule-raw "Use functional programming patterns"
+agentinit rules add --raw "Use functional programming patterns"
 
 # Load rules from file
-agentinit apply --rules-file ./team-standards.md
+agentinit rules add --file ./team-standards.md
 
 # Apply globally to all Claude projects
-agentinit apply --global --agent claude --rules git,write_docs
+agentinit rules add --global --agent claude --template git,write_docs
 ```
 
 **Available Rule Templates:**
@@ -145,11 +145,11 @@ agentinit apply --global --agent claude --rules git,write_docs
 - `use_linter` - Code quality and formatting enforcement
 - `write_tests` - Test-driven development practices
 
-Rules are automatically merged and managed in the section below. They can be updated by running new `agentinit apply --rules` commands.
+Rules are automatically merged and managed in the section below. They can be updated by running new `agentinit rules add` commands.
 
 ### Token Tracking
 
-The apply command provides comprehensive token counting to help manage AI context usage:
+The rules command provides comprehensive token counting to help manage AI context usage:
 
 - **Color-coded Token Display**: 🟢 Green (≤5k tokens), 🟡 Yellow (5k-15k), 🔴 Red (>15k)
 - **Rules vs Total File**: Shows both rule-specific tokens and complete file size
@@ -176,14 +176,14 @@ Example output: `Rules: 101 tokens (-296)` shows 101 tokens in rules section wit
 
 AgentInit provides MCP (Model Context Protocol) verification to ensure servers are properly configured and working:
 
-### Verify During Apply
+### Verify During Add
 ```bash
 # Verify MCPs immediately after configuration
-agentinit apply --verify-mcp \
+agentinit mcp add --verify \
   --mcp-stdio everything "npx -y @modelcontextprotocol/server-everything"
 
 # Multiple servers with verification
-agentinit apply --verify-mcp \
+agentinit mcp add --verify \
   --mcp-stdio everything "npx -y @modelcontextprotocol/server-everything" \
   --mcp-stdio filesystem "npx -y @modelcontextprotocol/server-filesystem" \
   --args "/workspace"
@@ -192,22 +192,22 @@ agentinit apply --verify-mcp \
 ### Verify Existing MCPs
 ```bash
 # Verify all configured MCP servers
-agentinit verify_mcp --all
+agentinit mcp verify --all
 
 # Verify specific MCP server by name
-agentinit verify_mcp --mcp-name everything
+agentinit mcp verify --name everything
 
 # Custom timeout for slow servers (15 seconds)
-agentinit verify_mcp --all --timeout 15000
+agentinit mcp verify --all --timeout 15000
 ```
 
 ### Verify Direct Configuration
 ```bash
 # Test MCP server without configuring it first
-agentinit verify_mcp --mcp-stdio everything "npx -y @modelcontextprotocol/server-everything"
+agentinit mcp verify --mcp-stdio everything "npx -y @modelcontextprotocol/server-everything"
 
 # Test HTTP MCP server
-agentinit verify_mcp --mcp-http github "https://api.github.com/mcp" --auth "Bearer token"
+agentinit mcp verify --mcp-http github "https://api.github.com/mcp" --auth "Bearer token"
 ```
 
 ### Expected Output

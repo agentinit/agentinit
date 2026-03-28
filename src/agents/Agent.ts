@@ -1,10 +1,11 @@
 import { resolve } from 'path';
+import { homedir } from 'os';
 import { pathExists } from '../utils/fs.js';
 import { getFullGlobalConfigPath } from '../utils/paths.js';
 import { RulesApplicator } from '../core/rulesApplicator.js';
-import type { 
-  AgentDefinition, 
-  MCPServerConfig, 
+import type {
+  AgentDefinition,
+  MCPServerConfig,
   AgentDetectionResult,
   ConfigFileDefinition
 } from '../types/index.js';
@@ -98,6 +99,33 @@ export abstract class Agent {
   }
 
   /**
+   * Get the project rules path for this agent
+   * Returns null if rules are not supported
+   */
+  getProjectRulesPath(projectPath: string): string | null {
+    if (!this.capabilities.rules || !this.definition.rulesPath) {
+      return null;
+    }
+
+    return resolve(projectPath, this.definition.rulesPath);
+  }
+
+  /**
+   * Get the global rules path for this agent
+   * Returns null if global rules are not supported
+   */
+  getGlobalRulesPath(): string | null {
+    if (!this.capabilities.rules) {
+      return null;
+    }
+
+    return getFullGlobalConfigPath(
+      this.definition.globalRulesPath,
+      this.definition.globalRulesPaths
+    );
+  }
+
+  /**
    * Check if this agent supports global configuration
    */
   supportsGlobalConfig(): boolean {
@@ -127,28 +155,7 @@ export abstract class Agent {
    * Can be overridden by specific agents for different global config formats
    */
   async applyGlobalMCPConfig(servers: MCPServerConfig[]): Promise<void> {
-    const globalPath = this.getGlobalMcpPath();
-    
-    if (!globalPath) {
-      throw new Error(`Agent ${this.name} does not support global configuration`);
-    }
-
-    // Extract directory from global path and use it as "project path"
-    // This allows reusing the existing applyMCPConfig logic
-    const lastSlashIndex = Math.max(globalPath.lastIndexOf('/'), globalPath.lastIndexOf('\\'));
-    const globalDir = lastSlashIndex > 0 ? globalPath.substring(0, lastSlashIndex) : '';
-    
-    // Temporarily override the native config path to point to global config
-    const originalNativeConfigPath = this.definition.nativeConfigPath;
-    const globalFileName = globalPath.substring(lastSlashIndex + 1);
-    this.definition.nativeConfigPath = globalFileName;
-    
-    try {
-      await this.applyMCPConfig(globalDir, servers);
-    } finally {
-      // Restore original native config path
-      this.definition.nativeConfigPath = originalNativeConfigPath;
-    }
+    await this.withGlobalMcpPath(projectPath => this.applyMCPConfig(projectPath, servers));
   }
 
   /**
@@ -223,19 +230,131 @@ export abstract class Agent {
    */
   async applyGlobalRules(rules: AppliedRules): Promise<RuleApplicationResult> {
     const applicator = new RulesApplicator();
-    
-    if (!this.supportsGlobalConfig()) {
+
+    if (!this.supportsGlobalRules()) {
       return {
         success: false,
         rulesApplied: 0,
         agent: this.name,
         configPath: '',
-        errors: [`Agent ${this.name} does not support global configuration`]
+        errors: [`Agent ${this.name} does not support global rules`]
       };
     }
-    
-    // Use empty string as project path for global config
+
     return applicator.applyRulesToAgent(this, rules, '', true);
+  }
+
+  /**
+   * Check if this agent supports skills
+   */
+  supportsSkills(): boolean {
+    return this.capabilities.skills && !!this.definition.skillPaths;
+  }
+
+  /**
+   * Get the skills directory for this agent
+   * Returns null if skills are not supported
+   */
+  getSkillsDir(projectPath: string, global?: boolean): string | null {
+    if (!this.definition.skillPaths) return null;
+    if (global) {
+      return this.definition.skillPaths.global.replace('~', homedir());
+    }
+    return resolve(projectPath, this.definition.skillPaths.project);
+  }
+
+  /**
+   * Check if this agent supports global rules configuration
+   */
+  supportsGlobalRules(): boolean {
+    return this.getGlobalRulesPath() !== null;
+  }
+
+  /**
+   * Remove an MCP server by name from this agent's configuration
+   * Must be implemented by each specific agent
+   */
+  abstract removeMCPServer(projectPath: string, serverName: string): Promise<boolean>;
+
+  /**
+   * Remove an MCP server from global configuration
+   */
+  async removeGlobalMCPServer(serverName: string): Promise<boolean> {
+    return this.withGlobalMcpPath(projectPath => this.removeMCPServer(projectPath, serverName));
+  }
+
+  /**
+   * Get existing MCP servers from this agent's global configuration
+   */
+  async getGlobalMCPServers(): Promise<MCPServerConfig[]> {
+    return this.withGlobalMcpPath(projectPath => this.getMCPServers(projectPath));
+  }
+
+  /**
+   * Replace existing markdown rule sections and append the desired rules once.
+   */
+  protected replaceMarkdownRulesSections(
+    existingContent: string,
+    sections: RuleSection[],
+    headingPattern: RegExp
+  ): string {
+    const existingSections = this.extractExistingSections(existingContent);
+    const existingSectionTitles = new Set(existingSections.map(section => section.templateName));
+
+    const keptLines: string[] = [];
+    let skippingSection = false;
+
+    for (const line of existingContent.split('\n')) {
+      const trimmed = line.trim();
+      const headingMatch = trimmed.match(headingPattern);
+
+      if (headingMatch?.[1]) {
+        skippingSection = existingSectionTitles.has(headingMatch[1].trim());
+        if (skippingSection) {
+          continue;
+        }
+      }
+
+      if (!skippingSection) {
+        keptLines.push(line);
+      }
+    }
+
+    const baseContent = keptLines.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd();
+    const renderedRules = this.generateRulesContent(sections).trim();
+
+    if (!renderedRules) {
+      return baseContent ? `${baseContent}\n` : '';
+    }
+
+    if (!baseContent) {
+      return `${renderedRules}\n`;
+    }
+
+    return `${baseContent}\n\n${renderedRules}\n`;
+  }
+
+  /**
+   * Run an operation against the agent's global MCP file using the native parser.
+   */
+  protected async withGlobalMcpPath<T>(operation: (projectPath: string) => Promise<T>): Promise<T> {
+    const globalPath = this.getGlobalMcpPath();
+    if (!globalPath) {
+      throw new Error(`Agent ${this.name} does not support global configuration`);
+    }
+
+    const lastSlashIndex = Math.max(globalPath.lastIndexOf('/'), globalPath.lastIndexOf('\\'));
+    const globalDir = lastSlashIndex > 0 ? globalPath.substring(0, lastSlashIndex) : '';
+
+    const originalNativeConfigPath = this.definition.nativeConfigPath;
+    const globalFileName = globalPath.substring(lastSlashIndex + 1);
+    this.definition.nativeConfigPath = globalFileName;
+
+    try {
+      return await operation(globalDir);
+    } finally {
+      this.definition.nativeConfigPath = originalNativeConfigPath;
+    }
   }
 
   /**

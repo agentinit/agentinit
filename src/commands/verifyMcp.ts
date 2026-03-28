@@ -148,7 +148,7 @@ export async function verifyMcpCommand(args: string[]): Promise<void> {
 
       if (allMcpServers.length === 0) {
         spinner.warn('No MCP servers found in any agent configuration');
-        logger.info('Use `agentinit apply` to add MCP servers to your project');
+        logger.info('Use `agentinit mcp add` to add MCP servers to your project');
         return;
       }
 

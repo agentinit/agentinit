@@ -39,6 +39,11 @@ describe('CodexCliAgent', () => {
     it('should have correct native config path', () => {
       expect(agent.nativeConfigPath).toBe('.codex/config.toml');
     });
+
+    it('should have correct rules paths', () => {
+      expect(agent.getProjectRulesPath(testProjectPath)).toBe(resolve(testProjectPath, '.codex/config.toml'));
+      expect(agent.getGlobalRulesPath()).toContain('.codex/config.toml');
+    });
   });
 
   describe('detectPresence', () => {
@@ -255,6 +260,40 @@ args = ["--test"]
       const writtenConfig = writeFileSpy.mock.calls[0]![1];
       expect(writtenConfig).toContain('[mcp_servers.existing]');
       expect(writtenConfig).toContain('[mcp_servers.new-server]');
+    });
+  });
+
+  describe('applyRulesConfig', () => {
+    it('should replace the rules table while preserving other config', async () => {
+      const existingContent = `
+[mcp_servers.existing]
+command = "node"
+
+[rules.git]
+name = "Git"
+rules = ["Commit often"]
+`;
+
+      const updated = await agent.applyRulesConfig('/tmp/.codex/config.toml', {
+        templateRules: ['Write tests first'],
+        rawRules: [],
+        fileRules: [],
+        remoteRules: [],
+        merged: ['Write tests first'],
+        sections: [
+          {
+            templateId: 'write_tests',
+            templateName: 'Write Tests',
+            rules: ['Write tests first']
+          }
+        ]
+      }, existingContent);
+
+      expect(updated).toContain('[mcp_servers.existing]');
+      expect(updated).toContain('[rules.write_tests]');
+      expect(updated).toContain('Write tests first');
+      expect(updated).not.toContain('[rules.git]');
+      expect(updated).not.toContain('Commit often');
     });
   });
 });

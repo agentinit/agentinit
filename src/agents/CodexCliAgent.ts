@@ -25,7 +25,8 @@ export class CodexCliAgent extends Agent {
         hooks: false,
         commands: false,
         subagents: false,
-        statusline: false
+        statusline: false,
+        skills: true
       },
       configFiles: [
         {
@@ -38,7 +39,13 @@ export class CodexCliAgent extends Agent {
         }
       ],
       nativeConfigPath: '.codex/config.toml',
-      globalConfigPath: '~/.codex/config.toml'
+      globalConfigPath: '~/.codex/config.toml',
+      rulesPath: '.codex/config.toml',
+      globalRulesPath: '~/.codex/config.toml',
+      skillPaths: {
+        project: '.agents/skills/',
+        global: '~/.codex/skills/'
+      }
     };
 
     super(definition);
@@ -92,6 +99,26 @@ export class CodexCliAgent extends Agent {
     // Write the updated configuration using TOML formatting
     const formattedToml = this.formatTOML(TOML.stringify(existingConfig));
     await writeFile(tomlConfigPath, formattedToml);
+  }
+
+  /**
+   * Remove an MCP server by name from Codex's TOML config
+   */
+  async removeMCPServer(projectPath: string, serverName: string): Promise<boolean> {
+    const tomlConfigPath = this.getNativeMcpPath(projectPath);
+    const content = await readFileIfExists(tomlConfigPath);
+    if (!content) return false;
+
+    try {
+      const config: any = TOML.parse(content);
+      if (!config.mcp_servers || !(serverName in config.mcp_servers)) return false;
+      delete config.mcp_servers[serverName];
+      const formattedToml = this.formatTOML(TOML.stringify(config));
+      await writeFile(tomlConfigPath, formattedToml);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   /**
@@ -188,18 +215,19 @@ export class CodexCliAgent extends Agent {
         config = {};
       }
     }
-    
-    // Add or update rules section
-    if (!config.rules) {
-      config.rules = {};
-    }
-    
-    // Convert rule sections to TOML structure
+
+    const nextRules: Record<string, { name: string; rules: string[] }> = {};
     for (const section of rules.sections) {
-      config.rules[section.templateId] = {
+      nextRules[section.templateId] = {
         name: section.templateName,
         rules: section.rules
       };
+    }
+
+    if (Object.keys(nextRules).length > 0) {
+      config.rules = nextRules;
+    } else {
+      delete config.rules;
     }
     
     return this.formatTOMLRules(TOML.stringify(config));

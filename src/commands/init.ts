@@ -108,7 +108,7 @@ export async function initCommand(options: InitOptions): Promise<void> {
     logger.info('Next steps:');
     logger.info('  1. Review and customize agents.md');
     logger.info('  2. Run `agentinit sync` to apply configuration');
-    logger.info('  3. Run `agentinit mcp --interactive` to install MCPs');
+    logger.info('  3. Run `agentinit mcp add ...` to configure MCP servers');
     
   } catch (error) {
     spinner.fail('Failed to analyze project');

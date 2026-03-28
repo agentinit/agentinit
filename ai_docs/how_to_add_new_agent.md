@@ -587,13 +587,13 @@ try {
 ```bash
 # Test your agent
 agentinit detect
-agentinit apply --mcp-stdio test "echo" --args "hello"
+agentinit mcp add --mcp-stdio test "echo" --args "hello"
 
 # Run tests
 npm test -- tests/agents/YourAgent.test.ts
 
 # Global config
-agentinit apply --global --agent your-agent --mcp-stdio test "cmd"
+agentinit mcp add --global --agent your-agent --mcp-stdio test "cmd"
 ```
 
 ## Checklist

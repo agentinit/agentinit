@@ -251,5 +251,74 @@ describe('ClaudeAgent', () => {
       const globalPath = agent.getGlobalMcpPath();
       expect(globalPath).toContain('.claude.json');
     });
+
+    it('should have correct global rules path', () => {
+      const globalRulesPath = agent.getGlobalRulesPath();
+      expect(globalRulesPath).toContain('.claude/CLAUDE.md');
+    });
+
+    it('should read global MCP servers from the global config file', async () => {
+      readFileSpy.mockResolvedValueOnce(JSON.stringify({
+        mcpServers: {
+          exa: {
+            command: 'npx',
+            args: ['-y', '@exa/mcp-server']
+          }
+        }
+      }));
+
+      const servers = await agent.getGlobalMCPServers();
+
+      expect(servers).toEqual([
+        {
+          name: 'exa',
+          type: MCPServerType.STDIO,
+          command: 'npx',
+          args: ['-y', '@exa/mcp-server']
+        }
+      ]);
+      expect(readFileSpy).toHaveBeenCalledWith(expect.stringContaining('.claude.json'), 'utf8');
+    });
+  });
+
+  describe('rules configuration', () => {
+    it('should replace existing rule sections without duplicating the file content', async () => {
+      const content = [
+        '# Project',
+        '',
+        'Intro text',
+        '',
+        '## Git',
+        '',
+        '- Commit often',
+        '',
+        '## Notes',
+        '',
+        'Keep this section',
+        '',
+      ].join('\n');
+
+      const updated = await agent.applyRulesConfig('/tmp/CLAUDE.md', {
+        templateRules: ['Commit with context'],
+        rawRules: [],
+        fileRules: [],
+        remoteRules: [],
+        merged: ['Commit with context'],
+        sections: [
+          {
+            templateId: 'git',
+            templateName: 'Git',
+            rules: ['Commit with context']
+          }
+        ]
+      }, content);
+
+      expect(updated).toContain('# Project');
+      expect(updated).toContain('## Notes');
+      expect(updated).toContain('Keep this section');
+      expect(updated).toContain('- Commit with context');
+      expect(updated).not.toContain('- Commit often');
+      expect(updated.match(/## Git/g)).toHaveLength(1);
+    });
   });
 });

@@ -2,6 +2,8 @@ import ora from 'ora';
 import { logger } from '../utils/logger.js';
 import { AgentDetector } from '../core/agentDetector.js';
 import { StackDetector } from '../core/stackDetector.js';
+import { SkillsManager } from '../core/skillsManager.js';
+import { AgentManager } from '../core/agentManager.js';
 
 interface DetectOptions {
   verbose?: boolean;
@@ -57,6 +59,29 @@ export async function detectCommand(options: DetectOptions): Promise<void> {
       });
     }
     
+    // Detect installed skills
+    try {
+      const skillsManager = new SkillsManager(new AgentManager());
+      const installed = await skillsManager.listInstalled(cwd);
+
+      if (installed.length > 0) {
+        logger.subtitle('📦 Installed Skills:');
+        // Group by agent
+        const byAgent = new Map<string, string[]>();
+        for (const skill of installed) {
+          const key = skill.agent;
+          if (!byAgent.has(key)) byAgent.set(key, []);
+          byAgent.get(key)!.push(skill.name);
+        }
+        for (const [agentId, skillNames] of byAgent) {
+          const unique = [...new Set(skillNames)];
+          logger.info(`  ${agentId}: ${unique.join(', ')} (${unique.length} skill${unique.length !== 1 ? 's' : ''})`);
+        }
+      }
+    } catch {
+      // Skills detection is optional — silently skip on error
+    }
+
   } catch (error) {
     spinner.fail('Detection failed');
     logger.error(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);

@@ -6,6 +6,11 @@ import { detectCommand } from './commands/detect.js';
 import { syncCommand } from './commands/sync.js';
 import { applyCommand } from './commands/apply.js';
 import { verifyMcpCommand } from './commands/verifyMcp.js';
+import { registerSkillsCommand } from './commands/skills.js';
+import { registerMcpCommand } from './commands/mcp.js';
+import { registerRulesCommand } from './commands/rules.js';
+import { registerPluginsCommand } from './commands/plugins.js';
+import { logger } from './utils/logger.js';
 
 const program = new Command();
 
@@ -14,16 +19,13 @@ program
   .description('A CLI tool for managing and configuring AI coding agents')
   .version('1.0.1');
 
-program
-  .command('apply')
-  .description('Apply configurations (MCP servers, etc.)')
-  .allowUnknownOption(true)
-  .action((options, command) => {
-    // Let Commander parse the arguments properly
-    const parsed = command.parseOptions(command.parent.rawArgs.slice(3));
-    applyCommand(parsed.unknown);
-  });
+// New subcommand groups
+registerSkillsCommand(program);
+registerMcpCommand(program);
+registerRulesCommand(program);
+registerPluginsCommand(program);
 
+// Core commands (unchanged)
 program
   .command('init')
   .description('Initialize agents.md configuration for the current project')
@@ -44,12 +46,28 @@ program
   .option('-b, --backup', 'Create backup before syncing')
   .action(syncCommand);
 
+// Deprecated commands (backward compatible)
 program
-  .command('verify_mcp')
-  .description('Verify MCP server installations and list their capabilities')
+  .command('apply')
+  .description('(deprecated) Use: mcp add, rules add, skills add')
   .allowUnknownOption(true)
   .action((options, command) => {
-    // Let Commander parse the arguments properly
+    logger.warn('⚠ "agentinit apply" is deprecated. Use:');
+    logger.warn('  agentinit mcp add    — for MCP servers');
+    logger.warn('  agentinit rules add  — for coding rules');
+    logger.warn('  agentinit skills add — for agent skills');
+    logger.warn('');
+    logger.warn('Running in compatibility mode...\n');
+    const parsed = command.parseOptions(command.parent.rawArgs.slice(3));
+    applyCommand(parsed.unknown);
+  });
+
+program
+  .command('verify_mcp')
+  .description('(deprecated) Use: mcp verify')
+  .allowUnknownOption(true)
+  .action((options, command) => {
+    logger.warn('⚠ "agentinit verify_mcp" is deprecated. Use "agentinit mcp verify"\n');
     const parsed = command.parseOptions(command.parent.rawArgs.slice(3));
     verifyMcpCommand(parsed.unknown);
   });

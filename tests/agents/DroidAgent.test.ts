@@ -51,6 +51,11 @@ describe('DroidAgent', () => {
     it('should have correct native config path', () => {
       expect(agent.nativeConfigPath).toBe('.factory/mcp.json');
     });
+
+    it('should expose only project-level rules support', () => {
+      expect(agent.getProjectRulesPath(testProjectPath)).toBe(resolve(testProjectPath, 'AGENTS.md'));
+      expect(agent.supportsGlobalRules()).toBe(false);
+    });
   });
 
   describe('detectPresence', () => {

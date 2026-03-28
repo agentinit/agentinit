@@ -24,7 +24,8 @@ export class ClaudeDesktopAgent extends Agent {
         hooks: false,    // No hook system
         commands: false, // No custom commands
         subagents: false,// No subagent support
-        statusline: false// No statusline customization
+        statusline: false,// No statusline customization
+        skills: true
       },
       configFiles: [], // Claude Desktop doesn't have project-specific detection files
       nativeConfigPath: 'claude_desktop_config.json', // Not used for project-level
@@ -32,6 +33,10 @@ export class ClaudeDesktopAgent extends Agent {
         windows: '%APPDATA%/Claude/claude_desktop_config.json',
         darwin: '~/Library/Application Support/Claude/claude_desktop_config.json',
         linux: '~/.config/Claude/claude_desktop_config.json'
+      },
+      skillPaths: {
+        project: '.claude/skills/',
+        global: '~/.claude/skills/'
       }
     };
 
@@ -117,6 +122,31 @@ export class ClaudeDesktopAgent extends Agent {
     // Write the updated configuration
     const configJson = JSON.stringify(existingConfig, null, 2);
     await writeFile(globalPath, configJson);
+  }
+
+  /**
+   * Remove an MCP server by name — Claude Desktop only supports global
+   */
+  async removeMCPServer(_projectPath: string, _serverName: string): Promise<boolean> {
+    throw new Error('Claude Desktop only supports global configuration. Use --global flag.');
+  }
+
+  async removeGlobalMCPServer(serverName: string): Promise<boolean> {
+    const globalPath = this.getGlobalMcpPath();
+    if (!globalPath) return false;
+
+    const content = await readFileIfExists(globalPath);
+    if (!content) return false;
+
+    try {
+      const config = JSON.parse(content);
+      if (!config.mcpServers || !(serverName in config.mcpServers)) return false;
+      delete config.mcpServers[serverName];
+      await writeFile(globalPath, JSON.stringify(config, null, 2));
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   /**

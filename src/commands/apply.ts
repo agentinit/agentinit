@@ -201,13 +201,20 @@ export async function applyCommand(args: string[]): Promise<void> {
       }
       
       if (isGlobal) {
-        // Global configuration - check if agent supports it
-        if (!agent.supportsGlobalConfig()) {
+        if (hasMcpArgs && !agent.supportsGlobalConfig()) {
           spinner.fail(`Agent ${agent.name} does not support global configuration`);
           process.exit(1);
         }
-        
-        targetAgents = [{ agent, configPath: agent.getGlobalMcpPath()! }];
+
+        if (hasRulesArgs && !agent.supportsGlobalRules()) {
+          spinner.fail(`Agent ${agent.name} does not support global rules`);
+          process.exit(1);
+        }
+
+        targetAgents = [{
+          agent,
+          configPath: agent.getGlobalMcpPath() || agent.getGlobalRulesPath() || ''
+        }];
         spinner.text = `Applying globally to ${agent.name}...`;
       } else {
         // Project-level configuration

@@ -31,7 +31,8 @@ export class ClaudeAgent extends Agent {
         hooks: true,
         commands: true,
         subagents: true,
-        statusline: true
+        statusline: true,
+        skills: true
       },
       configFiles: [
         {
@@ -52,7 +53,13 @@ export class ClaudeAgent extends Agent {
         }
       ],
       nativeConfigPath: '.mcp.json',
-      globalConfigPath: '~/.claude.json'
+      globalConfigPath: '~/.claude.json',
+      rulesPath: 'CLAUDE.md',
+      globalRulesPath: '~/.claude/CLAUDE.md',
+      skillPaths: {
+        project: '.claude/skills/',
+        global: '~/.claude/skills/'
+      }
     };
 
     super(definition);
@@ -131,6 +138,25 @@ export class ClaudeAgent extends Agent {
   }
 
   /**
+   * Remove an MCP server by name from Claude's .mcp.json
+   */
+  async removeMCPServer(projectPath: string, serverName: string): Promise<boolean> {
+    const mcpConfigPath = this.getNativeMcpPath(projectPath);
+    const existingContent = await readFileIfExists(mcpConfigPath);
+    if (!existingContent) return false;
+
+    try {
+      const config = JSON.parse(existingContent);
+      if (!config.mcpServers || !(serverName in config.mcpServers)) return false;
+      delete config.mcpServers[serverName];
+      await writeFile(mcpConfigPath, JSON.stringify(config, null, 2));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
    * Claude supports all MCP server types, so no filtering needed
    */
   filterMCPServers(servers: MCPServerConfig[]): MCPServerConfig[] {
@@ -152,29 +178,14 @@ export class ClaudeAgent extends Agent {
     rules: AppliedRules,
     existingContent: string
   ): Promise<string> {
-    const rulesSection = this.generateRulesContent(rules.sections);
-    
-    let content = existingContent;
-    
-    // For markdown, we'll append rules directly
-    if (content && !content.endsWith('\n')) {
-      content += '\n';
-    }
-    if (content) {
-      content += '\n';
-    }
-    content += rulesSection;
-    
-    return content.trim() + '\n';
+    return this.replaceMarkdownRulesSections(existingContent, rules.sections, /^##\s+(.+)$/);
   }
 
   /**
    * Extract existing rule texts from CLAUDE.md content
    */
   extractExistingRules(content: string): string[] {
-    // Extract rules from markdown format - look for lines starting with "- "
-    const ruleLines = content.split('\n').filter(line => line.trim().startsWith('- '));
-    return ruleLines.map(line => line.replace(/^- /, '').trim()).filter(rule => rule.length > 0);
+    return this.extractExistingSections(content).flatMap(section => section.rules);
   }
 
   /**
@@ -191,7 +202,7 @@ export class ClaudeAgent extends Agent {
       // Check if it's a section header
       if (trimmed.startsWith('## ') && trimmed.includes(' ')) {
         // Start new section
-        if (currentSection) {
+        if (currentSection && currentSection.rules.length > 0) {
           sections.push(currentSection);
         }
         const sectionName = trimmed.replace(/^##\s*/, '');
@@ -208,7 +219,7 @@ export class ClaudeAgent extends Agent {
     }
     
     // Add the last section
-    if (currentSection) {
+    if (currentSection && currentSection.rules.length > 0) {
       sections.push(currentSection);
     }
     

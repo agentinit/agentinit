@@ -35,8 +35,9 @@ agentinit detect
 # Sync agents.md with agent-specific files
 agentinit sync
 
-# Install MCPs interactively
-agentinit mcp --interactive
+# Add and verify an MCP server
+agentinit mcp add --verify \
+  --mcp-stdio everything "npx -y @modelcontextprotocol/server-everything"
 ```
 
 ## 📋 Commands
@@ -83,133 +84,88 @@ agentinit sync --backup       # Create backups
 
 ### `agentinit mcp`
 
-Manage Model Context Protocol installations.
-
-```bash
-agentinit mcp                      # Show top MCPs
-agentinit mcp --interactive        # Interactive selection
-agentinit mcp --search <query>     # Search MCPs
-agentinit mcp --install <name>     # Install specific MCP
-```
-
-### `agentinit verify_mcp`
-
-Verify MCP server installations and get their tools with token usage.
+Manage Model Context Protocol server configurations.
 
 **Examples:**
 ```bash
-# Verify all MCPs in project
-agentinit verify_mcp --all
-# Verify STDIO server
-agentinit verify_mcp --mcp-stdio everything "npx -y @modelcontextprotocol/server-everything"
-# Verify HTTP server
-agentinit verify_mcp --mcp-http notion_api "https://mcp.notion.com/mcp"  --timeout 30000
-```
-
-Shows connection status, response time, and available tools/resources/prompts for each MCP server.
-
-### `agentinit apply`
-
-Apply configurations including MCP server setup.
-
-#### MCP Configuration
-
-
-```bash
-# Configure STDIO MCP with everything server (recommended example)
-npx agentinit apply \
+# Add a project-local STDIO server
+agentinit mcp add \
   --mcp-stdio everything "npx -y @modelcontextprotocol/server-everything"
 
-# Configure multiple MCPs in one command
-npx agentinit apply \
-  --mcp-stdio everything "npx -y @modelcontextprotocol/server-everything" \
+# Add multiple servers and verify them immediately
+agentinit mcp add --verify \
   --mcp-stdio supabase "npx -y @supabase/mcp-server-supabase@latest" \
     --args "--read-only --project-ref=<project-ref>" \
     --env "SUPABASE_ACCESS_TOKEN=<personal-access-token>" \
-  --mcp-http notion_api "https://mcp.notion.com/mcp" \
-  --mcp-sse notion_events "https://mcp.notion.com/sse"
+  --mcp-http notion_api "https://mcp.notion.com/mcp"
 
-# Configure HTTP MCP with authentication
-npx agentinit apply \
-  --mcp-http github "https://api.githubcopilot.com/mcp/" --auth "Bearer YOUR_GITHUB_PAT"
+# Manage global MCP config for a specific agent
+agentinit mcp list --global --agent claude
+agentinit mcp remove notion_api --global --agent claude
 
-# Configure HTTP MCP with custom headers
-npx agentinit apply \
-  --mcp-http context7 "https://mcp.context7.com/mcp" \
-  --header "CONTEXT7_API_KEY:YOUR_API_KEY"
-
-# Multiple custom headers
-npx agentinit apply \
-  --mcp-http api_server "https://api.example.com/mcp" \
-  --header "X-API-Key:YOUR_API_KEY" \
-  --header "X-Client-ID:YOUR_CLIENT_ID"
-
-# Combine Bearer auth with custom headers
-npx agentinit apply \
-  --mcp-http advanced_api "https://api.example.com/mcp" \
-  --auth "Bearer YOUR_TOKEN" \
-  --header "X-Custom-Header:custom_value"
-
-# Configure Docker-based MCP with environment
-npx agentinit apply \
-  --mcp-stdio browserbase "docker run -i --rm ghcr.io/metorial/mcp-container--browserbase--mcp-server-browserbase--browserbase node cli.js" \
-  --env "BROWSERBASE_API_KEY=browserbase-api-key"
-
-# Global configuration with custom headers
-npx agentinit apply --global --client claude \
-  --mcp-http context7 "https://mcp.context7.com/mcp" \
-  --header "CONTEXT7_API_KEY:YOUR_API_KEY"
-
-# Verify MCPs immediately after configuration
-npx agentinit apply --verify-mcp \
-  --mcp-stdio everything "npx -y @modelcontextprotocol/server-everything"
+# Verify existing configs or direct MCP args
+agentinit mcp verify --all
+agentinit mcp verify --name exa
+agentinit mcp verify --mcp-http notion_api "https://mcp.notion.com/mcp" --timeout 30000
 ```
 
-This generates `.agentinit/agentinit.toml` with your MCP configurations.
+Shows connection status, response time, and available tools/resources/prompts for each MCP server.
 
 **MCP Authentication Options**:
 - `--auth "Bearer TOKEN"` - Adds Authorization header for Bearer token authentication
 - `--header "KEY:VALUE"` - Adds custom headers in KEY:VALUE format (can be used multiple times)
 - Both flags can be combined for APIs requiring multiple authentication methods
 
-**MCP Verification**: Use the `--verify-mcp` flag to test MCP servers immediately after configuration. This ensures servers are reachable and shows their available tools, resources, and prompts. Use `--timeout <ms>` to set a custom connection timeout (default: 30000ms).
+### `agentinit rules`
 
+Manage coding rules independently from MCP configuration.
+
+**Examples:**
 ```bash
-# Verify with custom timeout
-npx agentinit apply --verify-mcp --timeout 30000 \
-  --mcp-stdio chrome-mcp "bunx -y chrome-devtools-mcp@latest"
-```
+# Add rules from templates, raw text, files, or URLs
+agentinit rules add --template git,write_tests,use_linter
+agentinit rules add --template git --raw "Use TypeScript strict mode"
+agentinit rules add --file ./project-rules.md
 
-#### Rules Configuration
+# Inspect and remove configured rules
+agentinit rules list
+agentinit rules remove git write_tests
 
-Apply coding rules and best practices to your AI agents using predefined templates or custom rules.
-
-```bash
-# Apply rule templates (recommended combinations)
-agentinit apply --rules git,write_tests,use_linter
-
-# Mix templates with custom rules
-agentinit apply --rules git,write_docs --rule-raw "Use TypeScript strict mode"
-
-# Load rules from a file
-agentinit apply --rules-file ./project-rules.md
-
-# Apply globally to all projects using Claude
-agentinit apply --global --agent claude --rules git,write_tests
-
-# Combine with MCP configuration
-agentinit apply --rules git,use_linter --mcp-stdio context7 "npx @context7/mcp"
+# Apply globally when the target agent supports global rules
+agentinit rules add --global --agent claude --template git,write_tests
 ```
 
 **Available Rule Templates:**
 - `git` - Enforce Git workflows and commit standards
 - `write_docs` - Require comprehensive documentation
-- `use_git_worktrees` - Enable parallel development with worktrees  
+- `use_git_worktrees` - Enable parallel development with worktrees
 - `use_subagents` - Delegate work to specialized subagents
 - `use_linter` - Enforce code quality and formatting
 - `write_tests` - Implement test-driven development practices
 
-**Token Tracking:** The apply command automatically tracks and displays token usage with color-coded output (🟢 Green ≤5k, 🟡 Yellow 5k-15k, 🔴 Red >15k) and git-style diffs to help manage AI context size. Example: `Rules: 101 tokens (-296)` shows rule tokens with change tracking.
+### `agentinit skills`
+
+Install, list, and remove reusable agent skills from local paths or GitHub repositories.
+
+**Examples:**
+```bash
+# Inspect a source before installing
+agentinit skills add owner/repo --list
+
+# Install all discovered skills for detected agents
+agentinit skills add ./skills
+
+# Install selected skills globally for a specific agent
+agentinit skills add owner/repo --global --agent claude --skill openai-docs
+
+# Review and clean up installed skills
+agentinit skills list
+agentinit skills remove openai-docs
+```
+
+### Deprecated compatibility
+
+`agentinit apply` and `agentinit verify_mcp` still work as compatibility shims, but new automation should prefer `agentinit mcp ...`, `agentinit rules ...`, and `agentinit skills ...`.
 
 ## 🏗️ Project Structure
 

@@ -27,7 +27,8 @@ export class DroidAgent extends Agent {
         hooks: false,
         commands: false,
         subagents: false,
-        statusline: false
+        statusline: false,
+        skills: true
       },
       configFiles: [
         {
@@ -40,7 +41,12 @@ export class DroidAgent extends Agent {
         }
       ],
       nativeConfigPath: '.factory/mcp.json',
-      globalConfigPath: '~/.factory/mcp.json'
+      globalConfigPath: '~/.factory/mcp.json',
+      rulesPath: 'AGENTS.md',
+      skillPaths: {
+        project: '.factory/skills/',
+        global: '~/.factory/skills/'
+      }
     };
 
     super(definition);
@@ -113,6 +119,31 @@ export class DroidAgent extends Agent {
   }
 
   /**
+   * Remove an MCP server — Droid always uses global config
+   */
+  async removeMCPServer(_projectPath: string, serverName: string): Promise<boolean> {
+    return this.removeGlobalMCPServer(serverName);
+  }
+
+  async removeGlobalMCPServer(serverName: string): Promise<boolean> {
+    const globalPath = this.getGlobalMcpPath();
+    if (!globalPath) return false;
+
+    const content = await readFileIfExists(globalPath);
+    if (!content) return false;
+
+    try {
+      const config = JSON.parse(content);
+      if (!config.mcpServers || !(serverName in config.mcpServers)) return false;
+      delete config.mcpServers[serverName];
+      await writeFile(globalPath, JSON.stringify(config, null, 2));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
    * Filter out non-stdio servers since Droid only supports stdio
    */
   filterMCPServers(servers: MCPServerConfig[]): MCPServerConfig[] {
@@ -134,29 +165,14 @@ export class DroidAgent extends Agent {
     rules: AppliedRules,
     existingContent: string
   ): Promise<string> {
-    const rulesSection = this.generateRulesContent(rules.sections);
-
-    let content = existingContent;
-
-    // For markdown, we'll append rules directly
-    if (content && !content.endsWith('\n')) {
-      content += '\n';
-    }
-    if (content) {
-      content += '\n';
-    }
-    content += rulesSection;
-
-    return content.trim() + '\n';
+    return this.replaceMarkdownRulesSections(existingContent, rules.sections, /^##\s+(.+)$/);
   }
 
   /**
    * Extract existing rule texts from AGENTS.md content
    */
   extractExistingRules(content: string): string[] {
-    // Extract rules from markdown format - look for lines starting with "- "
-    const ruleLines = content.split('\n').filter(line => line.trim().startsWith('- '));
-    return ruleLines.map(line => line.replace(/^- /, '').trim()).filter(rule => rule.length > 0);
+    return this.extractExistingSections(content).flatMap(section => section.rules);
   }
 
   /**
@@ -173,7 +189,7 @@ export class DroidAgent extends Agent {
       // Check if it's a section header
       if (trimmed.startsWith('## ') && trimmed.includes(' ')) {
         // Start new section
-        if (currentSection) {
+        if (currentSection && currentSection.rules.length > 0) {
           sections.push(currentSection);
         }
         const sectionName = trimmed.replace(/^##\s*/, '');
@@ -190,7 +206,7 @@ export class DroidAgent extends Agent {
     }
 
     // Add the last section
-    if (currentSection) {
+    if (currentSection && currentSection.rules.length > 0) {
       sections.push(currentSection);
     }
 

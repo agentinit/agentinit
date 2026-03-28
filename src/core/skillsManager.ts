@@ -1,0 +1,466 @@
+import { resolve, join, relative } from 'path';
+import { promises as fs } from 'fs';
+import { tmpdir } from 'os';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
+import matter from 'gray-matter';
+import { readFileIfExists, listFiles, fileExists, isDirectory } from '../utils/fs.js';
+import { AgentManager } from './agentManager.js';
+import type { Agent } from '../agents/Agent.js';
+import type {
+  SkillInfo,
+  InstalledSkill,
+  SkillsAddOptions,
+  SkillsAddResult,
+  SkillsListOptions,
+  SkillsRemoveOptions,
+  SkillSource
+} from '../types/skills.js';
+
+const execFileAsync = promisify(execFile);
+
+/**
+ * Standard directories where skills are discovered in a repository
+ * Compatible with the open agent skills ecosystem (vercel-labs/skills)
+ */
+const SKILL_SEARCH_DIRS = [
+  '.',
+  'skills',
+  'skills/.curated',
+  'skills/.experimental',
+  '.agents/skills',
+  '.claude/skills',
+  '.factory/skills',
+];
+
+export class SkillsManager {
+  private agentManager: AgentManager;
+
+  constructor(agentManager?: AgentManager) {
+    this.agentManager = agentManager || new AgentManager();
+  }
+
+  /**
+   * Parse a source string into a structured SkillSource
+   */
+  resolveSource(source: string): SkillSource {
+    // Local path
+    if (source.startsWith('.') || source.startsWith('/') || source.startsWith('~')) {
+      return { type: 'local', path: source };
+    }
+
+    // Full GitHub URL
+    if (source.startsWith('https://github.com/') || source.startsWith('http://github.com/')) {
+      const url = source.replace(/\.git$/, '');
+      const match = url.match(/github\.com\/([^/]+)\/([^/]+)/);
+      return {
+        type: 'github',
+        url: `https://github.com/${match?.[1]}/${match?.[2]}.git`,
+        owner: match?.[1],
+        repo: match?.[2]
+      };
+    }
+
+    // Full git URL
+    if (source.startsWith('git@') || source.endsWith('.git')) {
+      return { type: 'github', url: source };
+    }
+
+    // GitHub shorthand: owner/repo
+    if (/^[a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+$/.test(source)) {
+      const [owner, repo] = source.split('/');
+      return {
+        type: 'github',
+        url: `https://github.com/${owner}/${repo}.git`,
+        owner,
+        repo
+      };
+    }
+
+    // Fallback: treat as local path
+    return { type: 'local', path: source };
+  }
+
+  /**
+   * Parse a SKILL.md file and extract name + description from frontmatter
+   */
+  async parseSkillMd(filePath: string): Promise<{ name: string; description: string } | null> {
+    const content = await readFileIfExists(filePath);
+    if (!content) return null;
+
+    try {
+      const parsed = matter(content);
+      const { name, description } = parsed.data;
+      if (!name || !description) return null;
+      return { name: String(name), description: String(description) };
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Discover all skills in a given directory (cloned repo or local path)
+   */
+  async discoverSkills(repoPath: string): Promise<SkillInfo[]> {
+    const skills: SkillInfo[] = [];
+    const seen = new Set<string>();
+
+    for (const searchDir of SKILL_SEARCH_DIRS) {
+      const fullDir = resolve(repoPath, searchDir);
+      if (!(await fileExists(fullDir))) continue;
+
+      // Check if this directory itself has a SKILL.md
+      const directSkillMd = join(fullDir, 'SKILL.md');
+      if (await fileExists(directSkillMd)) {
+        // Check lowercase variant too
+        const parsed = await this.parseSkillMd(directSkillMd);
+        if (parsed && !seen.has(parsed.name)) {
+          seen.add(parsed.name);
+          skills.push({ ...parsed, path: resolve(fullDir) });
+        }
+      }
+
+      // Also check lowercase
+      const directSkillMdLower = join(fullDir, 'skill.md');
+      if (await fileExists(directSkillMdLower)) {
+        const parsed = await this.parseSkillMd(directSkillMdLower);
+        if (parsed && !seen.has(parsed.name)) {
+          seen.add(parsed.name);
+          skills.push({ ...parsed, path: resolve(fullDir) });
+        }
+      }
+
+      // Check subdirectories for skill folders
+      if (!(await isDirectory(fullDir))) continue;
+      const entries = await listFiles(fullDir);
+
+      for (const entry of entries) {
+        const entryPath = join(fullDir, entry);
+        if (!(await isDirectory(entryPath))) continue;
+
+        // Look for SKILL.md in subdirectory
+        const skillMdPath = join(entryPath, 'SKILL.md');
+        const skillMdPathLower = join(entryPath, 'skill.md');
+        const skillFile = (await fileExists(skillMdPath)) ? skillMdPath
+          : (await fileExists(skillMdPathLower)) ? skillMdPathLower
+          : null;
+
+        if (!skillFile) continue;
+
+        const parsed = await this.parseSkillMd(skillFile);
+        if (parsed && !seen.has(parsed.name)) {
+          seen.add(parsed.name);
+          skills.push({ ...parsed, path: entryPath });
+        }
+      }
+    }
+
+    return skills;
+  }
+
+  /**
+   * Clone a GitHub repository to a temp directory
+   */
+  async cloneRepo(url: string): Promise<string> {
+    const tempDir = join(tmpdir(), `agentinit-skills-${Date.now()}`);
+    await fs.mkdir(tempDir, { recursive: true });
+
+    try {
+      await execFileAsync('git', ['clone', '--depth', '1', url, tempDir], {
+        timeout: 60000
+      });
+    } catch (error: any) {
+      await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
+      throw new Error(`Failed to clone ${url}: ${error.message}`);
+    }
+
+    return tempDir;
+  }
+
+  /**
+   * Get target agents based on options
+   */
+  async getTargetAgents(projectPath: string, options: { agents?: string[]; global?: boolean }): Promise<Agent[]> {
+    if (options.agents && options.agents.length > 0) {
+      const agents: Agent[] = [];
+      for (const id of options.agents) {
+        const agent = this.agentManager.getAgentById(id);
+        if (agent) agents.push(agent);
+      }
+      return agents;
+    }
+
+    // Auto-detect agents in the project
+    const detected = await this.agentManager.detectAgents(projectPath);
+    return detected.map(d => d.agent);
+  }
+
+  /**
+   * Install a skill directory into an agent's skills directory
+   */
+  async installSkill(
+    skillPath: string,
+    skillName: string,
+    targetDir: string,
+    copy: boolean = false
+  ): Promise<string> {
+    const normalizedSkillName = this.normalizeSkillName(skillName);
+    const destPath = this.resolveInstallPath(targetDir, normalizedSkillName);
+    await fs.mkdir(resolve(targetDir), { recursive: true });
+
+    // Remove existing if present
+    if (await fileExists(destPath)) {
+      await fs.rm(destPath, { recursive: true, force: true });
+    }
+
+    if (copy) {
+      await this.copyDir(skillPath, destPath);
+    } else {
+      await fs.symlink(skillPath, destPath, 'dir');
+    }
+
+    return destPath;
+  }
+
+  private normalizeSkillName(skillName: string): string {
+    const normalized = skillName.trim();
+
+    if (!normalized) {
+      throw new Error('Skill name cannot be empty');
+    }
+
+    if (normalized === '.' || normalized === '..' || normalized.includes('/') || normalized.includes('\\')) {
+      throw new Error(`Invalid skill name: ${skillName}`);
+    }
+
+    return normalized;
+  }
+
+  private resolveInstallPath(targetDir: string, skillName: string): string {
+    const resolvedTargetDir = resolve(targetDir);
+    const destPath = resolve(resolvedTargetDir, skillName);
+    const relativePath = relative(resolvedTargetDir, destPath);
+
+    if (relativePath === '' || relativePath.startsWith('..') || relativePath.includes('/../') || relativePath.includes('\\..\\')) {
+      throw new Error(`Refusing to install skill outside target directory: ${skillName}`);
+    }
+
+    return destPath;
+  }
+
+  /**
+   * Recursively copy a directory
+   */
+  private async copyDir(src: string, dest: string): Promise<void> {
+    await fs.mkdir(dest, { recursive: true });
+    const entries = await fs.readdir(src, { withFileTypes: true });
+
+    for (const entry of entries) {
+      const srcPath = join(src, entry.name);
+      const destPath = join(dest, entry.name);
+
+      if (entry.isDirectory()) {
+        await this.copyDir(srcPath, destPath);
+      } else {
+        await fs.copyFile(srcPath, destPath);
+      }
+    }
+  }
+
+  /**
+   * Add skills from a source (GitHub repo or local path)
+   */
+  async addFromSource(
+    source: string,
+    projectPath: string,
+    options: SkillsAddOptions = {}
+  ): Promise<SkillsAddResult> {
+    const resolved = this.resolveSource(source);
+    let repoPath: string;
+    let tempDir: string | null = null;
+
+    if (resolved.type === 'github') {
+      if (!resolved.url) throw new Error(`Invalid source: ${source}`);
+      tempDir = await this.cloneRepo(resolved.url);
+      repoPath = tempDir;
+    } else {
+      repoPath = resolve(resolved.path || source);
+      if (!(await fileExists(repoPath))) {
+        throw new Error(`Local path not found: ${repoPath}`);
+      }
+    }
+
+    try {
+      // Discover skills
+      let skills = await this.discoverSkills(repoPath);
+
+      if (skills.length === 0) {
+        return { installed: [], skipped: [] };
+      }
+
+      // Filter by name if specified
+      if (options.skills && options.skills.length > 0) {
+        const names = new Set(options.skills.map(s => s.toLowerCase()));
+        skills = skills.filter(s => names.has(s.name.toLowerCase()));
+      }
+
+      // Get target agents
+      const agents = await this.getTargetAgents(projectPath, options);
+      if (agents.length === 0) {
+        return {
+          installed: [],
+          skipped: skills.map(s => ({ skill: s, reason: 'No target agents found' }))
+        };
+      }
+
+      const result: SkillsAddResult = { installed: [], skipped: [] };
+
+      for (const skill of skills) {
+        for (const agent of agents) {
+          if (!agent.supportsSkills()) {
+            result.skipped.push({ skill, reason: `${agent.name} does not support skills` });
+            continue;
+          }
+
+          const skillsDir = agent.getSkillsDir(projectPath, options.global);
+          if (!skillsDir) {
+            result.skipped.push({ skill, reason: `No skills directory for ${agent.name}` });
+            continue;
+          }
+
+          try {
+            // For GitHub repos, always copy (symlinks to temp dirs would break)
+            const shouldCopy = options.copy || resolved.type === 'github';
+            const installedPath = await this.installSkill(
+              skill.path,
+              skill.name,
+              skillsDir,
+              shouldCopy
+            );
+            result.installed.push({ skill, agent: agent.id, path: installedPath });
+          } catch (error: any) {
+            result.skipped.push({ skill, reason: error.message });
+          }
+        }
+      }
+
+      return result;
+    } finally {
+      // Clean up temp directory
+      if (tempDir) {
+        await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
+      }
+    }
+  }
+
+  /**
+   * List all installed skills
+   */
+  async listInstalled(projectPath: string, options: SkillsListOptions = {}): Promise<InstalledSkill[]> {
+    const agents = await this.getTargetAgents(projectPath, options);
+    const installed: InstalledSkill[] = [];
+
+    for (const agent of agents) {
+      if (!agent.supportsSkills()) continue;
+
+      // Check both project and global scopes
+      const scopes: Array<{ scope: 'project' | 'global'; dir: string | null }> = [];
+
+      if (!options.global) {
+        scopes.push({ scope: 'project', dir: agent.getSkillsDir(projectPath, false) });
+      }
+      scopes.push({ scope: 'global', dir: agent.getSkillsDir(projectPath, true) });
+
+      for (const { scope, dir } of scopes) {
+        if (!dir || !(await fileExists(dir))) continue;
+
+        const entries = await listFiles(dir);
+        for (const entry of entries) {
+          const entryPath = join(dir, entry);
+          if (!(await isDirectory(entryPath))) continue;
+
+          // Look for SKILL.md
+          const skillMdPath = join(entryPath, 'SKILL.md');
+          const skillMdPathLower = join(entryPath, 'skill.md');
+          const skillFile = (await fileExists(skillMdPath)) ? skillMdPath
+            : (await fileExists(skillMdPathLower)) ? skillMdPathLower
+            : null;
+
+          if (!skillFile) continue;
+
+          const parsed = await this.parseSkillMd(skillFile);
+          if (!parsed) continue;
+
+          // Check if it's a symlink
+          let isSymlink = false;
+          try {
+            const stat = await fs.lstat(entryPath);
+            isSymlink = stat.isSymbolicLink();
+          } catch {}
+
+          installed.push({
+            name: parsed.name,
+            description: parsed.description,
+            path: entryPath,
+            agent: agent.id,
+            scope,
+            isSymlink
+          });
+        }
+      }
+    }
+
+    return installed;
+  }
+
+  /**
+   * Remove installed skills by name
+   */
+  async remove(
+    skillNames: string[],
+    projectPath: string,
+    options: SkillsRemoveOptions = {}
+  ): Promise<{ removed: string[]; notFound: string[] }> {
+    const agents = await this.getTargetAgents(projectPath, options);
+    const removed: string[] = [];
+    const notFound: string[] = [];
+    const namesLower = new Set(skillNames.map(n => n.toLowerCase()));
+
+    for (const agent of agents) {
+      if (!agent.supportsSkills()) continue;
+
+      const scopes: Array<{ scope: 'project' | 'global'; dir: string | null }> = [];
+      if (!options.global) {
+        scopes.push({ scope: 'project', dir: agent.getSkillsDir(projectPath, false) });
+      }
+      if (options.global) {
+        scopes.push({ scope: 'global', dir: agent.getSkillsDir(projectPath, true) });
+      }
+
+      for (const { dir } of scopes) {
+        if (!dir || !(await fileExists(dir))) continue;
+
+        const entries = await listFiles(dir);
+        for (const entry of entries) {
+          if (!namesLower.has(entry.toLowerCase())) continue;
+
+          const entryPath = join(dir, entry);
+          try {
+            await fs.rm(entryPath, { recursive: true, force: true });
+            removed.push(`${agent.id}:${entry}`);
+          } catch {}
+        }
+      }
+    }
+
+    // Check which names were not found anywhere
+    const removedNames = new Set(removed.map(r => r.split(':')[1]?.toLowerCase()));
+    for (const name of skillNames) {
+      if (!removedNames.has(name.toLowerCase())) {
+        notFound.push(name);
+      }
+    }
+
+    return { removed, notFound };
+  }
+}

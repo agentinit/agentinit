@@ -24,7 +24,8 @@ export class GeminiCliAgent extends Agent {
         hooks: false,
         commands: false,
         subagents: false,
-        statusline: false
+        statusline: false,
+        skills: true
       },
       configFiles: [
         {
@@ -37,7 +38,13 @@ export class GeminiCliAgent extends Agent {
         }
       ],
       nativeConfigPath: '.gemini/settings.json',
-      globalConfigPath: '~/.gemini/settings.json'
+      globalConfigPath: '~/.gemini/settings.json',
+      rulesPath: '.gemini/settings.json',
+      globalRulesPath: '~/.gemini/settings.json',
+      skillPaths: {
+        project: '.agents/skills/',
+        global: '~/.gemini/skills/'
+      }
     };
 
     super(definition);
@@ -106,6 +113,25 @@ export class GeminiCliAgent extends Agent {
   }
 
   /**
+   * Remove an MCP server by name from Gemini's settings.json
+   */
+  async removeMCPServer(projectPath: string, serverName: string): Promise<boolean> {
+    const settingsPath = this.getNativeMcpPath(projectPath);
+    const content = await readFileIfExists(settingsPath);
+    if (!content) return false;
+
+    try {
+      const config = JSON.parse(content);
+      if (!config.mcpServers || !(serverName in config.mcpServers)) return false;
+      delete config.mcpServers[serverName];
+      await writeFile(settingsPath, JSON.stringify(config, null, 2));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
    * Gemini supports all MCP server types, so no filtering needed
    */
   filterMCPServers(servers: MCPServerConfig[]): MCPServerConfig[] {
@@ -138,18 +164,19 @@ export class GeminiCliAgent extends Agent {
         config = {};
       }
     }
-    
-    // Add or update rules section
-    if (!config.rules) {
-      config.rules = {};
-    }
-    
-    // Convert rule sections to JSON structure
+
+    const nextRules: Record<string, { name: string; rules: string[] }> = {};
     for (const section of rules.sections) {
-      config.rules[section.templateId] = {
+      nextRules[section.templateId] = {
         name: section.templateName,
         rules: section.rules
       };
+    }
+
+    if (Object.keys(nextRules).length > 0) {
+      config.rules = nextRules;
+    } else {
+      delete config.rules;
     }
     
     return JSON.stringify(config, null, 2);

@@ -23,8 +23,8 @@ export class RulesTemplateLoader {
   private templates: Map<string, RuleTemplate> = new Map();
 
   constructor() {
-    // In the built version, templates will be next to the bundle
-    this.templatesPath = resolve(__dirname, 'templates/rules');
+    // In both src/ and dist/, templates live one directory above this file.
+    this.templatesPath = resolve(__dirname, '../templates/rules');
     this.loadTemplates();
   }
 

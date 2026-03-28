@@ -7,14 +7,14 @@
 
 ## MCP Verification
 
-### Verify During Apply
+### Verify During Add
 ```bash
 # Verify MCP servers immediately after configuration
-node dist/index.js apply --verify-mcp \
+node dist/index.js mcp add --verify \
   --mcp-stdio everything "npx -y @modelcontextprotocol/server-everything"
 
 # Multiple servers with verification
-node dist/index.js apply --verify-mcp \
+node dist/index.js mcp add --verify \
   --mcp-stdio everything "npx -y @modelcontextprotocol/server-everything" \
   --mcp-stdio filesystem "npx -y @modelcontextprotocol/server-filesystem" \
   --args "/workspace" \
@@ -25,16 +25,16 @@ node dist/index.js apply --verify-mcp \
 ### Verify Existing MCPs
 ```bash
 # Verify all configured MCP servers
-node dist/index.js verify_mcp --all
+node dist/index.js mcp verify --all
 
 # Verify specific MCP server
-node dist/index.js verify_mcp --mcp-name everything
+node dist/index.js mcp verify --name everything
 
 # Test MCP configuration directly
-node dist/index.js verify_mcp --mcp-stdio everything "npx -y @modelcontextprotocol/server-everything"
+node dist/index.js mcp verify --mcp-stdio everything "npx -y @modelcontextprotocol/server-everything"
 
 # Custom timeout (15 seconds)
-node dist/index.js verify_mcp --all --timeout 15000
+node dist/index.js mcp verify --all --timeout 15000
 ```
 
 ### Expected Verification Output
@@ -75,12 +75,12 @@ node dist/index.js verify_mcp --all --timeout 15000
 ### STDIO Servers
 ```bash
 # Filesystem server
-node dist/index.js apply --agent claude \
+node dist/index.js mcp add --agent claude \
   --mcp-stdio filesystem "npx -y @modelcontextprotocol/server-filesystem" \
   --args "/Users/$(whoami)/Documents"
 
 # With environment variables
-node dist/index.js apply --agent claude \
+node dist/index.js mcp add --agent claude \
   --mcp-stdio supabase "npx -y @supabase/mcp-server-supabase" \
   --args "--read-only --project-ref=your-ref" \
   --env "SUPABASE_ACCESS_TOKEN=token"
@@ -89,7 +89,7 @@ node dist/index.js apply --agent claude \
 ### HTTP Servers
 ```bash
 # Basic HTTP server
-node dist/index.js apply --agent claude \
+node dist/index.js mcp add --agent claude \
   --mcp-http github "https://api.github.com/mcp" \
   --auth "Bearer ghp_token"
 ```
@@ -97,7 +97,7 @@ node dist/index.js apply --agent claude \
 ### SSE Servers  
 ```bash
 # SSE server with auth
-node dist/index.js apply --agent claude \
+node dist/index.js mcp add --agent claude \
   --mcp-sse realtime "https://api.example.com/mcp/sse" \
   --auth "Bearer token"
 ```
@@ -107,12 +107,12 @@ node dist/index.js apply --agent claude \
 ### Claude Code
 ```bash
 # Project config (.mcp.json)
-node dist/index.js apply --agent claude \
+node dist/index.js mcp add --agent claude \
   --mcp-stdio everything "npx -y @modelcontextprotocol/server-everything" \
   --mcp-http tools "https://tools.anthropic.com/mcp"
 
 # Global config (~/.claude.json)
-node dist/index.js apply --global --agent claude \
+node dist/index.js mcp add --global --agent claude \
   --mcp-stdio global-fs "npx -y @modelcontextprotocol/server-filesystem" \
   --args "/Users/$(whoami)/shared"
 ```
@@ -120,7 +120,7 @@ node dist/index.js apply --global --agent claude \
 ### Cursor IDE
 ```bash
 # Project config (.cursor/mcp.json)
-node dist/index.js apply --agent cursor \
+node dist/index.js mcp add --agent cursor \
   --mcp-stdio cursor-fs "npx -y @modelcontextprotocol/server-filesystem" \
   --args "/workspace" \
   --mcp-http cursor-api "https://cursor-tools.com/mcp"
@@ -129,7 +129,7 @@ node dist/index.js apply --agent cursor \
 ### Codex CLI
 ```bash
 # STDIO only (HTTP transformed via mcp-remote)
-node dist/index.js apply --agent codex \
+node dist/index.js mcp add --agent codex \
   --mcp-stdio local-tools "npx -y @codex/local-tools" \
   --mcp-http remote-api "https://api.example.com/mcp"  # Transformed
 ```
@@ -137,7 +137,7 @@ node dist/index.js apply --agent codex \
 ### Claude Desktop
 ```bash
 # Global only
-node dist/index.js apply --global --agent claude-desktop \
+node dist/index.js mcp add --global --agent claude-desktop \
   --mcp-stdio desktop-fs "npx -y @modelcontextprotocol/server-filesystem" \
   --args "/Users/$(whoami)/Desktop"
 ```
@@ -146,7 +146,7 @@ node dist/index.js apply --global --agent claude-desktop \
 
 ### Development Stack
 ```bash
-node dist/index.js apply --agent claude \
+node dist/index.js mcp add --agent claude \
   --mcp-stdio filesystem "npx -y @modelcontextprotocol/server-filesystem" \
   --args "/Users/$(whoami)/projects" \
   --mcp-stdio git "npx -y @git/mcp-server" \
@@ -158,7 +158,7 @@ node dist/index.js apply --agent claude \
 
 ### Web Development
 ```bash
-node dist/index.js apply --agent cursor \
+node dist/index.js mcp add --agent cursor \
   --mcp-stdio npm-tools "npx -y @npm/mcp-server" \
   --mcp-http vercel "https://api.vercel.com/mcp" \
   --auth "Bearer vercel_token" \
@@ -169,10 +169,10 @@ node dist/index.js apply --agent cursor \
 
 ```bash
 # Missing server name (should fail)
-node dist/index.js apply --agent claude --mcp-stdio
+node dist/index.js mcp add --agent claude --mcp-stdio
 
 # Invalid agent (should fail)
-node dist/index.js apply --agent invalid \
+node dist/index.js mcp add --agent invalid \
   --mcp-stdio test "npx -y test"
 
 # No agent detection (should warn)
@@ -185,12 +185,12 @@ cd /tmp && node /path/to/agentinit/dist/index.js apply \
 ### AI/ML Tools
 ```bash
 # Ollama local models
-node dist/index.js apply --agent claude \
+node dist/index.js mcp add --agent claude \
   --mcp-stdio ollama "npx -y @ollama/mcp-server" \
   --args "--model-path ~/.ollama/models"
 
 # Weights & Biases
-node dist/index.js apply --agent claude \
+node dist/index.js mcp add --agent claude \
   --mcp-http wandb "https://api.wandb.ai/mcp" \
   --auth "Bearer wandb_key"
 ```
@@ -198,12 +198,12 @@ node dist/index.js apply --agent claude \
 ### Development Tools
 ```bash
 # Docker integration
-node dist/index.js apply --agent cursor \
+node dist/index.js mcp add --agent cursor \
   --mcp-stdio docker "npx -y @docker/mcp-server" \
   --env "DOCKER_HOST=unix:///var/run/docker.sock"
 
 # AWS integration
-node dist/index.js apply --agent claude \
+node dist/index.js mcp add --agent claude \
   --mcp-stdio aws "npx -y @aws/mcp-server" \
   --env "AWS_PROFILE=default AWS_REGION=us-west-2"
 ```
@@ -211,12 +211,12 @@ node dist/index.js apply --agent claude \
 ### Databases
 ```bash
 # PostgreSQL
-node dist/index.js apply --agent claude \
+node dist/index.js mcp add --agent claude \
   --mcp-stdio postgres "npx -y @postgres/mcp-server" \
   --env "DATABASE_URL=postgresql://user:pass@localhost:5432/db"
 
 # MongoDB
-node dist/index.js apply --agent claude \
+node dist/index.js mcp add --agent claude \
   --mcp-stdio mongodb "npx -y @mongodb/mcp-server" \
   --env "MONGO_URI=mongodb://localhost:27017/app"
 ```
@@ -224,12 +224,12 @@ node dist/index.js apply --agent claude \
 ### Content Management
 ```bash
 # Notion
-node dist/index.js apply --agent claude \
+node dist/index.js mcp add --agent claude \
   --mcp-http notion "https://api.notion.com/mcp" \
   --auth "Bearer notion_token"
 
 # Slack
-node dist/index.js apply --agent claude \
+node dist/index.js mcp add --agent claude \
   --mcp-http slack "https://slack.com/api/mcp" \
   --auth "Bearer xoxb-slack-token"
 ```
@@ -270,7 +270,7 @@ taplo check .agentinit/agentinit.toml
 
 ### Large Configuration
 ```bash
-node dist/index.js apply --agent claude \
+node dist/index.js mcp add --agent claude \
   --mcp-stdio fs1 "npx -y @modelcontextprotocol/server-filesystem" --args "/path1" \
   --mcp-stdio fs2 "npx -y @modelcontextprotocol/server-filesystem" --args "/path2" \
   --mcp-http api1 "https://api1.com/mcp" \
@@ -281,11 +281,11 @@ node dist/index.js apply --agent claude \
 ### Configuration Merging
 ```bash
 # Initial config
-node dist/index.js apply --agent claude \
+node dist/index.js mcp add --agent claude \
   --mcp-stdio initial "npx -y @initial/mcp"
 
 # Add more (should merge)
-node dist/index.js apply --agent claude \
+node dist/index.js mcp add --agent claude \
   --mcp-stdio additional "npx -y @additional/mcp"
 
 # Verify both exist
@@ -296,7 +296,7 @@ cat .mcp.json | jq '.mcpServers | keys'
 
 ### Development
 ```bash
-node dist/index.js apply --agent claude \
+node dist/index.js mcp add --agent claude \
   --mcp-stdio dev-tools "npx -y @dev/mcp-server" \
   --args "--env development" \
   --env "NODE_ENV=development DEBUG=mcp:*"
@@ -304,7 +304,7 @@ node dist/index.js apply --agent claude \
 
 ### Production
 ```bash
-node dist/index.js apply --agent claude \
+node dist/index.js mcp add --agent claude \
   --mcp-stdio prod-tools "npx -y @prod/mcp-server" \
   --args "--env production --log-level error" \
   --env "NODE_ENV=production"
@@ -330,10 +330,10 @@ npx -y @modelcontextprotocol/server-everything --help
 curl -I https://api.example.com/mcp
 
 # Verify with increased timeout
-node dist/index.js verify_mcp --mcp-name everything --timeout 30000
+node dist/index.js mcp verify --name everything --timeout 30000
 
 # Test direct MCP configuration
-node dist/index.js verify_mcp --mcp-stdio everything "npx -y @modelcontextprotocol/server-everything"
+node dist/index.js mcp verify --mcp-stdio everything "npx -y @modelcontextprotocol/server-everything"
 ```
 
 #### STDIO Server Issues
@@ -362,11 +362,11 @@ node dist/index.js verify_mcp --mcp-stdio everything "npx -y @modelcontextprotoc
 
 ### Debug Mode
 ```bash
-DEBUG=agentinit:* node dist/index.js apply --agent claude \
+DEBUG=agentinit:* node dist/index.js mcp add --agent claude \
   --mcp-stdio debug "npx -y @debug/mcp-server"
 
 # Verify with debug output
-DEBUG=agentinit:* node dist/index.js verify_mcp --all
+DEBUG=agentinit:* node dist/index.js mcp verify --all
 ```
 
 ## Cleanup
