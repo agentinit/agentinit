@@ -126,6 +126,34 @@ describe('PluginManager', () => {
     return pluginDir;
   }
 
+  it('resolves marketplace-prefixed plugin names explicitly', () => {
+    const manager = new PluginManager(new StubAgentManager({}) as never);
+
+    expect(manager.resolveSource('claude/code-review')).toEqual({
+      type: 'marketplace',
+      marketplace: 'claude',
+      pluginName: 'code-review',
+    });
+  });
+
+  it('rejects bare plugin names without an explicit marketplace', () => {
+    const manager = new PluginManager(new StubAgentManager({}) as never);
+
+    expect(() => manager.resolveSource('code-review')).toThrow(
+      'Ambiguous plugin source "code-review"',
+    );
+  });
+
+  it('supports marketplace override for install sources', () => {
+    const manager = new PluginManager(new StubAgentManager({}) as never);
+
+    expect(manager.resolveSource('code-review', { from: 'claude' })).toEqual({
+      type: 'marketplace',
+      marketplace: 'claude',
+      pluginName: 'code-review',
+    });
+  });
+
   it('installs plugin MCP servers globally when --global is requested', async () => {
     const homeDir = await createTempDir('agentinit-home-');
     process.env.HOME = homeDir;

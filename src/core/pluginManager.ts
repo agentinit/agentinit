@@ -61,7 +61,12 @@ export class PluginManager {
 
   /**
    * Resolve a source string into a PluginSource.
-   * Bare names (no /, ., ~) → marketplace. Otherwise GitHub or local.
+   * Supported forms:
+   * - local path
+   * - full GitHub URL / git URL
+   * - marketplace prefix: <marketplace>/<plugin>
+   * - GitHub shorthand: owner/repo
+   * - marketplace override via --from <marketplace> <plugin>
    */
   resolveSource(source: string, options?: { from?: string | undefined }): PluginSource {
     // Local path
@@ -86,6 +91,31 @@ export class PluginManager {
       return { type: 'github', url: source };
     }
 
+    // Explicit marketplace override
+    if (options?.from) {
+      if (!this.getMarketplace(options.from)) {
+        throw new Error(`Unknown marketplace: ${options.from}. Available: ${this.getMarketplaceIds().join(', ')}`);
+      }
+
+      return {
+        type: 'marketplace',
+        marketplace: options.from,
+        pluginName: source,
+      };
+    }
+
+    const marketplacePrefixMatch = source.match(/^([a-zA-Z0-9._-]+)\/(.+)$/);
+    if (marketplacePrefixMatch) {
+      const [, marketplaceId, pluginName] = marketplacePrefixMatch;
+      if (marketplaceId && pluginName && this.getMarketplace(marketplaceId)) {
+        return {
+          type: 'marketplace',
+          marketplace: marketplaceId,
+          pluginName,
+        };
+      }
+    }
+
     // GitHub shorthand: owner/repo
     if (/^[a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+$/.test(source)) {
       const [owner, repo] = source.split('/');
@@ -97,15 +127,16 @@ export class PluginManager {
       };
     }
 
-    // Bare name → marketplace
-    return {
-      type: 'marketplace',
-      marketplace: options?.from || 'claude',
-      pluginName: source,
-    };
+    throw new Error(
+      `Ambiguous plugin source "${source}". Use <marketplace>/<plugin> (for example, claude/${source}), --from <marketplace>, a GitHub repo, or a local path.`
+    );
   }
 
   // ── Marketplace ────────────────────────────────────────────────────
+
+  getMarketplaceIds(): string[] {
+    return MARKETPLACES.map(marketplace => marketplace.id);
+  }
 
   /**
    * Get a marketplace registry by ID

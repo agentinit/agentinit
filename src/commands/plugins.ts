@@ -6,6 +6,8 @@ import { PluginManager } from '../core/pluginManager.js';
 import { AgentManager } from '../core/agentManager.js';
 
 export function registerPluginsCommand(program: Command): void {
+  const marketplaceHelp = new PluginManager().getMarketplaceIds().join(', ');
+
   const plugins = program
     .command('plugins')
     .description('Install agent-agnostic plugins from any marketplace or source');
@@ -13,8 +15,8 @@ export function registerPluginsCommand(program: Command): void {
   // --- plugins install <source> ---
   plugins
     .command('install <source>')
-    .description('Install a plugin by marketplace name, GitHub repo, or local path')
-    .option('--from <marketplace>', 'Marketplace source: claude (default), cursor, codex, gemini')
+    .description('Install a plugin from <marketplace>/<name>, a GitHub repo, or a local path')
+    .option('--from <marketplace>', `Marketplace source override (available: ${marketplaceHelp})`)
     .option('-a, --agent <agents...>', 'Target specific agent(s)')
     .option('-g, --global', 'Install globally')
     .option('-l, --list', 'Preview plugin contents without installing')
@@ -168,7 +170,7 @@ export function registerPluginsCommand(program: Command): void {
   plugins
     .command('search [query]')
     .description('Search marketplace plugins')
-    .option('--from <marketplace>', 'Which marketplace (default: claude)')
+    .option('--from <marketplace>', `Which marketplace to search (available: ${marketplaceHelp}; default: claude)`)
     .option('--category <category>', 'Filter: official, community')
     .action(async (query: string | undefined, options) => {
       logger.title('🔌 AgentInit - Plugin Search');
@@ -206,7 +208,7 @@ export function registerPluginsCommand(program: Command): void {
           console.log('');
         }
 
-        logger.info(dim(`Install with: agentinit plugins install <name>`));
+        logger.info(dim(`Install with: agentinit plugins install ${registryId}/<name>`));
       } catch (error) {
         spinner.fail('Failed to search marketplace');
         logger.error(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
