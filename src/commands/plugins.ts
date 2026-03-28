@@ -170,13 +170,21 @@ export function registerPluginsCommand(program: Command): void {
   plugins
     .command('search [query]')
     .description('Search marketplace plugins')
-    .option('--from <marketplace>', `Which marketplace to search (available: ${marketplaceHelp}; default: claude)`)
+    .option('--from <marketplace>', `Which marketplace to search (available: ${marketplaceHelp})`)
     .option('--category <category>', 'Filter: official, community')
     .action(async (query: string | undefined, options) => {
       logger.title('🔌 AgentInit - Plugin Search');
 
       const pluginManager = new PluginManager();
-      const registryId = options.from || 'claude';
+      if (!options.from) {
+        logger.info(`Please specify a marketplace with --from <marketplace>. Available: ${marketplaceHelp}`);
+        logger.info('Examples:');
+        logger.info('  agentinit plugins search --from claude');
+        logger.info('  agentinit plugins search code-review --from claude');
+        return;
+      }
+
+      const registryId = options.from;
 
       const spinner = ora(`Fetching ${registryId} marketplace...`).start();
       try {
