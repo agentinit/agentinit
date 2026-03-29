@@ -2,6 +2,10 @@
   "name": "agentinit",
   "version": "1.7.0",
   "description": "CLI tool and library for managing AI coding agents and verifying MCP servers",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/agentinit/agentinit.git"
+  },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "type": "module",
