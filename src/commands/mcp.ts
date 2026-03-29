@@ -558,7 +558,7 @@ async function runVerification(
   const ownSpinner = spinner || ora(`Verifying ${servers.length} MCP server(s)...`).start();
 
   const verifier = new MCPVerifier(timeout);
-  const results = await verifier.verifyServers(servers, timeout);
+  const results = await verifier.verifyServers(servers, timeout ? { timeout } : undefined);
 
   const successCount = results.filter(r => r.status === 'success').length;
   const errorCount = results.filter(r => r.status === 'error').length;
