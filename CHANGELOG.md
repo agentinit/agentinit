@@ -1,3 +1,22 @@
+# [1.8.0](https://github.com/agentinit/agentinit/compare/v1.7.0...v1.8.0) (2026-03-29)
+
+
+### Bug Fixes
+
+* cicd ([1be823d](https://github.com/agentinit/agentinit/commit/1be823d97966ffabdb0dab7c1d1601422e3f0be3))
+* **ci:** switch to npm trusted publishing with OIDC ([4434bb9](https://github.com/agentinit/agentinit/commit/4434bb9bd3708989ce31e31cb67c158bb59817ae))
+* **ci:** upgrade semantic-release to v25 for OIDC support ([b05b81c](https://github.com/agentinit/agentinit/commit/b05b81c5b700f09440c476eca0736371eba9e241))
+* **mcp:** pass verification timeout as options ([58e3e06](https://github.com/agentinit/agentinit/commit/58e3e064c216fdf127df930382858009019f8bca))
+* **plugins:** avoid stale installs and temp skill leaks ([41bb185](https://github.com/agentinit/agentinit/commit/41bb185e3452fa0cae5f227c3455708eea83c5a5))
+* **plugins:** require explicit marketplace for search ([8e500af](https://github.com/agentinit/agentinit/commit/8e500af9d09aa90e14e44e38e4da9f41d05cf541))
+* **plugins:** require explicit marketplace prefixes ([4c6ba54](https://github.com/agentinit/agentinit/commit/4c6ba542fe07e3e6b687c9abc1ea18f09e51ff06))
+
+
+### Features
+
+* add project apply workflow with managed rollback ([f9e9616](https://github.com/agentinit/agentinit/commit/f9e96163fcdb95217ecdd5de364da890f4499f22))
+* **cli:** split agent config into dedicated commands ([59b3726](https://github.com/agentinit/agentinit/commit/59b3726523dedb7b7684a97ea06c0883fd133e1b))
+
 ## Unreleased
 
 ### Bug Fixes
