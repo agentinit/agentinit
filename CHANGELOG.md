@@ -1,3 +1,10 @@
+# [1.10.0](https://github.com/agentinit/agentinit/compare/v1.9.0...v1.10.0) (2026-03-29)
+
+
+### Features
+
+* **marketplace:** default bare plugin installs to agentinit ([71a888f](https://github.com/agentinit/agentinit/commit/71a888f67950a465445c16bb32b2a5a387a46cbe))
+
 # [1.9.0](https://github.com/agentinit/agentinit/compare/v1.8.1...v1.9.0) (2026-03-29)
 
 
