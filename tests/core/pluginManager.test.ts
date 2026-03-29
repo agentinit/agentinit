@@ -156,12 +156,14 @@ describe('PluginManager', () => {
     });
   });
 
-  it('rejects bare plugin names without an explicit marketplace', () => {
+  it('resolves bare plugin names against the default marketplace', () => {
     const manager = new PluginManager(new StubAgentManager({}) as never);
 
-    expect(() => manager.resolveSource('code-review')).toThrow(
-      'Ambiguous plugin source "code-review"',
-    );
+    expect(manager.resolveSource('code-review')).toEqual({
+      type: 'marketplace',
+      marketplace: 'agentinit',
+      pluginName: 'code-review',
+    });
   });
 
   it('supports marketplace override for install sources', () => {
@@ -172,6 +174,27 @@ describe('PluginManager', () => {
       marketplace: 'claude',
       pluginName: 'code-review',
     });
+  });
+
+  it('surfaces shared-dir compatible agents alongside detected ones', async () => {
+    const projectDir = await createTempDir('agentinit-project-');
+    await writeFile(join(projectDir, 'AGENTS.md'), '# shared instructions\n');
+    await writeFile(join(projectDir, 'CLAUDE.md'), '# claude instructions\n');
+
+    const manager = new PluginManager();
+    const groups = await manager.groupAgentsBySkillsDir(projectDir, false);
+    const sharedGroup = groups.find(group => group.dir === '.agents/skills/');
+
+    expect(sharedGroup?.agentNames).toEqual(expect.arrayContaining([
+      'GitHub Copilot',
+      'Cursor IDE',
+      'RooCode',
+      'Droid (Factory)',
+    ]));
+    expect(sharedGroup?.compatibleAgentNames).toEqual(expect.arrayContaining([
+      'OpenAI Codex CLI',
+      'Google Gemini CLI',
+    ]));
   });
 
   it('installs plugin MCP servers globally when --global is requested', async () => {

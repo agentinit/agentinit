@@ -31,12 +31,14 @@ export interface SkillsAddOptions {
   skills?: string[];
   list?: boolean;
   copy?: boolean;
+  from?: string;
   yes?: boolean;
 }
 
 export interface SkillsAddResult {
   installed: Array<{ skill: SkillInfo; agent: string } & SkillInstallResult>;
   skipped: Array<{ skill: SkillInfo; reason: string }>;
+  warnings: string[];
 }
 
 export interface SkillsListOptions {
@@ -57,7 +59,9 @@ export interface SkillsRemoveResult {
 }
 
 export interface SkillSource {
-  type: 'github' | 'local';
+  type: 'marketplace' | 'github' | 'local';
+  marketplace?: string | undefined;
+  pluginName?: string | undefined;
   url?: string | undefined;
   path?: string | undefined;
   owner?: string | undefined;

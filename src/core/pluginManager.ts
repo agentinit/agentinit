@@ -5,6 +5,7 @@ import matter from 'gray-matter';
 import { readFileIfExists, fileExists, isDirectory, listFiles, writeFile } from '../utils/fs.js';
 import { AgentManager } from './agentManager.js';
 import { MCPFilter } from './mcpFilter.js';
+import { MARKETPLACES, getMarketplace as lookupMarketplace, getMarketplaceIds as lookupMarketplaceIds } from './marketplaceRegistry.js';
 import { SkillsManager } from './skillsManager.js';
 import type { Agent } from '../agents/Agent.js';
 import type { MCPServerConfig, MCPServerType } from '../types/index.js';
@@ -22,20 +23,6 @@ import type {
   ClaudePluginManifest,
   CursorPluginManifest,
 } from '../types/plugins.js';
-
-/**
- * Built-in marketplace registries
- */
-const MARKETPLACES: MarketplaceRegistry[] = [
-  {
-    id: 'claude',
-    name: 'Claude Plugins Official',
-    repoUrl: 'https://github.com/anthropics/claude-plugins-official.git',
-    pluginDirs: ['plugins', 'external_plugins'],
-    cacheTtlMs: 3600000, // 1 hour
-  },
-  // Future: cursor, codex, gemini registries
-];
 
 function getMarketplaceCacheDir(registryId: string): string {
   return join(homedir(), '.agentinit', 'marketplace-cache', registryId);
@@ -127,22 +114,32 @@ export class PluginManager {
       };
     }
 
+    // Bare name: resolve against the default (first) marketplace
+    const defaultMarketplace = this.getMarketplaceIds()[0];
+    if (defaultMarketplace) {
+      return {
+        type: 'marketplace',
+        marketplace: defaultMarketplace,
+        pluginName: source,
+      };
+    }
+
     throw new Error(
-      `Ambiguous plugin source "${source}". Use <marketplace>/<plugin> (for example, claude/${source}), --from <marketplace>, a GitHub repo, or a local path.`
+      `Ambiguous plugin source "${source}". Use <marketplace>/<plugin> (for example, agentinit/${source}), --from <marketplace>, a GitHub repo, or a local path.`
     );
   }
 
   // ── Marketplace ────────────────────────────────────────────────────
 
   getMarketplaceIds(): string[] {
-    return MARKETPLACES.map(marketplace => marketplace.id);
+    return lookupMarketplaceIds();
   }
 
   /**
    * Get a marketplace registry by ID
    */
   getMarketplace(id: string): MarketplaceRegistry | undefined {
-    return MARKETPLACES.find(m => m.id === id);
+    return lookupMarketplace(id);
   }
 
   /**
@@ -270,6 +267,28 @@ export class PluginManager {
             description = manifest.description || '';
             version = manifest.version || '0.0.0';
           } catch { /* use defaults */ }
+        } else {
+          // Fallback: try SKILL.md frontmatter
+          const skillMdPath = join(entryPath, 'SKILL.md');
+          if (await fileExists(skillMdPath)) {
+            try {
+              const parsed = matter(await fs.readFile(skillMdPath, 'utf8'));
+              if (parsed.data.name) name = parsed.data.name;
+              if (parsed.data.description) description = parsed.data.description;
+            } catch { /* use defaults */ }
+          } else {
+            // Fallback: try .mcp.json for MCP entries
+            const mcpPath = join(entryPath, '.mcp.json');
+            if (await fileExists(mcpPath)) {
+              try {
+                const mcpConfig = JSON.parse(await fs.readFile(mcpPath, 'utf8'));
+                const serverNames = Object.keys(mcpConfig.mcpServers || mcpConfig);
+                if (serverNames.length > 0) {
+                  description = `MCP server(s): ${serverNames.join(', ')}`;
+                }
+              } catch { /* use defaults */ }
+            }
+          }
         }
 
         if (query) {
@@ -790,8 +809,15 @@ ${body.trim()}
   async groupAgentsBySkillsDir(
     projectPath: string,
     global?: boolean
-  ): Promise<Array<{ dir: string; agents: Agent[]; agentNames: string[] }>> {
+  ): Promise<Array<{
+    dir: string;
+    agents: Agent[];
+    agentNames: string[];
+    compatibleAgents: Agent[];
+    compatibleAgentNames: string[];
+  }>> {
     const detected = await this.agentManager.detectAgents(projectPath);
+    const detectedIds = new Set(detected.map(({ agent }) => agent.id));
     const dirToAgents = new Map<string, Agent[]>();
 
     for (const { agent } of detected) {
@@ -809,11 +835,34 @@ ${body.trim()}
       dirToAgents.set(relDir, existing);
     }
 
-    return Array.from(dirToAgents.entries()).map(([dir, agents]) => ({
-      dir,
-      agents,
-      agentNames: agents.map(a => a.name),
-    }));
+    const compatibleByDir = new Map<string, Agent[]>();
+    for (const agent of this.agentManager.getAllAgents()) {
+      if (detectedIds.has(agent.id) || !agent.supportsSkills()) continue;
+
+      const skillsDir = agent.getSkillsDir(projectPath, global);
+      if (!skillsDir) continue;
+
+      const relDir = skillsDir.startsWith(projectPath)
+        ? skillsDir.slice(projectPath.length + 1).replace(/\/$/, '') + '/'
+        : skillsDir;
+
+      if (!dirToAgents.has(relDir)) continue;
+
+      const existing = compatibleByDir.get(relDir) || [];
+      existing.push(agent);
+      compatibleByDir.set(relDir, existing);
+    }
+
+    return Array.from(dirToAgents.entries()).map(([dir, agents]) => {
+      const compatibleAgents = compatibleByDir.get(dir) || [];
+      return {
+        dir,
+        agents,
+        agentNames: agents.map(agent => agent.name),
+        compatibleAgents,
+        compatibleAgentNames: compatibleAgents.map(agent => agent.name),
+      };
+    });
   }
 
   // ── Registry ───────────────────────────────────────────────────────

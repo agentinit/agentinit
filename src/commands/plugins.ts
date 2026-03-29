@@ -127,6 +127,11 @@ export function registerPluginsCommand(program: Command): void {
           for (const [agent, count] of byAgent) {
             logger.info(`  ${agent}: ${green(String(count))} skill(s)`);
           }
+
+          const copiedFallbacks = result.skills.installed.filter(item => item.symlinkFailed);
+          if (copiedFallbacks.length > 0) {
+            logger.warn(`Symlink creation failed for ${copiedFallbacks.length} skill install(s); copied the files instead.`);
+          }
         }
 
         // MCP breakdown
@@ -328,7 +333,10 @@ async function interactiveAgentSelect(
   // If only one group, auto-select
   if (groups.length === 1) {
     const group = groups[0]!;
-    logger.info(`Installing to ${green(group.dir)} → ${group.agentNames.join(', ')}`);
+    const compatible = group.compatibleAgentNames.length > 0
+      ? dim(` (also compatible: ${group.compatibleAgentNames.join(', ')})`)
+      : '';
+    logger.info(`Installing to ${green(group.dir)} → ${group.agentNames.join(', ')}${compatible}`);
     return group.agents.map(a => a.id);
   }
 
@@ -336,7 +344,7 @@ async function interactiveAgentSelect(
   try {
     const { checkbox } = await import('@inquirer/prompts');
     const choices = groups.map(group => ({
-      name: `${group.dir.padEnd(16)} → ${group.agentNames.join(', ')}`,
+      name: `${group.dir.padEnd(16)} → ${group.agentNames.join(', ')}${group.compatibleAgentNames.length > 0 ? dim(` (also compatible: ${group.compatibleAgentNames.join(', ')})`) : ''}`,
       value: group.agents.map(a => a.id),
       checked: true,
     }));

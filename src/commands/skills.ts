@@ -4,9 +4,11 @@ import { relative } from 'path';
 import { green } from 'kleur/colors';
 import { logger } from '../utils/logger.js';
 import { SkillsManager } from '../core/skillsManager.js';
+import { getMarketplaceIds } from '../core/marketplaceRegistry.js';
 import { AgentManager } from '../core/agentManager.js';
 
 export function registerSkillsCommand(program: Command): void {
+  const marketplaceHelp = getMarketplaceIds().join(', ');
   const skills = program
     .command('skills')
     .description('Manage agent skills');
@@ -14,7 +16,8 @@ export function registerSkillsCommand(program: Command): void {
   // --- skills add <source> ---
   skills
     .command('add <source>')
-    .description('Add skills from a GitHub repo or local path')
+    .description('Add skills from a marketplace, GitHub repo, or local path')
+    .option('--from <marketplace>', `Marketplace source override (available: ${marketplaceHelp})`)
     .option('-g, --global', 'Install skills globally')
     .option('-a, --agent <agents...>', 'Target specific agent(s)')
     .option('-s, --skill <names...>', 'Install only specific skills by name')
@@ -31,42 +34,33 @@ export function registerSkillsCommand(program: Command): void {
       if (options.list) {
         const spinner = ora('Discovering skills...').start();
         try {
-          const resolved = skillsManager.resolveSource(source);
-          let repoPath: string;
-          let tempDir: string | null = null;
-
-          if (resolved.type === 'github') {
-            if (!resolved.url) {
-              spinner.fail(`Invalid source: ${source}`);
-              return;
-            }
-            tempDir = await skillsManager.cloneRepo(resolved.url);
-            repoPath = tempDir;
-          } else {
-            const { resolve: resolvePath } = await import('path');
-            repoPath = resolvePath(resolved.path || source);
-          }
-
-          const skills = await skillsManager.discoverSkills(repoPath);
+          const result = await skillsManager.discoverFromSource(source, process.cwd(), {
+            from: options.from,
+          });
+          const discoveredSkills = result.skills;
           spinner.stop();
 
-          if (skills.length === 0) {
+          if (discoveredSkills.length === 0) {
             logger.info('No skills found in the source.');
+            for (const warning of result.warnings) {
+              logger.warn(warning);
+            }
             return;
           }
 
-          logger.info(`Found ${green(String(skills.length))} skill(s):\n`);
+          logger.info(`Found ${green(String(discoveredSkills.length))} skill(s):\n`);
           logger.info('  Name                Description');
           logger.info('  ──────────────────  ──────────────────────────────────');
-          for (const skill of skills) {
+          for (const skill of discoveredSkills) {
             const name = skill.name.padEnd(18);
             logger.info(`  ${green(name)}  ${skill.description}`);
           }
 
-          // Clean up temp dir if cloned
-          if (tempDir) {
-            const { promises: fs } = await import('fs');
-            await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
+          if (result.warnings.length > 0) {
+            logger.info('');
+            for (const warning of result.warnings) {
+              logger.warn(warning);
+            }
           }
         } catch (error) {
           spinner.fail('Failed to discover skills');
@@ -79,6 +73,7 @@ export function registerSkillsCommand(program: Command): void {
       const spinner = ora('Installing skills...').start();
       try {
         const result = await skillsManager.addFromSource(source, process.cwd(), {
+          from: options.from,
           global: options.global,
           agents: options.agent,
           skills: options.skill,
@@ -88,6 +83,9 @@ export function registerSkillsCommand(program: Command): void {
 
         if (result.installed.length === 0 && result.skipped.length === 0) {
           spinner.warn('No skills found in the source.');
+          for (const warning of result.warnings) {
+            logger.warn(warning);
+          }
           return;
         }
 
@@ -114,12 +112,24 @@ export function registerSkillsCommand(program: Command): void {
           logger.info(`    Skills: ${green(String(details.skills.size))} installed (${[...details.skills].join(', ')})`);
         }
 
+        const copiedFallbacks = result.installed.filter(item => item.symlinkFailed);
+        if (copiedFallbacks.length > 0) {
+          logger.warn(`Symlink creation failed for ${copiedFallbacks.length} install(s); copied the skill files instead.`);
+        }
+
         // Show skipped skills
         if (result.skipped.length > 0) {
           logger.info('');
           logger.warn(`Skipped ${result.skipped.length} skill(s):`);
           for (const skip of result.skipped) {
             logger.info(`  ${skip.skill.name}: ${skip.reason}`);
+          }
+        }
+
+        if (result.warnings.length > 0) {
+          logger.info('');
+          for (const warning of result.warnings) {
+            logger.warn(warning);
           }
         }
 

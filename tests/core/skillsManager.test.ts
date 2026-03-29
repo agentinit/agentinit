@@ -1,9 +1,10 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { mkdtemp, mkdir, rm, writeFile, readdir, lstat, readFile, realpath } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { ClaudeAgent } from '../../src/agents/ClaudeAgent.js';
 import { CodexCliAgent } from '../../src/agents/CodexCliAgent.js';
+import { PluginManager } from '../../src/core/pluginManager.js';
 import { SkillsManager } from '../../src/core/skillsManager.js';
 
 describe('SkillsManager', () => {
@@ -148,5 +149,87 @@ describe('SkillsManager', () => {
         process.env.HOME = originalHome;
       }
     }
+  });
+
+  it('supports explicit marketplace sources for skills installs', async () => {
+    const manager = new SkillsManager();
+    const srcDir = await mkdtemp(join(tmpdir(), 'agentinit-marketplace-skill-src-'));
+    const projectDir = await mkdtemp(join(tmpdir(), 'agentinit-marketplace-skill-project-'));
+    tempDirs.push(srcDir, projectDir);
+
+    await mkdir(srcDir, { recursive: true });
+    await writeFile(join(srcDir, 'SKILL.md'), '---\nname: skill-creator\ndescription: test\n---\n');
+
+    const installPluginSpy = vi.spyOn(PluginManager.prototype, 'installPlugin').mockResolvedValue({
+      plugin: {
+        name: 'skill-creator',
+        version: '1.0.0',
+        description: 'Skill creator',
+        source: { type: 'marketplace', marketplace: 'claude', pluginName: 'skill-creator' },
+        format: 'claude',
+        skills: [{ name: 'skill-creator', description: 'test', path: srcDir }],
+        mcpServers: [],
+        warnings: [],
+      },
+      skills: { installed: [], skipped: [] },
+      mcpServers: { applied: [], skipped: [] },
+      warnings: [],
+    } as never);
+
+    const result = await manager.addFromSource('skill-creator', projectDir, {
+      from: 'claude',
+      agents: ['claude'],
+    });
+
+    expect(installPluginSpy).toHaveBeenCalledWith('skill-creator', projectDir, {
+      from: 'claude',
+      list: true,
+    });
+    expect(result.warnings).toEqual([]);
+    expect(result.installed).toHaveLength(1);
+    expect(result.installed[0]).toMatchObject({
+      agent: 'claude',
+      mode: 'symlink',
+      path: join(projectDir, '.claude/skills', 'skill-creator'),
+      canonicalPath: join(projectDir, '.agents/skills', 'skill-creator'),
+    });
+    expect((await lstat(join(projectDir, '.claude/skills', 'skill-creator'))).isSymbolicLink()).toBe(true);
+  });
+
+  it('resolves bare skill names from the default public skills catalog', async () => {
+    const manager = new SkillsManager();
+    const projectDir = await mkdtemp(join(tmpdir(), 'agentinit-skill-project-'));
+    const repoDir = await mkdtemp(join(tmpdir(), 'agentinit-skill-catalog-'));
+    tempDirs.push(projectDir, repoDir);
+
+    await mkdir(join(repoDir, 'skills', 'skill-creator'), { recursive: true });
+    await mkdir(join(repoDir, 'skills', 'other-skill'), { recursive: true });
+    await writeFile(join(repoDir, 'skills', 'skill-creator', 'SKILL.md'), '---\nname: skill-creator\ndescription: test\n---\n');
+    await writeFile(join(repoDir, 'skills', 'other-skill', 'SKILL.md'), '---\nname: other-skill\ndescription: other\n---\n');
+
+    const cloneRepoSpy = vi.spyOn(manager, 'cloneRepo').mockResolvedValue(repoDir);
+    const result = await manager.discoverFromSource('skill-creator', projectDir);
+
+    expect(cloneRepoSpy).toHaveBeenCalledWith('https://github.com/vercel-labs/agent-skills.git');
+    expect(result.skills).toEqual([
+      {
+        name: 'skill-creator',
+        description: 'test',
+        path: join(repoDir, 'skills', 'skill-creator'),
+      },
+    ]);
+    expect(result.warnings[0]).toContain('vercel-labs/agent-skills');
+    expect(result.warnings[0]).toContain('Use "./skill-creator" for a local path.');
+  });
+
+  it('keeps explicit local paths for missing skills', async () => {
+    const manager = new SkillsManager();
+    const projectDir = await mkdtemp(join(tmpdir(), 'agentinit-skill-project-'));
+    tempDirs.push(projectDir);
+    const missingPath = join(projectDir, 'skill-creator');
+
+    await expect(manager.discoverFromSource(missingPath, projectDir)).rejects.toThrow(
+      `Local path not found: ${missingPath}`
+    );
   });
 });

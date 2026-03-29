@@ -164,15 +164,22 @@ agentinit rules add --global --agent claude --template git,write_tests
 
 ### `agentinit skills`
 
-Install, list, and remove reusable agent skills from local paths or GitHub repositories.
+Install, list, and remove reusable agent skills from marketplaces, local paths, or GitHub repositories.
 
 **Examples:**
 ```bash
 # Inspect a source before installing
 agentinit skills add owner/repo --list
 
+# Install a public skill from the default catalog (`vercel-labs/agent-skills`)
+agentinit skills add vercel-react-best-practices
+
 # Install all discovered skills for detected agents using canonical storage
 agentinit skills add ./skills
+
+# Install marketplace-hosted skills explicitly
+agentinit skills add claude/skill-creator
+agentinit skills add skill-creator --from claude
 
 # Install selected skills globally for a specific agent
 agentinit skills add owner/repo --global --agent claude --skill openai-docs
@@ -186,6 +193,10 @@ agentinit skills remove openai-docs
 ```
 
 Skills are installed into a canonical store by default: project installs use `.agents/skills/`, and global installs use `~/.agents/skills/`. Agent-specific paths are symlinked to that store when they differ. Use `--copy` or `--copy-skills` to force independent copies instead.
+
+Bare skill names default to the public skills catalog used by the open agent skills ecosystem: `vercel-labs/agent-skills`. Use `./name` for a local path, `owner/repo` for an explicit GitHub repository, or `--from <marketplace>` / `<marketplace>/<name>` for marketplace-backed sources.
+
+Marketplace-backed `skills add` installs only the discovered skills. If a marketplace source also contains MCP servers or other portable components, AgentInit warns and points you to `agentinit plugins install ...` for the full install.
 
 ### `agentinit plugins`
 

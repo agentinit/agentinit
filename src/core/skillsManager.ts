@@ -14,6 +14,7 @@ import {
   resolveRealPathOrSelf,
 } from '../utils/fs.js';
 import { AgentManager } from './agentManager.js';
+import { getMarketplace, getMarketplaceIds } from './marketplaceRegistry.js';
 import type { Agent } from '../agents/Agent.js';
 import type {
   SkillInfo,
@@ -28,6 +29,11 @@ import type {
 } from '../types/skills.js';
 
 const execFileAsync = promisify(execFile);
+const DEFAULT_SKILLS_CATALOG = {
+  owner: 'vercel-labs',
+  repo: 'agent-skills',
+  url: 'https://github.com/vercel-labs/agent-skills.git',
+};
 
 /**
  * Standard directories where skills are discovered in a repository
@@ -53,7 +59,7 @@ export class SkillsManager {
   /**
    * Parse a source string into a structured SkillSource
    */
-  resolveSource(source: string): SkillSource {
+  resolveSource(source: string, options?: { from?: string }): SkillSource {
     // Local path
     if (source.startsWith('.') || source.startsWith('/') || source.startsWith('~')) {
       return { type: 'local', path: source };
@@ -76,6 +82,30 @@ export class SkillsManager {
       return { type: 'github', url: source };
     }
 
+    if (options?.from) {
+      if (!getMarketplace(options.from)) {
+        throw new Error(`Unknown marketplace: ${options.from}. Available: ${getMarketplaceIds().join(', ')}`);
+      }
+
+      return {
+        type: 'marketplace',
+        marketplace: options.from,
+        pluginName: source,
+      };
+    }
+
+    const marketplacePrefixMatch = source.match(/^([a-zA-Z0-9._-]+)\/(.+)$/);
+    if (marketplacePrefixMatch) {
+      const [, marketplaceId, pluginName] = marketplacePrefixMatch;
+      if (marketplaceId && pluginName && getMarketplace(marketplaceId)) {
+        return {
+          type: 'marketplace',
+          marketplace: marketplaceId,
+          pluginName,
+        };
+      }
+    }
+
     // GitHub shorthand: owner/repo
     if (/^[a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+$/.test(source)) {
       const [owner, repo] = source.split('/');
@@ -89,6 +119,48 @@ export class SkillsManager {
 
     // Fallback: treat as local path
     return { type: 'local', path: source };
+  }
+
+  private isImplicitCatalogSkillSource(source: string, options?: { from?: string }): boolean {
+    const normalizedSource = source.trim();
+
+    if (!normalizedSource || options?.from) {
+      return false;
+    }
+
+    return !(
+      normalizedSource.startsWith('.') ||
+      normalizedSource.startsWith('/') ||
+      normalizedSource.startsWith('~') ||
+      normalizedSource.startsWith('https://') ||
+      normalizedSource.startsWith('http://') ||
+      normalizedSource.startsWith('git@') ||
+      normalizedSource.endsWith('.git') ||
+      normalizedSource.includes('/') ||
+      normalizedSource.includes('\\')
+    );
+  }
+
+  private resolveSourceRequest(
+    source: string,
+    options?: { from?: string },
+  ): { source: SkillSource; implicitSkills: string[] } {
+    if (this.isImplicitCatalogSkillSource(source, options)) {
+      return {
+        source: {
+          type: 'github',
+          owner: DEFAULT_SKILLS_CATALOG.owner,
+          repo: DEFAULT_SKILLS_CATALOG.repo,
+          url: DEFAULT_SKILLS_CATALOG.url,
+        },
+        implicitSkills: [source.trim()],
+      };
+    }
+
+    return {
+      source: this.resolveSource(source, options),
+      implicitSkills: [],
+    };
   }
 
   /**
@@ -185,6 +257,103 @@ export class SkillsManager {
     }
 
     return tempDir;
+  }
+
+  private getMarketplaceSourceId(source: SkillSource): string {
+    if (source.type !== 'marketplace' || !source.marketplace || !source.pluginName) {
+      throw new Error('Invalid marketplace skill source');
+    }
+
+    return `${source.marketplace}/${source.pluginName}`;
+  }
+
+  private getMissingLocalPathError(source: string, resolvedPath: string): Error {
+    const normalizedSource = source.trim();
+
+    if (!normalizedSource || normalizedSource.startsWith('.') || normalizedSource.startsWith('/') || normalizedSource.startsWith('~')) {
+      return new Error(`Local path not found: ${resolvedPath}`);
+    }
+
+    const marketplaces = getMarketplaceIds();
+    const marketplaceHints = marketplaces.length > 0
+      ? ` If you meant a marketplace skill, use "${marketplaces[0]}/${normalizedSource}" or "--from ${marketplaces[0]}".`
+      : '';
+
+    return new Error(
+      `Local path not found: ${resolvedPath}. If you meant a local path, prefix it with "./".${marketplaceHints}`
+    );
+  }
+
+  private async discoverMarketplaceSkills(
+    source: SkillSource,
+    projectPath: string,
+  ): Promise<{ skills: SkillInfo[]; warnings: string[] }> {
+    const { PluginManager } = await import('./pluginManager.js');
+    const pluginManager = new PluginManager(this.agentManager);
+
+    const result = await pluginManager.installPlugin(source.pluginName || this.getMarketplaceSourceId(source), projectPath, {
+      from: source.marketplace,
+      list: true,
+    });
+
+    const warnings = [...result.warnings];
+    if (result.plugin.mcpServers.length > 0) {
+      warnings.push(
+        `Source "${this.getMarketplaceSourceId(source)}" also includes ${result.plugin.mcpServers.length} MCP server(s); use "agentinit plugins install ${this.getMarketplaceSourceId(source)}" to install them.`
+      );
+    }
+
+    return {
+      skills: result.plugin.skills,
+      warnings,
+    };
+  }
+
+  async discoverFromSource(
+    source: string,
+    projectPath: string,
+    options: { from?: string } = {},
+  ): Promise<{ skills: SkillInfo[]; warnings: string[] }> {
+    const request = this.resolveSourceRequest(source, options);
+    const resolved = request.source;
+    let tempDir: string | null = null;
+
+    try {
+      if (resolved.type === 'marketplace') {
+        return await this.discoverMarketplaceSkills(resolved, projectPath);
+      }
+
+      let repoPath: string;
+      if (resolved.type === 'github') {
+        if (!resolved.url) {
+          throw new Error(`Invalid source: ${source}`);
+        }
+
+        tempDir = await this.cloneRepo(resolved.url);
+        repoPath = tempDir;
+      } else {
+        repoPath = resolve(resolved.path || source);
+        if (!(await fileExists(repoPath))) {
+          throw this.getMissingLocalPathError(source, repoPath);
+        }
+      }
+
+      let skills = await this.discoverSkills(repoPath);
+      if (request.implicitSkills.length > 0) {
+        const names = new Set(request.implicitSkills.map(skill => skill.toLowerCase()));
+        skills = skills.filter(skill => names.has(skill.name.toLowerCase()));
+      }
+
+      const warnings = request.implicitSkills.length > 0
+        ? [`Resolved "${source}" from the default skills catalog ${DEFAULT_SKILLS_CATALOG.owner}/${DEFAULT_SKILLS_CATALOG.repo}. Use "./${source}" for a local path.`]
+        : [];
+
+      return { skills, warnings };
+    } finally {
+      if (tempDir) {
+        await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
+      }
+    }
   }
 
   /**
@@ -444,95 +613,74 @@ export class SkillsManager {
     projectPath: string,
     options: SkillsAddOptions = {}
   ): Promise<SkillsAddResult> {
-    const resolved = this.resolveSource(source);
-    let repoPath: string;
-    let tempDir: string | null = null;
+    const discovered = await this.discoverFromSource(source, projectPath, {
+      ...(options.from !== undefined ? { from: options.from } : {}),
+    });
+    let skills = discovered.skills;
 
-    if (resolved.type === 'github') {
-      if (!resolved.url) throw new Error(`Invalid source: ${source}`);
-      tempDir = await this.cloneRepo(resolved.url);
-      repoPath = tempDir;
-    } else {
-      repoPath = resolve(resolved.path || source);
-      if (!(await fileExists(repoPath))) {
-        throw new Error(`Local path not found: ${repoPath}`);
+    if (skills.length === 0) {
+      return { installed: [], skipped: [], warnings: discovered.warnings };
+    }
+
+    if (options.skills && options.skills.length > 0) {
+      const names = new Set(options.skills.map(skill => skill.toLowerCase()));
+      skills = skills.filter(skill => names.has(skill.name.toLowerCase()));
+    }
+
+    const agents = await this.getTargetAgents(projectPath, options);
+    if (agents.length === 0) {
+      return {
+        installed: [],
+        skipped: skills.map(skill => ({ skill, reason: 'No target agents found' })),
+        warnings: discovered.warnings,
+      };
+    }
+
+    const result: SkillsAddResult = { installed: [], skipped: [], warnings: discovered.warnings };
+    const installableAgents: Agent[] = [];
+
+    for (const agent of agents) {
+      if (!agent.supportsSkills()) {
+        for (const skill of skills) {
+          result.skipped.push({ skill, reason: `${agent.name} does not support skills` });
+        }
+        continue;
+      }
+
+      const skillsDir = agent.getSkillsDir(projectPath, options.global);
+      if (!skillsDir) {
+        for (const skill of skills) {
+          result.skipped.push({ skill, reason: `No skills directory for ${agent.name}` });
+        }
+        continue;
+      }
+
+      installableAgents.push(agent);
+    }
+
+    for (const skill of skills) {
+      for (const agent of installableAgents) {
+        try {
+          const installOptions = {
+            ...(options.global !== undefined ? { global: options.global } : {}),
+            ...(options.copy !== undefined ? { copy: options.copy } : {}),
+          };
+          const installed = await this.installSkillForAgent(
+            skill.path,
+            skill.name,
+            agent,
+            projectPath,
+            installOptions
+          );
+
+          result.installed.push({ skill, agent: agent.id, ...installed });
+        } catch (error: any) {
+          result.skipped.push({ skill, reason: error.message });
+        }
       }
     }
 
-    try {
-      // Discover skills
-      let skills = await this.discoverSkills(repoPath);
-
-      if (skills.length === 0) {
-        return { installed: [], skipped: [] };
-      }
-
-      // Filter by name if specified
-      if (options.skills && options.skills.length > 0) {
-        const names = new Set(options.skills.map(s => s.toLowerCase()));
-        skills = skills.filter(s => names.has(s.name.toLowerCase()));
-      }
-
-      // Get target agents
-      const agents = await this.getTargetAgents(projectPath, options);
-      if (agents.length === 0) {
-        return {
-          installed: [],
-          skipped: skills.map(s => ({ skill: s, reason: 'No target agents found' }))
-        };
-      }
-
-      const result: SkillsAddResult = { installed: [], skipped: [] };
-      const installableAgents: Agent[] = [];
-
-      for (const agent of agents) {
-        if (!agent.supportsSkills()) {
-          for (const skill of skills) {
-            result.skipped.push({ skill, reason: `${agent.name} does not support skills` });
-          }
-          continue;
-        }
-
-        const skillsDir = agent.getSkillsDir(projectPath, options.global);
-        if (!skillsDir) {
-          for (const skill of skills) {
-            result.skipped.push({ skill, reason: `No skills directory for ${agent.name}` });
-          }
-          continue;
-        }
-
-        installableAgents.push(agent);
-      }
-
-      for (const skill of skills) {
-        for (const agent of installableAgents) {
-          try {
-            const installOptions = {
-              ...(options.global !== undefined ? { global: options.global } : {}),
-              ...(options.copy !== undefined ? { copy: options.copy } : {}),
-            };
-            const installed = await this.installSkillForAgent(
-              skill.path,
-              skill.name,
-              agent,
-              projectPath,
-              installOptions
-            );
-
-            result.installed.push({ skill, agent: agent.id, ...installed });
-          } catch (error: any) {
-            result.skipped.push({ skill, reason: error.message });
-          }
-        }
-      }
-
-      return result;
-    } finally {
-      // Clean up temp directory
-      if (tempDir) {
-        await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
-      }
-    }
+    return result;
   }
 
   /**
