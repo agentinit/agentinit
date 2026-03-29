@@ -9,6 +9,10 @@ import { readFileIfExists, writeFile, getAgentInitTomlPath } from '../utils/fs.j
 import { AgentManager } from '../core/agentManager.js';
 import { MCPFilter } from '../core/mcpFilter.js';
 import { MCPVerifier } from '../core/mcpClient.js';
+import { Propagator } from '../core/propagator.js';
+import { ManagedStateStore } from '../core/managedState.js';
+import { updateManagedIgnoreFile } from '../core/gitignoreManager.js';
+import { applyProjectSkills } from '../core/projectSkills.js';
 import { MCPServerType, type AppliedRules, type RuleApplicationResult, type RuleSection, type MCPTransformation } from '../types/index.js';
 import type { Agent } from '../agents/Agent.js';
 
@@ -42,6 +46,158 @@ function colorizeTokenDiff(diff: number): string {
   if (diff === 0) return '±0';
   if (diff > 0) return green(`+${diff}`);
   return red(`${diff}`); // Already has negative sign
+}
+
+export interface ApplyWorkflowOptions {
+  agent?: string[];
+  dryRun?: boolean;
+  backup?: boolean;
+  skills?: boolean;
+  gitignore?: boolean;
+  gitignoreLocal?: boolean;
+}
+
+const LEGACY_APPLY_FLAGS = new Set([
+  '--client',
+  '--global',
+  '--verify-mcp',
+  '--timeout',
+  '--rules',
+  '--rule-raw',
+  '--rules-file',
+  '--rules-remote',
+  '--auth',
+]);
+
+export function hasLegacyApplyArgs(args: string[]): boolean {
+  return args.some(arg => arg.startsWith('--mcp-') || LEGACY_APPLY_FLAGS.has(arg));
+}
+
+export async function applyProjectCommand(options: ApplyWorkflowOptions): Promise<void> {
+  const cwd = process.cwd();
+  let managedState: ManagedStateStore | null = null;
+
+  logger.title('🔧 AgentInit - Apply');
+
+  if (options.dryRun) {
+    logger.info('Running in dry-run mode - no files will be modified');
+  }
+
+  const spinner = ora('Applying agent configuration...').start();
+
+  try {
+    managedState = await ManagedStateStore.open(cwd);
+    const propagator = new Propagator();
+    const syncOptions: Parameters<Propagator['syncAgentsFile']>[1] = {
+      managedState,
+    };
+
+    if (options.dryRun !== undefined) {
+      syncOptions.dryRun = options.dryRun;
+    }
+    if (options.backup !== undefined) {
+      syncOptions.backup = options.backup;
+    }
+    if (options.agent && options.agent.length > 0) {
+      syncOptions.targets = options.agent;
+    }
+
+    const syncResult = await propagator.syncAgentsFile(cwd, syncOptions);
+
+    if (!syncResult.success) {
+      if (!options.dryRun) {
+        await managedState.save();
+      }
+      spinner.fail('Apply failed');
+      syncResult.errors.forEach(error => logger.error(error));
+      return;
+    }
+
+    const skillsEnabled = options.skills !== false;
+    const projectSkills = skillsEnabled
+      ? await applyProjectSkills(
+        cwd,
+        syncResult.resolvedTargets,
+        managedState,
+        options.dryRun !== undefined ? { dryRun: options.dryRun } : {},
+      )
+      : {
+        discovered: 0,
+        sources: [] as string[],
+        installed: [] as Array<{ skill: { name: string; description: string; path: string }; agent: string; path: string }>,
+        skipped: [] as Array<{ skill: { name: string; description: string; path: string }; reason: string }>,
+      };
+
+    let ignorePath: string | null = null;
+    if (!options.dryRun && options.gitignore !== false) {
+      if (managedState.getIgnorePaths().length > 0) {
+        const ignoreOptions: Parameters<typeof updateManagedIgnoreFile>[2] = {};
+        if (options.gitignoreLocal !== undefined) {
+          ignoreOptions.local = options.gitignoreLocal;
+        }
+        ignorePath = await updateManagedIgnoreFile(cwd, managedState.getIgnorePaths(), ignoreOptions);
+      }
+    }
+
+    if (!options.dryRun) {
+      await managedState.save();
+    }
+
+    spinner.succeed('Apply complete');
+
+    if (syncResult.changes.length === 0 && projectSkills.installed.length === 0) {
+      logger.info('No changes needed - generated files are already up to date');
+    } else {
+      if (syncResult.changes.length > 0) {
+        logger.info(`Synced ${green(String(syncResult.changes.filter(change => change.action !== 'backed_up').length))} file(s):`);
+        syncResult.changes.forEach(change => {
+          if (change.action === 'backed_up') return;
+          logger.info(`  ${change.agent}: ${change.file}`);
+        });
+      }
+
+      if (projectSkills.installed.length > 0) {
+        logger.info('');
+        logger.info(`Installed ${green(String(projectSkills.installed.length))} project skill target(s):`);
+        projectSkills.installed.forEach(item => {
+          logger.info(`  ${item.agent}: ${item.skill.name} -> ${item.path}`);
+        });
+      }
+    }
+
+    if (projectSkills.discovered > 0) {
+      logger.info('');
+      logger.info(`Project skills discovered: ${projectSkills.discovered}`);
+      if (projectSkills.sources.length > 0) {
+        logger.info(`Sources: ${projectSkills.sources.join(', ')}`);
+      }
+    }
+
+    if (projectSkills.skipped.length > 0) {
+      logger.info('');
+      logger.warning(`Skipped ${projectSkills.skipped.length} project skill install(s):`);
+      projectSkills.skipped.forEach(entry => {
+        logger.info(`  ${entry.skill.name}: ${entry.reason}`);
+      });
+    }
+
+    if (ignorePath) {
+      logger.info('');
+      logger.info(`Managed ignore block updated: ${ignorePath}`);
+    }
+
+    logger.info('');
+    logger.info('Next steps:');
+    logger.info('  1. Review the generated agent files');
+    logger.info('  2. Run `agentinit revert` to undo managed changes if needed');
+    logger.info('  3. Use `agentinit mcp ...` and `agentinit rules ...` for agent-native configuration');
+  } catch (error) {
+    if (managedState && !options.dryRun) {
+      await managedState.save().catch(() => {});
+    }
+    spinner.fail('Apply failed');
+    logger.error(error instanceof Error ? error.message : 'Unknown error');
+  }
 }
 
 export async function applyCommand(args: string[]): Promise<void> {

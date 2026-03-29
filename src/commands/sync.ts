@@ -1,10 +1,12 @@
 import ora from 'ora';
 import { logger } from '../utils/logger.js';
 import { Propagator } from '../core/propagator.js';
+import { ManagedStateStore } from '../core/managedState.js';
 
 interface SyncOptions {
   dryRun?: boolean;
   backup?: boolean;
+  agent?: string[];
 }
 
 export async function syncCommand(options: SyncOptions): Promise<void> {
@@ -19,8 +21,25 @@ export async function syncCommand(options: SyncOptions): Promise<void> {
   const spinner = ora('Syncing agents.md with agent configurations...').start();
   
   try {
+    const managedState = await ManagedStateStore.open(cwd);
     const propagator = new Propagator();
-    const result = await propagator.syncAgentsFile(cwd, options);
+    const syncOptions: Parameters<Propagator['syncAgentsFile']>[1] = {
+      managedState,
+    };
+    if (options.dryRun !== undefined) {
+      syncOptions.dryRun = options.dryRun;
+    }
+    if (options.backup !== undefined) {
+      syncOptions.backup = options.backup;
+    }
+    if (options.agent && options.agent.length > 0) {
+      syncOptions.targets = options.agent;
+    }
+    const result = await propagator.syncAgentsFile(cwd, syncOptions);
+
+    if (!options.dryRun) {
+      await managedState.save();
+    }
     
     if (result.success) {
       spinner.succeed('Synchronization complete');

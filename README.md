@@ -36,6 +36,9 @@ agentinit detect
 # Sync agents.md with agent-specific files
 agentinit sync
 
+# Apply project-owned agent files, skills, and ignore management
+agentinit apply
+
 # Add and verify an MCP server
 agentinit mcp add --verify \
   --mcp-stdio everything "npx -y @modelcontextprotocol/server-everything"
@@ -79,8 +82,22 @@ Sync agents.md with agent-specific configuration files.
 
 ```bash
 agentinit sync                # Sync configurations
+agentinit sync --agent claude cursor
 agentinit sync --dry-run      # Preview changes
 agentinit sync --backup       # Create backups
+```
+
+### `agentinit apply`
+
+Apply `agents.md` plus project-owned skills to supported agent files, and manage ignore entries for generated files.
+
+```bash
+agentinit apply                        # Sync + project skills + managed ignore block
+agentinit apply --agent claude cursor  # Target specific agents
+agentinit apply --dry-run              # Preview changes
+agentinit apply --backup               # Create sibling .agentinit.backup files
+agentinit apply --no-skills            # Skip project-owned skills
+agentinit apply --gitignore-local      # Write ignore entries to .git/info/exclude
 ```
 
 ### `agentinit mcp`
@@ -193,9 +210,20 @@ agentinit plugins remove code-review
 - `plugins search` also requires `--from <marketplace>`.
 - Only `claude` is implemented today, mapped to Anthropic's `claude-plugins-official` marketplace.
 
-### Deprecated compatibility
+### `agentinit revert`
 
-`agentinit apply` and `agentinit verify_mcp` still work as compatibility shims, but new automation should prefer `agentinit mcp ...`, `agentinit rules ...`, and `agentinit skills ...`.
+Revert files and backups managed by `agentinit apply` or `agentinit sync`.
+
+```bash
+agentinit revert             # Restore backups and remove generated files
+agentinit revert --dry-run   # Preview what would be reverted
+agentinit revert --keep-backups
+```
+
+### Compatibility
+
+`agentinit apply` is now the project-level orchestration command for sync, project skills, and managed ignore state.
+Legacy `agentinit apply --mcp-*`, `--rules`, and related flags still work for backward compatibility, and `agentinit verify_mcp` remains deprecated in favor of `agentinit mcp verify`.
 
 ## 🏗️ Project Structure
 
@@ -205,11 +233,10 @@ AgentInit creates and manages these key files:
 your-project/
 ├── agents.md                 # Universal agent configuration
 ├── CLAUDE.md                 # Claude-specific config (synced)
-├── .cursor/rules/            # Cursor rules (MDC files)
-│   ├── 001_workspace.mdc
-│   └── 002_frontend.mdc
-├── AGENTS.md                 # Simple agent instructions (alternative)
-└── .windsurfrules           # Windsurf-specific config (synced)
+├── .cursorrules              # Cursor-specific config (synced)
+├── AGENTS.md                 # Shared AGENTS.md standard for supporting agents
+├── .windsurfrules            # Windsurf-specific config (synced)
+└── .agentinit/               # Managed state and internal backups
 ```
 
 ## 📖 Configuration
@@ -246,12 +273,22 @@ This is a TypeScript project using Next.js...
 
 ### Supported Agents
 
+`AGENTS.md` is a shared standard used by multiple tools, so AgentInit does not use it by itself as an auto-detection signal.
+
 | Agent | Config File | Status |
 |-------|-------------|--------|
 | Claude | `CLAUDE.md` | ✅ |
-| Cursor | `.cursor/rules/*.mdc` or `AGENTS.md` | ✅ |
+| Claude Desktop | global desktop config | ✅ |
+| Cursor | `.cursorrules` | ✅ |
 | Windsurf | `.windsurfrules` | ✅ |
-| Copilot | `.github/copilot.yml` | 🚧 |
+| GitHub Copilot | `AGENTS.md`, `.vscode/mcp.json` | ✅ |
+| Aider | `AGENTS.md`, `.aider.conf.yml` | ✅ |
+| Cline | `.clinerules` | ✅ |
+| Codex CLI | `.codex/config.toml` | ✅ |
+| Gemini CLI | `.gemini/settings.json` | ✅ |
+| RooCode | `AGENTS.md`, `.roo/mcp.json` | ✅ |
+| Zed | `AGENTS.md`, `.zed/settings.json` | ✅ |
+| Droid | `AGENTS.md`, `.factory/mcp.json` | ✅ |
 | Codeium | `.codeium/config.json` | 🚧 |
 
 ## 🔧 Stack Detection

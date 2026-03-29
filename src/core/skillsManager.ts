@@ -267,6 +267,10 @@ export class SkillsManager {
     return destPath;
   }
 
+  getInstallPath(skillName: string, targetDir: string): string {
+    return this.resolveInstallPath(targetDir, this.normalizeSkillName(skillName));
+  }
+
   /**
    * Recursively copy a directory
    */

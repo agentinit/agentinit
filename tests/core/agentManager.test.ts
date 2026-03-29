@@ -12,6 +12,20 @@ describe('AgentManager', () => {
   let manager: AgentManager;
   let accessSpy: any;
   const testProjectPath = '/test/project';
+  const defaultAgentIds = [
+    'claude',
+    'claude-desktop',
+    'copilot',
+    'aider',
+    'cline',
+    'codex',
+    'gemini',
+    'cursor',
+    'windsurf',
+    'roo',
+    'zed',
+    'droid',
+  ];
 
   beforeEach(() => {
     manager = new AgentManager();
@@ -26,13 +40,8 @@ describe('AgentManager', () => {
     it('should register default agents', () => {
       const agents = manager.getAllAgents();
 
-      expect(agents).toHaveLength(6);
-      expect(agents.some(agent => agent.id === 'claude')).toBe(true);
-      expect(agents.some(agent => agent.id === 'claude-desktop')).toBe(true);
-      expect(agents.some(agent => agent.id === 'codex')).toBe(true);
-      expect(agents.some(agent => agent.id === 'gemini')).toBe(true);
-      expect(agents.some(agent => agent.id === 'cursor')).toBe(true);
-      expect(agents.some(agent => agent.id === 'droid')).toBe(true);
+      expect(agents).toHaveLength(defaultAgentIds.length);
+      expect(agents.map(agent => agent.id)).toEqual(defaultAgentIds);
     });
   });
 
@@ -62,7 +71,7 @@ describe('AgentManager', () => {
     it('should return all supported agent IDs', () => {
       const ids = manager.getSupportedAgentIds();
 
-      expect(ids).toEqual(['claude', 'claude-desktop', 'codex', 'gemini', 'cursor', 'droid']);
+      expect(ids).toEqual(defaultAgentIds);
     });
   });
 
@@ -256,7 +265,7 @@ describe('AgentManager', () => {
       manager.registerAgent(customAgent);
       
       const agents = manager.getAllAgents();
-      expect(agents).toHaveLength(7); // 6 default + 1 custom
+      expect(agents).toHaveLength(defaultAgentIds.length + 1);
       expect(manager.getAgentById('custom')).toBe(customAgent);
     });
 
@@ -276,7 +285,7 @@ describe('AgentManager', () => {
     it('should return agents with MCP capabilities', () => {
       const mcpAgents = manager.getAgentsByCapability('mcp');
 
-      expect(mcpAgents).toHaveLength(6); // All agents support some MCP
+      expect(mcpAgents).toHaveLength(11);
     });
 
     it('should return agents with hooks capability', () => {
@@ -289,7 +298,7 @@ describe('AgentManager', () => {
     it('should return agents with rules capability', () => {
       const ruleAgents = manager.getAgentsByCapability('rules');
 
-      expect(ruleAgents).toHaveLength(5); // All agents except claude-desktop support rules
+      expect(ruleAgents).toHaveLength(11); // All agents except claude-desktop support rules
     });
 
     it('should return agents with subagents capability', () => {

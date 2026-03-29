@@ -1,12 +1,15 @@
-import { resolve, dirname } from 'path';
+import { resolve } from 'path';
 import matter from 'gray-matter';
-import { fileExists, readFileIfExists, writeFile, copyFile } from '../utils/fs.js';
-import { logger } from '../utils/logger.js';
-import type { AgentConfig } from '../types/index.js';
+import * as yaml from 'js-yaml';
+import { copyFile, fileExists, readFileIfExists, writeFile } from '../utils/fs.js';
+import { AgentDetector } from './agentDetector.js';
+import type { ManagedStateStore } from './managedState.js';
 
 export interface SyncOptions {
   dryRun?: boolean;
   backup?: boolean;
+  targets?: string[];
+  managedState?: ManagedStateStore;
 }
 
 export interface SyncResult {
@@ -17,6 +20,40 @@ export interface SyncResult {
     file: string;
   }>;
   errors: string[];
+  resolvedTargets: string[];
+}
+
+interface SyncOutput {
+  path: string;
+  content: string;
+  ignorePath?: string;
+}
+
+interface AgentAdapter {
+  buildOutputs(projectPath: string, content: string): Promise<SyncOutput[]>;
+}
+
+interface GeneratedFile {
+  path: string;
+  content: string;
+  agents: string[];
+  ignorePath: string;
+}
+
+function normalizeContent(value: string): string {
+  return value.endsWith('\n') ? value : `${value}\n`;
+}
+
+function parseTargets(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.map(item => String(item).trim()).filter(Boolean);
+  }
+
+  if (typeof value === 'string') {
+    return value.split(',').map(item => item.trim()).filter(Boolean);
+  }
+
+  return [];
 }
 
 export class Propagator {
@@ -30,11 +67,12 @@ export class Propagator {
     const result: SyncResult = {
       success: true,
       changes: [],
-      errors: []
+      errors: [],
+      resolvedTargets: [],
     };
 
     const agentsPath = resolve(projectPath, 'agents.md');
-    
+
     if (!await fileExists(agentsPath)) {
       result.success = false;
       result.errors.push('agents.md not found. Run `agentinit init` first.');
@@ -44,90 +82,150 @@ export class Propagator {
     try {
       const agentsContent = await readFileIfExists(agentsPath);
       if (!agentsContent) {
-        result.errors.push('Failed to read agents.md');
         result.success = false;
+        result.errors.push('Failed to read agents.md');
         return result;
       }
 
       const parsed = matter(agentsContent);
-      const targets = parsed.data.targets || this.getDefaultTargets();
+      const targets = await this.resolveTargets(projectPath, options.targets, parsed.data.targets);
+      result.resolvedTargets = targets;
 
-      for (const target of targets) {
-        const adapter = this.agentAdapters.get(target);
-        if (!adapter) {
-          result.errors.push(`No adapter found for agent: ${target}`);
-          continue;
-        }
+      const generatedFiles = await this.buildGeneratedFiles(projectPath, parsed.content, targets);
 
+      for (const generatedFile of generatedFiles) {
         try {
-          const syncResult = await this.syncAgent(
-            projectPath, 
-            target, 
-            adapter, 
-            parsed.content,
-            options
-          );
-          
+          const syncResult = await this.writeGeneratedFile(projectPath, generatedFile, options);
           result.changes.push(...syncResult.changes);
-          
           if (!syncResult.success) {
             result.errors.push(...syncResult.errors);
           }
         } catch (error) {
-          result.errors.push(`Failed to sync ${target}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+          result.errors.push(`Failed to sync ${generatedFile.agents.join(', ')}: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
       }
 
       result.success = result.errors.length === 0;
-      
+      return result;
     } catch (error) {
       result.success = false;
       result.errors.push(`Failed to parse agents.md: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      return result;
     }
-
-    return result;
   }
 
-  private async syncAgent(
+  private async resolveTargets(
     projectPath: string,
-    agentName: string,
-    adapter: AgentAdapter,
+    explicitTargets?: string[],
+    frontmatterTargets?: unknown,
+  ): Promise<string[]> {
+    if (explicitTargets && explicitTargets.length > 0) {
+      return explicitTargets;
+    }
+
+    const parsedFrontmatterTargets = parseTargets(frontmatterTargets);
+    if (parsedFrontmatterTargets.length > 0) {
+      return parsedFrontmatterTargets;
+    }
+
+    const detector = new AgentDetector();
+    const detectedAgents = await detector.detectAgents(projectPath);
+    const detectedTargets = detectedAgents
+      .filter(agent => agent.detected && this.agentAdapters.has(agent.name))
+      .map(agent => agent.name);
+
+    if (detectedTargets.length > 0) {
+      return detectedTargets;
+    }
+
+    return this.getDefaultTargets();
+  }
+
+  private async buildGeneratedFiles(
+    projectPath: string,
     content: string,
-    options: SyncOptions
+    targets: string[],
+  ): Promise<GeneratedFile[]> {
+    const generatedFiles = new Map<string, GeneratedFile>();
+
+    for (const target of targets) {
+      const adapter = this.agentAdapters.get(target);
+      if (!adapter) {
+        throw new Error(`No adapter found for agent: ${target}`);
+      }
+
+      const outputs = await adapter.buildOutputs(projectPath, content);
+      for (const output of outputs) {
+        const outputPath = resolve(projectPath, output.path);
+        const existing = generatedFiles.get(outputPath);
+
+        if (existing) {
+          if (existing.content !== output.content) {
+            throw new Error(`Conflicting generated content for ${output.path}`);
+          }
+          existing.agents.push(target);
+          continue;
+        }
+
+        generatedFiles.set(outputPath, {
+          path: outputPath,
+          content: normalizeContent(output.content),
+          agents: [target],
+          ignorePath: output.ignorePath ?? output.path,
+        });
+      }
+    }
+
+    return [...generatedFiles.values()];
+  }
+
+  private async writeGeneratedFile(
+    projectPath: string,
+    generatedFile: GeneratedFile,
+    options: SyncOptions,
   ): Promise<SyncResult> {
     const result: SyncResult = {
       success: true,
       changes: [],
-      errors: []
+      errors: [],
+      resolvedTargets: [],
     };
 
-    const targetPath = resolve(projectPath, adapter.configPath);
-    const agentContent = adapter.transformContent(content);
+    const exists = await fileExists(generatedFile.path);
+    const existingContent = exists ? await readFileIfExists(generatedFile.path) : null;
 
-    // Create backup if requested and file exists
-    if (options.backup && await fileExists(targetPath)) {
-      const backupPath = `${targetPath}.agentinit.backup`;
-      if (!options.dryRun) {
-        await copyFile(targetPath, backupPath);
-      }
-      result.changes.push({
-        agent: agentName,
-        action: 'backed_up',
-        file: backupPath
+    if (options.managedState && !options.dryRun) {
+      await options.managedState.trackGeneratedPath(generatedFile.path, {
+        kind: 'file',
+        source: 'sync',
+        ignorePath: resolve(projectPath, generatedFile.ignorePath),
       });
     }
 
-    const exists = await fileExists(targetPath);
-    const action = exists ? 'updated' : 'created';
+    if (exists && existingContent === generatedFile.content) {
+      return result;
+    }
+
+    if (options.backup && exists) {
+      const backupPath = `${generatedFile.path}.agentinit.backup`;
+      if (!options.dryRun) {
+        await copyFile(generatedFile.path, backupPath);
+      }
+      result.changes.push({
+        agent: generatedFile.agents.join(', '),
+        action: 'backed_up',
+        file: backupPath,
+      });
+    }
 
     if (!options.dryRun) {
-      await writeFile(targetPath, agentContent);
+      await writeFile(generatedFile.path, generatedFile.content);
     }
 
     result.changes.push({
-      agent: agentName,
-      action,
-      file: targetPath
+      agent: generatedFile.agents.join(', '),
+      action: exists ? 'updated' : 'created',
+      file: generatedFile.path,
     });
 
     return result;
@@ -139,19 +237,105 @@ export class Propagator {
 
   private initializeAdapters(): void {
     this.agentAdapters.set('claude', {
-      configPath: 'CLAUDE.md',
-      transformContent: (content: string) => this.formatForClaude(content)
+      buildOutputs: async (_projectPath, content) => [
+        {
+          path: 'CLAUDE.md',
+          content: this.formatForClaude(content),
+        },
+      ],
     });
 
     this.agentAdapters.set('cursor', {
-      configPath: '.cursorrules',
-      transformContent: (content: string) => this.formatForCursor(content)
+      buildOutputs: async (_projectPath, content) => [
+        {
+          path: '.cursorrules',
+          content: this.formatForCursor(content),
+        },
+      ],
     });
 
     this.agentAdapters.set('windsurf', {
-      configPath: '.windsurfrules',
-      transformContent: (content: string) => this.formatForWindsurf(content)
+      buildOutputs: async (_projectPath, content) => [
+        {
+          path: '.windsurfrules',
+          content: this.formatForWindsurf(content),
+        },
+      ],
     });
+
+    this.agentAdapters.set('copilot', {
+      buildOutputs: async (_projectPath, content) => [
+        {
+          path: 'AGENTS.md',
+          content,
+        },
+      ],
+    });
+
+    this.agentAdapters.set('cline', {
+      buildOutputs: async (_projectPath, content) => [
+        {
+          path: '.clinerules',
+          content,
+        },
+      ],
+    });
+
+    this.agentAdapters.set('roo', {
+      buildOutputs: async (_projectPath, content) => [
+        {
+          path: 'AGENTS.md',
+          content,
+        },
+      ],
+    });
+
+    this.agentAdapters.set('zed', {
+      buildOutputs: async (_projectPath, content) => [
+        {
+          path: 'AGENTS.md',
+          content,
+        },
+      ],
+    });
+
+    this.agentAdapters.set('aider', {
+      buildOutputs: async (projectPath, content) => [
+        {
+          path: 'AGENTS.md',
+          content,
+        },
+        {
+          path: '.aider.conf.yml',
+          content: await this.buildAiderConfig(projectPath),
+        },
+      ],
+    });
+  }
+
+  private async buildAiderConfig(projectPath: string): Promise<string> {
+    const configPath = resolve(projectPath, '.aider.conf.yml');
+    const existingContent = await readFileIfExists(configPath);
+    let document: Record<string, unknown> = {};
+
+    if (existingContent) {
+      try {
+        document = (yaml.load(existingContent) as Record<string, unknown>) || {};
+      } catch {
+        document = {};
+      }
+    }
+
+    const readEntries = Array.isArray(document.read)
+      ? document.read.map(entry => String(entry))
+      : [];
+
+    if (!readEntries.includes('AGENTS.md')) {
+      readEntries.push('AGENTS.md');
+    }
+
+    document.read = readEntries;
+    return yaml.dump(document).trimEnd();
   }
 
   private formatForClaude(content: string): string {
@@ -169,20 +353,19 @@ ${content}
   }
 
   private formatForCursor(content: string): string {
-    // Convert markdown to a more concise format for Cursor
     const lines = content.split('\n');
     const rules: string[] = [];
 
     let inCodeBlock = false;
-    
+
     for (const line of lines) {
       if (line.startsWith('```')) {
         inCodeBlock = !inCodeBlock;
         continue;
       }
-      
+
       if (inCodeBlock) continue;
-      
+
       if (line.startsWith('### ') || line.startsWith('## ')) {
         rules.push(`\n// ${line.replace(/#+\s/, '')}`);
       } else if (line.startsWith('- ')) {
@@ -207,9 +390,4 @@ ${content}
 // - Follow Windsurf's code suggestion patterns
 `;
   }
-}
-
-interface AgentAdapter {
-  configPath: string;
-  transformContent: (content: string) => string;
 }

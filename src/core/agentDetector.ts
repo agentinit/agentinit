@@ -10,10 +10,16 @@ export class AgentDetector {
     { name: 'cursor', files: ['.cursorrules', '.cursor/settings.json'] },
     { name: 'claude', files: ['CLAUDE.md', '.claude/config.md'] },
     { name: 'windsurf', files: ['.windsurfrules', '.windsurf'] },
-    { name: 'copilot', files: ['.github/copilot.yml'] },
+    // AGENTS.md is a cross-agent standard, so it is not a reliable detection signal
+    { name: 'copilot', files: ['.vscode/mcp.json', '.github/copilot.yml'] },
     { name: 'codeium', files: ['.codeium/config.json'] },
     { name: 'codex', files: ['.codex/config.toml'] },
-    { name: 'gemini', files: ['.gemini/settings.json'] }
+    { name: 'gemini', files: ['.gemini/settings.json'] },
+    // .mcp.json is also used by other agents, so only use aider-specific config here
+    { name: 'aider', files: ['.aider.conf.yml'] },
+    { name: 'cline', files: ['.clinerules'] },
+    { name: 'roo', files: ['.roo/mcp.json'] },
+    { name: 'zed', files: ['.zed/settings.json'] }
   ];
 
   async detectAgents(projectPath: string): Promise<AgentConfig[]> {

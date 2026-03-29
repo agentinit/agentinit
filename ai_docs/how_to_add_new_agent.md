@@ -16,6 +16,8 @@ AgentInit uses a plugin-based architecture with:
 - MCP transport support (stdio/HTTP/SSE)
 - Capabilities (rules, hooks, commands, subagents)
 - Detection files
+- Which files are truly agent-specific vs shared standards like `AGENTS.md`
+- Whether any config files are shared with other agents (for example `.mcp.json`) and therefore unsafe for auto-detection
 
 ### 2. Create Agent Class
 
@@ -195,6 +197,8 @@ interface ConfigFileDefinition {
   description: 'Model Context Protocol servers'
 }
 ```
+
+Important: `AGENTS.md` is a cross-agent standard, not a reliable auto-detection signal for any single agent. If your agent supports `AGENTS.md`, treat it as a generated/shared output format, and use only agent-specific files for detection.
 
 **Benefits:**
 - Better error messages showing file purposes

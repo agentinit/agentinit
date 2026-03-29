@@ -4,8 +4,9 @@ import { Command } from 'commander';
 import { initCommand } from './commands/init.js';
 import { detectCommand } from './commands/detect.js';
 import { syncCommand } from './commands/sync.js';
-import { applyCommand } from './commands/apply.js';
+import { applyCommand, applyProjectCommand, hasLegacyApplyArgs } from './commands/apply.js';
 import { verifyMcpCommand } from './commands/verifyMcp.js';
+import { revertCommand } from './commands/revert.js';
 import { registerSkillsCommand } from './commands/skills.js';
 import { registerMcpCommand } from './commands/mcp.js';
 import { registerRulesCommand } from './commands/rules.js';
@@ -42,25 +43,44 @@ program
 program
   .command('sync')
   .description('Sync agents.md with agent-specific configuration files')
+  .option('-a, --agent <agents...>', 'Target specific agent(s)')
   .option('-d, --dry-run', 'Show what would be changed without making changes')
   .option('-b, --backup', 'Create backup before syncing')
   .action(syncCommand);
 
-// Deprecated commands (backward compatible)
 program
   .command('apply')
-  .description('(deprecated) Use: mcp add, rules add, skills add')
+  .description('Apply agents.md and project-owned skills to supported agent files')
+  .option('-a, --agent <agents...>', 'Target specific agent(s)')
+  .option('-d, --dry-run', 'Preview changes without writing files')
+  .option('-b, --backup', 'Create sibling .agentinit.backup files before overwriting')
+  .option('--no-skills', 'Disable project-owned skills propagation')
+  .option('--no-gitignore', 'Disable managed ignore block updates')
+  .option('--gitignore-local', 'Write ignore entries to .git/info/exclude instead of .gitignore')
   .allowUnknownOption(true)
-  .action((options, command) => {
-    logger.warn('⚠ "agentinit apply" is deprecated. Use:');
-    logger.warn('  agentinit mcp add    — for MCP servers');
-    logger.warn('  agentinit rules add  — for coding rules');
-    logger.warn('  agentinit skills add — for agent skills');
-    logger.warn('');
-    logger.warn('Running in compatibility mode...\n');
-    const parsed = command.parseOptions(command.parent.rawArgs.slice(3));
-    applyCommand(parsed.unknown);
+  .action(async (options, command) => {
+    const rawArgs = command.parent.rawArgs.slice(3);
+
+    if (hasLegacyApplyArgs(rawArgs)) {
+      logger.warn('⚠ Legacy apply mode detected. Prefer:');
+      logger.warn('  agentinit apply      — for sync + project skills + ignore management');
+      logger.warn('  agentinit mcp add    — for MCP servers');
+      logger.warn('  agentinit rules add  — for coding rules');
+      logger.warn('');
+      const parsed = command.parseOptions(rawArgs);
+      await applyCommand(parsed.unknown);
+      return;
+    }
+
+    await applyProjectCommand(options);
   });
+
+program
+  .command('revert')
+  .description('Revert managed files created by agentinit apply/sync')
+  .option('-d, --dry-run', 'Preview changes without modifying files')
+  .option('--keep-backups', 'Keep internal backups after restoring files')
+  .action(revertCommand);
 
 program
   .command('verify_mcp')

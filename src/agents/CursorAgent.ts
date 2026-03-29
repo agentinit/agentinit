@@ -66,7 +66,7 @@ export class CursorAgent extends Agent {
       globalConfigPath: '~/.cursor/mcp.json',
       rulesPath: '.cursorrules',
       skillPaths: {
-        project: '.agents/skills/',
+        project: '.cursor/skills/',
         global: '~/.cursor/skills/'
       }
     };

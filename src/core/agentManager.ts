@@ -4,6 +4,12 @@ import { CodexCliAgent } from '../agents/CodexCliAgent.js';
 import { GeminiCliAgent } from '../agents/GeminiCliAgent.js';
 import { CursorAgent } from '../agents/CursorAgent.js';
 import { DroidAgent } from '../agents/DroidAgent.js';
+import { CopilotAgent } from '../agents/CopilotAgent.js';
+import { AiderAgent } from '../agents/AiderAgent.js';
+import { ClineAgent } from '../agents/ClineAgent.js';
+import { WindsurfAgent } from '../agents/WindsurfAgent.js';
+import { RooCodeAgent } from '../agents/RooCodeAgent.js';
+import { ZedAgent } from '../agents/ZedAgent.js';
 import { Agent } from '../agents/Agent.js';
 import type { AgentDetectionResult } from '../types/index.js';
 
@@ -25,9 +31,15 @@ export class AgentManager {
     this.agents = [
       new ClaudeAgent(),
       new ClaudeDesktopAgent(),
+      new CopilotAgent(),
+      new AiderAgent(),
+      new ClineAgent(),
       new CodexCliAgent(),
       new GeminiCliAgent(),
       new CursorAgent(),
+      new WindsurfAgent(),
+      new RooCodeAgent(),
+      new ZedAgent(),
       new DroidAgent()
     ];
   }
