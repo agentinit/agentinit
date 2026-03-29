@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { mkdtemp, mkdir, rm, writeFile } from 'fs/promises';
+import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { Agent } from '../../src/agents/Agent.js';
@@ -126,6 +126,26 @@ describe('PluginManager', () => {
     return pluginDir;
   }
 
+  async function createClaudeCommandPluginDir(name: string): Promise<string> {
+    const pluginDir = await createTempDir(`agentinit-plugin-${name}-`);
+    await mkdir(join(pluginDir, '.claude-plugin'), { recursive: true });
+    await mkdir(join(pluginDir, 'commands'), { recursive: true });
+    await writeFile(
+      join(pluginDir, '.claude-plugin', 'plugin.json'),
+      JSON.stringify({
+        name: `${name}-plugin`,
+        version: '1.0.0',
+        commands: 'commands',
+      }, null, 2),
+    );
+    await writeFile(
+      join(pluginDir, 'commands', 'hello.md'),
+      '---\nname: hello\ndescription: Says hello\n---\nUse the hello workflow.\n',
+    );
+
+    return pluginDir;
+  }
+
   it('resolves marketplace-prefixed plugin names explicitly', () => {
     const manager = new PluginManager(new StubAgentManager({}) as never);
 
@@ -174,6 +194,23 @@ describe('PluginManager', () => {
     const registry = await manager.getRegistry(projectDir, true);
     expect(registry.plugins).toHaveLength(1);
     expect(registry.plugins[0]?.scope).toBe('global');
+  });
+
+  it('does not persist plugins when nothing installable was applied', async () => {
+    const projectDir = await createTempDir('agentinit-project-');
+    const pluginDir = await createTempDir('agentinit-empty-plugin-');
+    const agent = new StubAgent('alpha');
+    const manager = new PluginManager(new StubAgentManager({ alpha: agent }) as never);
+
+    const result = await manager.installPlugin(pluginDir, projectDir, {
+      agents: ['alpha'],
+    });
+
+    expect(result.skills.installed).toEqual([]);
+    expect(result.mcpServers.applied).toEqual([]);
+
+    const registry = await manager.getRegistry(projectDir, false);
+    expect(registry.plugins).toEqual([]);
   });
 
   it('removes plugin MCP servers from global config when the plugin is global', async () => {
@@ -251,6 +288,35 @@ describe('PluginManager', () => {
     ]);
   });
 
+  it('removes stale plugin entries that have no tracked components', async () => {
+    const projectDir = await createTempDir('agentinit-project-');
+    const agent = new StubAgent('alpha');
+    const manager = new PluginManager(new StubAgentManager({ alpha: agent }) as never);
+
+    await manager.addToRegistry({
+      name: 'stale-plugin',
+      version: '1.0.0',
+      description: '',
+      source: { type: 'local', path: '/tmp/stale-plugin' },
+      format: 'generic',
+      installedAt: new Date().toISOString(),
+      scope: 'project',
+      components: {
+        skills: [],
+        mcpServers: [],
+      },
+      warnings: [],
+    }, projectDir, false);
+
+    const result = await manager.removePlugin('stale-plugin', projectDir);
+
+    expect(result.removed).toBe(true);
+    expect(result.details).toEqual(['Removed stale plugin registry entry']);
+
+    const registry = await manager.getRegistry(projectDir, false);
+    expect(registry.plugins).toEqual([]);
+  });
+
   it('skips targeted skill removal when the skill path is shared with other agents', async () => {
     const homeDir = await createTempDir('agentinit-home-');
     process.env.HOME = homeDir;
@@ -291,5 +357,31 @@ describe('PluginManager', () => {
     const registry = await manager.getRegistry(projectDir, false);
     expect(registry.plugins).toHaveLength(1);
     expect(registry.plugins[0]?.components.skills).toHaveLength(2);
+  });
+
+  it('installs command-derived skills without leaking temp directories', async () => {
+    const projectDir = await createTempDir('agentinit-project-');
+    const pluginDir = await createClaudeCommandPluginDir('commands');
+    const agent = new StubAgent('alpha');
+    const manager = new PluginManager(new StubAgentManager({ alpha: agent }) as never);
+    const tempBefore = new Set(
+      (await readdir(tmpdir())).filter(name => name.startsWith('agentinit-plugin-cmd-'))
+    );
+
+    const result = await manager.installPlugin(pluginDir, projectDir, {
+      agents: ['alpha'],
+    });
+
+    expect(result.skills.installed).toHaveLength(1);
+    const installedPath = result.skills.installed[0]?.path;
+    expect(installedPath).toBe(join(projectDir, '.agents/skills', 'hello'));
+    const installedContent = await readFile(join(installedPath!, 'SKILL.md'), 'utf8');
+    expect(installedContent).toContain('name: hello');
+    expect(installedContent).toContain('Use the hello workflow.');
+
+    const tempAfter = (await readdir(tmpdir())).filter(
+      name => name.startsWith('agentinit-plugin-cmd-') && !tempBefore.has(name)
+    );
+    expect(tempAfter).toEqual([]);
   });
 });

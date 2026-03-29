@@ -2,6 +2,7 @@ export interface SkillInfo {
   name: string;
   description: string;
   path: string;
+  generatedContent?: string;
 }
 
 export interface InstalledSkill {

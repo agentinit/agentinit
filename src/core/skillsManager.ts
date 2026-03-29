@@ -222,6 +222,25 @@ export class SkillsManager {
     return destPath;
   }
 
+  async installSkillFromContent(
+    skillName: string,
+    skillContent: string,
+    targetDir: string,
+  ): Promise<string> {
+    const normalizedSkillName = this.normalizeSkillName(skillName);
+    const destPath = this.resolveInstallPath(targetDir, normalizedSkillName);
+    await fs.mkdir(resolve(targetDir), { recursive: true });
+
+    if (await fileExists(destPath)) {
+      await fs.rm(destPath, { recursive: true, force: true });
+    }
+
+    await fs.mkdir(destPath, { recursive: true });
+    await fs.writeFile(join(destPath, 'SKILL.md'), skillContent, 'utf8');
+
+    return destPath;
+  }
+
   private normalizeSkillName(skillName: string): string {
     const normalized = skillName.trim();
 

@@ -1,6 +1,6 @@
 import { resolve, join, basename } from 'path';
 import { promises as fs } from 'fs';
-import { homedir, tmpdir } from 'os';
+import { homedir } from 'os';
 import matter from 'gray-matter';
 import { readFileIfExists, fileExists, isDirectory, listFiles, writeFile } from '../utils/fs.js';
 import { AgentManager } from './agentManager.js';
@@ -525,10 +525,6 @@ export class PluginManager {
       body = content;
     }
 
-    // Create a temp skill directory with SKILL.md
-    const tempDir = join(tmpdir(), `agentinit-plugin-cmd-${Date.now()}-${skillName}`);
-    await fs.mkdir(tempDir, { recursive: true });
-
     const skillContent = `---
 name: ${skillName}
 description: ${description}
@@ -538,8 +534,12 @@ version: 1.0.0
 ${body.trim()}
 `;
 
-    await fs.writeFile(join(tempDir, 'SKILL.md'), skillContent, 'utf8');
-    return { name: skillName, description, path: tempDir };
+    return {
+      name: skillName,
+      description,
+      path: cmdPath,
+      generatedContent: skillContent,
+    };
   }
 
   // ── Installation ───────────────────────────────────────────────────
@@ -605,22 +605,24 @@ ${body.trim()}
       // 6. Apply MCP servers per agent
       const mcpResult = await this.applyPluginMcpServers(plugin, projectPath, agents, options.global);
 
-      // 7. Save to registry
-      const installed: InstalledPlugin = {
-        name: plugin.name,
-        version: plugin.version,
-        description: plugin.description,
-        source: resolved,
-        format: plugin.format,
-        installedAt: new Date().toISOString(),
-        scope: options.global ? 'global' : 'project',
-        components: {
-          skills: skillResult.installed,
-          mcpServers: mcpResult.applied,
-        },
-        warnings: plugin.warnings,
-      };
-      await this.addToRegistry(installed, projectPath, options.global);
+      // 7. Save to registry only when the install actually applied portable components.
+      if (skillResult.installed.length > 0 || mcpResult.applied.length > 0) {
+        const installed: InstalledPlugin = {
+          name: plugin.name,
+          version: plugin.version,
+          description: plugin.description,
+          source: resolved,
+          format: plugin.format,
+          installedAt: new Date().toISOString(),
+          scope: options.global ? 'global' : 'project',
+          components: {
+            skills: skillResult.installed,
+            mcpServers: mcpResult.applied,
+          },
+          warnings: plugin.warnings,
+        };
+        await this.addToRegistry(installed, projectPath, options.global);
+      }
 
       return {
         plugin,
@@ -632,7 +634,6 @@ ${body.trim()}
       if (tempDir) {
         await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
       }
-      // Clean up temp command-to-skill dirs
     }
   }
 
@@ -677,12 +678,18 @@ ${body.trim()}
     for (const [skillsDir, dirAgents] of dirToAgents) {
       for (const skill of plugin.skills) {
         try {
-          const installedPath = await this.skillsManager.installSkill(
-            skill.path,
-            skill.name,
-            skillsDir,
-            true // Plugins always copy to avoid temp/cache symlink issues.
-          );
+          const installedPath = skill.generatedContent
+            ? await this.skillsManager.installSkillFromContent(
+              skill.name,
+              skill.generatedContent,
+              skillsDir,
+            )
+            : await this.skillsManager.installSkill(
+              skill.path,
+              skill.name,
+              skillsDir,
+              true // Plugins always copy to avoid temp/cache symlink issues.
+            );
 
           // Record for all agents sharing this directory
           for (const agent of dirAgents) {
@@ -870,6 +877,15 @@ ${body.trim()}
 
     if (!plugin) {
       return { removed: false, details: [`Plugin "${name}" not found in registry`] };
+    }
+
+    if (plugin.components.skills.length === 0 && plugin.components.mcpServers.length === 0) {
+      registry.plugins = registry.plugins.filter(p => p.name !== name);
+      await this.saveRegistry(registry, projectPath, options.global);
+      return {
+        removed: true,
+        details: ['Removed stale plugin registry entry'],
+      };
     }
 
     const details: string[] = [];
