@@ -1,3 +1,10 @@
+## [1.8.1](https://github.com/agentinit/agentinit/compare/v1.8.0...v1.8.1) (2026-03-29)
+
+
+### Bug Fixes
+
+* align shared project standards and mcp verification ([b604e51](https://github.com/agentinit/agentinit/commit/b604e51d5c1226faea20b3f04b791d4f62c05d01))
+
 # [1.8.0](https://github.com/agentinit/agentinit/compare/v1.7.0...v1.8.0) (2026-03-29)
 
 
