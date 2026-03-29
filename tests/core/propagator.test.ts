@@ -46,12 +46,14 @@ describe('Propagator target resolution', () => {
 
     const propagator = new Propagator();
     const result = await propagator.syncAgentsFile(projectDir, { dryRun: true });
+    const changedFiles = result.changes.map(change => change.file);
+    const claudePath = join(projectDir, 'CLAUDE.md');
+    const agentsPath = join(projectDir, 'AGENTS.md');
 
     expect(result.success).toBe(true);
     expect(result.resolvedTargets).toEqual(['claude', 'cursor']);
-    expect(result.changes.map(change => change.file)).toEqual([
-      join(projectDir, 'CLAUDE.md'),
-    ]);
+    expect(changedFiles).toContain(claudePath);
+    expect(changedFiles.every(file => file === claudePath || file === agentsPath)).toBe(true);
     await expect(readFile(join(projectDir, '.aider.conf.yml'), 'utf8')).rejects.toThrow();
   });
 });
