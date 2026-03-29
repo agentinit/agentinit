@@ -9,8 +9,9 @@ AgentInit transforms AI agent configuration from a fragmented, manual process in
 - **🤖 Universal Agent Configuration**: Unified `agents.md` file that syncs with all major AI coding agents
 - **🔍 Smart Stack Detection**: Automatically detects project language, framework, and tools
 - **🔄 Bidirectional Sync**: Keep agent configurations in sync across Claude, Cursor, Windsurf, and more
-- **📦 MCP Management**: Interactive installation and management of Model Context Protocol tools
+- **📦 MCP Management**: Configure, inspect, and verify Model Context Protocol servers
 - **📋 Rules Templates**: Apply coding best practices with predefined rule templates (Git, testing, docs, linting)
+- **🔌 Plugin Marketplace**: Install portable skills and MCP bundles from explicit marketplace sources
 - **⚙️ Project Templates**: Pre-built templates for web apps, CLI tools, libraries, and more
 - **🎯 Stack-Aware Guidance**: Customized instructions based on your technology stack
 
@@ -162,6 +163,35 @@ agentinit skills add owner/repo --global --agent claude --skill openai-docs
 agentinit skills list
 agentinit skills remove openai-docs
 ```
+
+### `agentinit plugins`
+
+Install, inspect, search, and remove portable plugins from explicit marketplace sources, GitHub repositories, or local paths.
+
+**Examples:**
+```bash
+# Search a marketplace explicitly
+agentinit plugins search --from claude
+agentinit plugins search code-review --from claude
+
+# Install from a marketplace explicitly
+agentinit plugins install claude/code-review
+agentinit plugins install code-review --from claude
+
+# Install from GitHub or a local path
+agentinit plugins install owner/repo
+agentinit plugins install ./plugins/code-review
+
+# Inspect and remove installed plugins
+agentinit plugins list
+agentinit plugins remove code-review
+```
+
+**Marketplace Rules:**
+- Marketplace installs are explicit by design. Bare names like `agentinit plugins install code-review` are rejected.
+- Use `<marketplace>/<plugin>` or `--from <marketplace>` when installing from a marketplace.
+- `plugins search` also requires `--from <marketplace>`.
+- Only `claude` is implemented today, mapped to Anthropic's `claude-plugins-official` marketplace.
 
 ### Deprecated compatibility
 
