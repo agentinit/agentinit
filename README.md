@@ -192,6 +192,8 @@ agentinit skills list
 agentinit skills remove openai-docs
 ```
 
+If you run `skills add` without `--agent` or `--yes`, AgentInit prompts for install scope first (`project` or `global`), then prompts for the agent skill directories to target. If no project agent files are detected, it still lets you choose project agent directories manually and points you to `agentinit init` for future auto-detection.
+
 Skills are installed into a canonical store by default: project installs use `.agents/skills/`, and global installs use `~/.agents/skills/`. Agent-specific paths are symlinked to that store when they differ. Use `--copy` or `--copy-skills` to force independent copies instead.
 
 Bare skill names default to the public skills catalog used by the open agent skills ecosystem: `vercel-labs/agent-skills`. Use `./name` for a local path, `owner/repo` for an explicit GitHub repository, or `--from <marketplace>` / `<marketplace>/<name>` for marketplace-backed sources.

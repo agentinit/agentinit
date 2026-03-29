@@ -1,11 +1,29 @@
 import { Command } from 'commander';
 import ora from 'ora';
+import prompts from 'prompts';
+import { homedir } from 'os';
 import { relative } from 'path';
-import { green } from 'kleur/colors';
+import { green, dim } from 'kleur/colors';
 import { logger } from '../utils/logger.js';
 import { SkillsManager } from '../core/skillsManager.js';
 import { getMarketplaceIds } from '../core/marketplaceRegistry.js';
 import { AgentManager } from '../core/agentManager.js';
+import type { Agent } from '../agents/Agent.js';
+
+interface SkillAgentGroup {
+  dir: string;
+  displayDir: string;
+  agents: Agent[];
+  agentNames: string[];
+  compatibleAgents: Agent[];
+  compatibleAgentNames: string[];
+}
+
+interface SkillTargetSelection {
+  agents?: string[];
+  global?: boolean;
+  aborted?: boolean;
+}
 
 export function registerSkillsCommand(program: Command): void {
   const marketplaceHelp = getMarketplaceIds().join(', ');
@@ -23,7 +41,7 @@ export function registerSkillsCommand(program: Command): void {
     .option('-s, --skill <names...>', 'Install only specific skills by name')
     .option('-l, --list', 'List available skills from the source without installing')
     .option('--copy', 'Copy skill files instead of symlinking')
-    .option('-y, --yes', 'Skip confirmation prompts')
+    .option('-y, --yes', 'Skip prompts and auto-detect project agents only')
     .action(async (source: string, options) => {
       logger.title('📦 AgentInit - Skills');
 
@@ -69,22 +87,62 @@ export function registerSkillsCommand(program: Command): void {
         return;
       }
 
+      let targetAgents = options.agent as string[] | undefined;
+      let targetGlobal = options.global as boolean | undefined;
+      if (!targetAgents && !options.yes) {
+        const selection = await resolveInteractiveSkillTargets(
+          skillsManager,
+          agentManager,
+          source,
+          process.cwd(),
+          {
+            from: options.from,
+            global: options.global,
+          },
+        );
+
+        if (selection?.aborted) {
+          return;
+        }
+
+        if (selection?.agents && selection.agents.length > 0) {
+          targetAgents = selection.agents;
+          targetGlobal = selection.global;
+        }
+      }
+
       // Install skills
       const spinner = ora('Installing skills...').start();
       try {
-        const result = await skillsManager.addFromSource(source, process.cwd(), {
-          from: options.from,
-          global: options.global,
-          agents: options.agent,
-          skills: options.skill,
-          copy: options.copy,
-          yes: options.yes,
-        });
+        const installOptions = {
+          ...(options.from !== undefined ? { from: options.from } : {}),
+          ...(targetGlobal !== undefined ? { global: targetGlobal } : {}),
+          ...(targetAgents !== undefined ? { agents: targetAgents } : {}),
+          ...(options.skill !== undefined ? { skills: options.skill } : {}),
+          ...(options.copy !== undefined ? { copy: options.copy } : {}),
+          ...(options.yes !== undefined ? { yes: options.yes } : {}),
+        };
+        const result = await skillsManager.addFromSource(source, process.cwd(), installOptions);
 
         if (result.installed.length === 0 && result.skipped.length === 0) {
           spinner.warn('No skills found in the source.');
           for (const warning of result.warnings) {
             logger.warn(warning);
+          }
+          return;
+        }
+
+        if (result.installed.length === 0 && result.skipped.length > 0 && result.skipped.every(skip => skip.reason === 'No target agents found')) {
+          spinner.warn('No target agents found.');
+          logNoTargetAgentsGuidance(skillsManager, agentManager, source, {
+            from: options.from,
+          });
+
+          if (result.warnings.length > 0) {
+            logger.info('');
+            for (const warning of result.warnings) {
+              logger.warn(warning);
+            }
           }
           return;
         }
@@ -253,4 +311,224 @@ export function registerSkillsCommand(program: Command): void {
         logger.info('Nothing to remove.');
       }
     });
+}
+
+async function resolveInteractiveSkillTargets(
+  skillsManager: SkillsManager,
+  agentManager: AgentManager,
+  source: string,
+  projectPath: string,
+  options: { from?: string; global?: boolean },
+): Promise<SkillTargetSelection | undefined> {
+  let installGlobal = !!options.global;
+  if (!options.global) {
+    const response = await prompts({
+      type: 'select',
+      name: 'scope',
+      message: 'Where should the skill be installed?',
+      choices: [
+        { title: 'This project', value: 'project' },
+        { title: 'Globally', value: 'global' },
+      ],
+      initial: 0,
+    });
+
+    if (!response.scope) {
+      logger.info('Installation cancelled.');
+      return { aborted: true };
+    }
+
+    installGlobal = response.scope === 'global';
+  }
+
+  const recommendedAgentId = getRecommendedAgentId(skillsManager, agentManager, source, options.from);
+  const detectedGroups = installGlobal
+    ? []
+    : await getDetectedSkillGroups(agentManager, projectPath, false);
+  const availableGroups = detectedGroups.length > 0
+    ? detectedGroups
+    : getSupportedSkillGroups(agentManager, projectPath, installGlobal);
+
+  if (availableGroups.length === 0) {
+    logger.warn('No supported agents expose a skills directory.');
+    return { aborted: true };
+  }
+
+  if (!installGlobal && detectedGroups.length === 0) {
+    logger.warn('No project agent files with skills support were detected in this project.');
+    logger.info('Select project agent directories manually. Run `agentinit init` if you want future installs to auto-detect.');
+  }
+
+  const response = await prompts({
+    type: 'multiselect',
+    name: 'groups',
+    message: installGlobal
+      ? 'Select which global agent skills directories to install into:'
+      : detectedGroups.length > 0
+        ? 'Select which project agent skills directories to install into:'
+        : 'Select which project agent skills directories to install into manually:',
+    instructions: false,
+    min: 1,
+    choices: availableGroups.map(group => ({
+      title: `${group.displayDir} -> ${group.agentNames.join(', ')}${formatCompatibleAgents(group)}`,
+      value: group.agents.map(agent => agent.id),
+      selected: installGlobal
+        ? !!recommendedAgentId && group.agents.some(agent => agent.id === recommendedAgentId)
+        : detectedGroups.length > 0 || (!!recommendedAgentId && group.agents.some(agent => agent.id === recommendedAgentId)),
+    })),
+  });
+
+  const selected = flattenAgentIds(response.groups);
+  if (selected.length === 0) {
+    logger.info('No agents selected. Aborting.');
+    return { aborted: true };
+  }
+
+  const selection: SkillTargetSelection = {
+    agents: selected,
+  };
+  if (installGlobal) {
+    selection.global = true;
+  }
+
+  return selection;
+}
+
+async function getDetectedSkillGroups(
+  agentManager: AgentManager,
+  projectPath: string,
+  global?: boolean,
+): Promise<SkillAgentGroup[]> {
+  const detectedAgents = (await agentManager.detectAgents(projectPath)).map(entry => entry.agent);
+  const groups = buildSkillGroups(detectedAgents, projectPath, global);
+  const detectedIds = new Set(detectedAgents.map(agent => agent.id));
+  const compatibleGroups = buildSkillGroups(
+    agentManager.getAllAgents().filter(agent => !detectedIds.has(agent.id)),
+    projectPath,
+    global,
+  );
+  const compatibleByDir = new Map(compatibleGroups.map(group => [group.dir, group]));
+
+  return groups.map(group => {
+    const compatible = compatibleByDir.get(group.dir);
+    return {
+      ...group,
+      compatibleAgents: compatible?.agents || [],
+      compatibleAgentNames: compatible?.agentNames || [],
+    };
+  });
+}
+
+function getSupportedSkillGroups(
+  agentManager: AgentManager,
+  projectPath: string,
+  global?: boolean,
+): SkillAgentGroup[] {
+  return buildSkillGroups(agentManager.getAllAgents(), projectPath, global);
+}
+
+function buildSkillGroups(
+  agents: Agent[],
+  projectPath: string,
+  global?: boolean,
+): SkillAgentGroup[] {
+  const dirToAgents = new Map<string, Agent[]>();
+
+  for (const agent of agents) {
+    if (!agent.supportsSkills()) {
+      continue;
+    }
+
+    const skillsDir = agent.getSkillsDir(projectPath, global);
+    if (!skillsDir) {
+      continue;
+    }
+
+    const existing = dirToAgents.get(skillsDir) || [];
+    existing.push(agent);
+    dirToAgents.set(skillsDir, existing);
+  }
+
+  return Array.from(dirToAgents.entries()).map(([dir, groupedAgents]) => ({
+    dir,
+    displayDir: formatSkillsDir(projectPath, dir),
+    agents: groupedAgents,
+    agentNames: groupedAgents.map(agent => agent.name),
+    compatibleAgents: [],
+    compatibleAgentNames: [],
+  }));
+}
+
+function formatSkillsDir(projectPath: string, dir: string): string {
+  const normalizedDir = dir.replace(/\\/g, '/').replace(/\/?$/, '/');
+  const normalizedProjectPath = projectPath.replace(/\\/g, '/');
+  const normalizedHome = homedir().replace(/\\/g, '/');
+
+  if (normalizedDir.startsWith(`${normalizedProjectPath}/`)) {
+    return `${relative(projectPath, dir).replace(/\\/g, '/').replace(/\/?$/, '/')}`;
+  }
+
+  if (normalizedDir.startsWith(`${normalizedHome}/`)) {
+    return normalizedDir.replace(normalizedHome, '~');
+  }
+
+  return normalizedDir;
+}
+
+function formatCompatibleAgents(group: SkillAgentGroup): string {
+  if (group.compatibleAgentNames.length === 0) {
+    return '';
+  }
+
+  return dim(` (also compatible: ${group.compatibleAgentNames.join(', ')})`);
+}
+
+function flattenAgentIds(input: unknown): string[] {
+  if (!Array.isArray(input)) {
+    return [];
+  }
+
+  const flattened = input.flatMap(value => Array.isArray(value) ? value : [value]);
+  return Array.from(new Set(flattened.filter((value): value is string => typeof value === 'string')));
+}
+
+function getRecommendedAgentId(
+  skillsManager: SkillsManager,
+  agentManager: AgentManager,
+  source: string,
+  from?: string,
+): string | undefined {
+  try {
+    const resolved = skillsManager.resolveSource(source, from ? { from } : undefined);
+    if (resolved.type === 'marketplace' && resolved.marketplace && agentManager.getAgentById(resolved.marketplace)) {
+      return resolved.marketplace;
+    }
+  } catch {}
+
+  return undefined;
+}
+
+function logNoTargetAgentsGuidance(
+  skillsManager: SkillsManager,
+  agentManager: AgentManager,
+  source: string,
+  options: { from?: string },
+): void {
+  const recommendedAgentId = getRecommendedAgentId(skillsManager, agentManager, source, options.from) || 'claude';
+
+  logger.info('No install target was resolved automatically.');
+  logger.info('Try one of the following:');
+  logger.info(`  ${buildSkillsAddCommand(source, options.from, ['--agent', recommendedAgentId])}`);
+  logger.info(`  ${buildSkillsAddCommand(source, options.from, ['--global', '--agent', recommendedAgentId])}`);
+  logger.info('  agentinit init');
+}
+
+function buildSkillsAddCommand(source: string, from: string | undefined, extraArgs: string[]): string {
+  const args = ['agentinit', 'skills', 'add', source];
+  if (from) {
+    args.push('--from', from);
+  }
+
+  args.push(...extraArgs);
+  return args.join(' ');
 }
