@@ -1,3 +1,10 @@
+# [1.9.0](https://github.com/agentinit/agentinit/compare/v1.8.1...v1.9.0) (2026-03-29)
+
+
+### Features
+
+* canonicalize shared skills and rules aliases ([9a3b47b](https://github.com/agentinit/agentinit/commit/9a3b47b242578ba022f2e7266be92d2efa47674b))
+
 ## [1.8.1](https://github.com/agentinit/agentinit/compare/v1.8.0...v1.8.1) (2026-03-29)
 
 
