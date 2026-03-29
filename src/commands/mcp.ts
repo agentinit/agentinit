@@ -6,9 +6,23 @@ import { MCPParser, MCPParseError } from '../core/mcpParser.js';
 import { MCPVerifier } from '../core/mcpClient.js';
 import { MCPFilter } from '../core/mcpFilter.js';
 import { AgentManager } from '../core/agentManager.js';
+import { AgentDetector } from '../core/agentDetector.js';
 import { DEFAULT_CONNECTION_TIMEOUT_MS } from '../constants/index.js';
-import type { MCPServerConfig } from '../types/index.js';
+import type { MCPServerConfig, MCPTransformation, MCPVerificationResult } from '../types/index.js';
 import type { Agent } from '../agents/Agent.js';
+
+interface ResolvedMcpTarget {
+  agent: Agent;
+  isGlobal: boolean;
+}
+
+interface PlannedMcpTarget {
+  agent: Agent;
+  isGlobal: boolean;
+  configPath: string;
+  servers: MCPServerConfig[];
+  transformations: MCPTransformation[];
+}
 
 /**
  * Options that `mcp add` recognizes and must be stripped before
@@ -65,9 +79,9 @@ async function resolveAgents(
   agentIds: string[] | undefined,
   isGlobal: boolean,
   cwd: string
-): Promise<{ agent: Agent; isGlobal: boolean }[]> {
+): Promise<ResolvedMcpTarget[]> {
   if (agentIds && agentIds.length > 0) {
-    const results: { agent: Agent; isGlobal: boolean }[] = [];
+    const results: ResolvedMcpTarget[] = [];
     for (const id of agentIds) {
       const agent = agentManager.getAgentById(id);
       if (!agent) {
@@ -79,12 +93,9 @@ async function resolveAgents(
         logger.error(`Agent ${agent.name} does not support global configuration`);
         process.exit(1);
       }
-      if (!isGlobal) {
-        const detection = await agent.detectPresence(cwd);
-        if (!detection) {
-          logger.warning(`Agent ${id} not detected in project, skipping`);
-          continue;
-        }
+      if (!isGlobal && !agent.supportsProjectMcpConfig()) {
+        logger.error(`Agent ${agent.name} only supports global MCP configuration. Use --global.`);
+        process.exit(1);
       }
       results.push({ agent, isGlobal });
     }
@@ -96,19 +107,84 @@ async function resolveAgents(
     process.exit(1);
   }
 
-  // Auto-detect
-  const detected = await agentManager.detectAgents(cwd);
+  const detector = new AgentDetector();
+  const detectedConfigs = await detector.detectAgents(cwd);
+  const detected = detectedConfigs
+    .filter(config => config.detected)
+    .map(config => agentManager.getAgentById(config.name))
+    .filter((agent): agent is Agent => !!agent)
+    .filter(agent => agent.supportsProjectMcpConfig());
+
   if (detected.length === 0) {
     logger.warning('No AI coding agents detected in this project');
     logger.info('Supported agents:');
-    agentManager.getAllAgents().forEach(a => {
+    agentManager.getAllAgents()
+      .filter(a => a.supportsProjectMcpConfig())
+      .forEach(a => {
       logger.info(`  - ${a.name} (${a.id})`);
-    });
+      });
     logger.info('');
     logger.info('To target a specific agent, use: --agent <agent-id>');
     return [];
   }
-  return detected.map(d => ({ agent: d.agent, isGlobal: false }));
+  return detected.map(agent => ({ agent, isGlobal: false }));
+}
+
+function buildPlannedTargets(
+  targets: ResolvedMcpTarget[],
+  servers: MCPServerConfig[],
+  cwd: string,
+): PlannedMcpTarget[] {
+  const plans: PlannedMcpTarget[] = [];
+
+  for (const { agent, isGlobal } of targets) {
+    const filtered = MCPFilter.filterForAgent(agent, servers);
+
+    if (filtered.servers.length === 0) {
+      continue;
+    }
+
+    const configPath = isGlobal
+      ? agent.getGlobalMcpPath()
+      : agent.getNativeMcpPath(cwd);
+
+    if (!configPath) {
+      continue;
+    }
+
+    plans.push({
+      agent,
+      isGlobal,
+      configPath,
+      servers: filtered.servers,
+      transformations: filtered.transformations,
+    });
+  }
+
+  return plans;
+}
+
+function logPlannedTargets(plans: PlannedMcpTarget[]): void {
+  if (plans.length === 0) {
+    return;
+  }
+
+  const grouped = new Map<string, string[]>();
+
+  for (const plan of plans) {
+    const existing = grouped.get(plan.configPath) || [];
+    existing.push(plan.agent.name);
+    grouped.set(plan.configPath, existing);
+  }
+
+  logger.info('Planned targets:');
+  for (const [configPath, agentNames] of grouped) {
+    logger.info(`  - ${configPath}`);
+    for (const agentName of agentNames) {
+      logger.info(`    ${agentName}`);
+    }
+  }
+  logger.info('');
 }
 
 // ---------------------------------------------------------------------------
@@ -175,46 +251,68 @@ function registerAddCommand(mcp: Command): void {
           return;
         }
 
+        const plans = buildPlannedTargets(targets, parsed.servers, cwd);
+
+        if (plans.length === 0) {
+          spinner.warn('No servers were applied (all filtered out)');
+          return;
+        }
+
+        spinner.stop();
+        logPlannedTargets(plans);
+
+        if (options.verify) {
+          const timeout = options.timeout ? parseInt(options.timeout, 10) : undefined;
+          const verificationSources = plans.flatMap(plan =>
+            plan.servers.map(server => ({
+              server,
+              agentName: plan.agent.name,
+              configPath: plan.configPath,
+            }))
+          );
+          const verificationResult = await runVerification(
+            plans.flatMap(plan => plan.servers),
+            timeout,
+            undefined,
+            verificationSources,
+          );
+
+          if (!verificationResult.allSucceeded) {
+            logger.error('Verification failed. No MCP configuration changes were applied.');
+            process.exit(1);
+          }
+
+          logger.info('');
+        }
+
+        const spinnerApply = ora('Applying MCP configuration...').start();
         let totalApplied = 0;
 
-        for (const { agent, isGlobal: global } of targets) {
-          spinner.text = `Applying to ${agent.name}...`;
+        for (const plan of plans) {
+          spinnerApply.text = `Applying to ${plan.agent.name}...`;
 
-          const filtered = MCPFilter.filterForAgent(agent, parsed.servers);
-
-          if (filtered.servers.length === 0) {
-            logger.warning(`${agent.name}: No compatible MCP servers`);
-            continue;
-          }
-
-          if (global) {
-            await agent.applyGlobalMCPConfig(filtered.servers);
+          if (plan.isGlobal) {
+            await plan.agent.applyGlobalMCPConfig(plan.servers);
           } else {
-            await agent.applyMCPConfig(cwd, filtered.servers);
+            await plan.agent.applyMCPConfig(cwd, plan.servers);
           }
 
-          totalApplied += filtered.servers.length;
+          totalApplied += plan.servers.length;
 
-          const configPath = global
-            ? agent.getGlobalMcpPath()
-            : agent.getNativeMcpPath(cwd);
+          logger.info(`  ${green('+')} ${plan.agent.name}: ${plan.servers.length} server(s) added`);
+          logger.info(`    Config: ${plan.configPath}`);
 
-          logger.info(`  ${green('+')} ${agent.name}: ${filtered.servers.length} server(s) added`);
-          if (configPath) {
-            logger.info(`    Config: ${configPath}`);
-          }
-
-          if (filtered.transformations.length > 0) {
-            filtered.transformations.forEach(t => {
+          if (plan.transformations.length > 0) {
+            plan.transformations.forEach(t => {
               logger.info(`    ${yellow('~')} ${t.original.name}: ${t.reason}`);
             });
           }
         }
 
         if (totalApplied === 0) {
-          spinner.warn('No servers were applied (all filtered out)');
+          spinnerApply.warn('No servers were applied (all filtered out)');
         } else {
-          spinner.succeed(`Added ${totalApplied} MCP server(s)`);
+          spinnerApply.succeed(`Added ${totalApplied} MCP server(s)`);
 
           // List what was added
           parsed.servers.forEach(server => {
@@ -225,13 +323,6 @@ function registerAddCommand(mcp: Command): void {
               logger.info(`  ${cyan(server.name)} (${typeLabel}): ${server.url}`);
             }
           });
-        }
-
-        // Verify if requested
-        if (options.verify && parsed.servers.length > 0) {
-          logger.info('');
-          const timeout = options.timeout ? parseInt(options.timeout, 10) : undefined;
-          await runVerification(parsed.servers, timeout);
         }
       } catch (error) {
         spinner.fail('Failed to add MCP servers');
@@ -476,7 +567,7 @@ function registerVerifyCommand(mcp: Command): void {
           spinner.text = 'Detecting agents and MCP configurations...';
 
           const agentManager = new AgentManager();
-          const detectedAgents = await agentManager.detectAgents(cwd);
+          const detectedAgents = await resolveAgents(agentManager, undefined, false, cwd);
 
           if (detectedAgents.length === 0) {
             spinner.warn('No AI coding agents detected in this project');
@@ -554,7 +645,11 @@ async function runVerification(
   timeout?: number,
   spinner?: ReturnType<typeof ora>,
   serverSources?: Array<{ server: MCPServerConfig; agentName: string; configPath: string }>
-): Promise<void> {
+): Promise<{
+  results: MCPVerificationResult[];
+  successCount: number;
+  allSucceeded: boolean;
+}> {
   const ownSpinner = spinner || ora(`Verifying ${servers.length} MCP server(s)...`).start();
 
   const verifier = new MCPVerifier(timeout);
@@ -608,6 +703,12 @@ async function runVerification(
     logger.info('  3. Verify network connectivity for HTTP/SSE servers');
     logger.info('  4. Try increasing timeout with --timeout <ms>');
   }
+
+  return {
+    results,
+    successCount,
+    allSucceeded: successCount === results.length,
+  };
 }
 
 // ---------------------------------------------------------------------------

@@ -48,15 +48,15 @@ describe('applyProjectSkills', () => {
 
     expect(await readFile(join(projectDir, '.claude/skills/shared-skill/SKILL.md'), 'utf8')).toContain('name: shared-skill');
     expect(await readFile(join(projectDir, '.claude/skills/roo-skill/SKILL.md'), 'utf8')).toContain('name: roo-skill');
-    expect(await readFile(join(projectDir, '.roo/skills/shared-skill/SKILL.md'), 'utf8')).toContain('name: shared-skill');
-    expect(await readFile(join(projectDir, '.roo/skills/roo-skill/SKILL.md'), 'utf8')).toContain('name: roo-skill');
+    expect(await readFile(join(projectDir, '.agents/skills/shared-skill/SKILL.md'), 'utf8')).toContain('name: shared-skill');
+    expect(await readFile(join(projectDir, '.agents/skills/roo-skill/SKILL.md'), 'utf8')).toContain('name: roo-skill');
 
     expect(managedState.getEntries()).toHaveLength(4);
     expect(managedState.getIgnorePaths()).toEqual(expect.arrayContaining([
       '.agentinit/backups/',
       '.agentinit/managed-state.json',
       '.claude/skills/',
-      '.roo/skills/',
+      '.agents/skills/',
     ]));
   });
 });

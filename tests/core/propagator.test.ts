@@ -51,7 +51,6 @@ describe('Propagator target resolution', () => {
     expect(result.resolvedTargets).toEqual(['claude', 'cursor']);
     expect(result.changes.map(change => change.file)).toEqual([
       join(projectDir, 'CLAUDE.md'),
-      join(projectDir, '.cursorrules'),
     ]);
     await expect(readFile(join(projectDir, '.aider.conf.yml'), 'utf8')).rejects.toThrow();
   });

@@ -1,4 +1,5 @@
 import ora from 'ora';
+import { relative } from 'path';
 import { green, yellow, red, cyan } from 'kleur/colors';
 import { logger } from '../utils/logger.js';
 import { MCPParser, MCPParseError } from '../core/mcpParser.js';
@@ -75,6 +76,7 @@ export function hasLegacyApplyArgs(args: string[]): boolean {
 
 export async function applyProjectCommand(options: ApplyWorkflowOptions): Promise<void> {
   const cwd = process.cwd();
+  const agentManager = new AgentManager();
   let managedState: ManagedStateStore | null = null;
 
   logger.title('🔧 AgentInit - Apply');
@@ -152,16 +154,34 @@ export async function applyProjectCommand(options: ApplyWorkflowOptions): Promis
         logger.info(`Synced ${green(String(syncResult.changes.filter(change => change.action !== 'backed_up').length))} file(s):`);
         syncResult.changes.forEach(change => {
           if (change.action === 'backed_up') return;
-          logger.info(`  ${change.agent}: ${change.file}`);
+          const names = change.agents
+            .map(id => agentManager.getAgentById(id)?.name || id)
+            .join(', ');
+          logger.info(`  ${relative(cwd, change.file) || change.file}`);
+          logger.info(`    Agents: ${names}`);
         });
       }
 
       if (projectSkills.installed.length > 0) {
         logger.info('');
         logger.info(`Installed ${green(String(projectSkills.installed.length))} project skill target(s):`);
-        projectSkills.installed.forEach(item => {
-          logger.info(`  ${item.agent}: ${item.skill.name} -> ${item.path}`);
-        });
+
+        const installsByPath = new Map<string, { agents: Set<string>; skills: Set<string> }>();
+        for (const item of projectSkills.installed) {
+          const existing = installsByPath.get(item.path) || {
+            agents: new Set<string>(),
+            skills: new Set<string>(),
+          };
+          existing.agents.add(agentManager.getAgentById(item.agent)?.name || item.agent);
+          existing.skills.add(item.skill.name);
+          installsByPath.set(item.path, existing);
+        }
+
+        for (const [path, details] of installsByPath) {
+          logger.info(`  ${relative(cwd, path) || path}`);
+          logger.info(`    Agents: ${[...details.agents].join(', ')}`);
+          logger.info(`    Skills: ${[...details.skills].join(', ')}`);
+        }
       }
     }
 

@@ -40,6 +40,9 @@ export class ZedAgent extends MarkdownRulesAgent {
       ],
       nativeConfigPath: '.zed/settings.json',
       rulesPath: 'AGENTS.md',
+      projectStandards: {
+        rules: 'agents',
+      },
     };
 
     super(definition);

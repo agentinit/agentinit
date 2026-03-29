@@ -44,9 +44,14 @@ export class DroidAgent extends Agent {
       globalConfigPath: '~/.factory/mcp.json',
       rulesPath: 'AGENTS.md',
       skillPaths: {
-        project: '.factory/skills/',
+        project: '.agents/skills/',
         global: '~/.factory/skills/'
-      }
+      },
+      projectStandards: {
+        rules: 'agents',
+        skills: 'agents',
+      },
+      mcpConfigScope: 'global-only',
     };
 
     super(definition);

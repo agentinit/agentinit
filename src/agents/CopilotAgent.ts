@@ -41,8 +41,12 @@ export class CopilotAgent extends MarkdownRulesAgent {
       nativeConfigPath: '.vscode/mcp.json',
       rulesPath: 'AGENTS.md',
       skillPaths: {
-        project: '.claude/skills/',
-        global: '~/.claude/skills/',
+        project: '.agents/skills/',
+        global: '~/.copilot/skills/',
+      },
+      projectStandards: {
+        rules: 'agents',
+        skills: 'agents',
       },
     };
 

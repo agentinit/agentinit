@@ -37,7 +37,11 @@ export class ClaudeDesktopAgent extends Agent {
       skillPaths: {
         project: '.claude/skills/',
         global: '~/.claude/skills/'
-      }
+      },
+      projectStandards: {
+        skills: 'claude',
+      },
+      mcpConfigScope: 'global-only',
     };
 
     super(definition);

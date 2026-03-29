@@ -1,5 +1,6 @@
 import { Command } from 'commander';
 import ora from 'ora';
+import { relative } from 'path';
 import { green } from 'kleur/colors';
 import { logger } from '../utils/logger.js';
 import { SkillsManager } from '../core/skillsManager.js';
@@ -90,15 +91,27 @@ export function registerSkillsCommand(program: Command): void {
           return;
         }
 
-        spinner.succeed(`Installed ${green(String(result.installed.length))} skill(s)`);
+        const uniqueInstallCount = new Set(
+          result.installed.map(item => `${item.path}:${item.skill.name}`)
+        ).size;
+        spinner.succeed(`Installed ${green(String(uniqueInstallCount))} skill(s)`);
 
-        // Show per-agent breakdown
-        const byAgent = new Map<string, number>();
+        // Show per-path breakdown
+        const byPath = new Map<string, { agents: Set<string>; skills: Set<string> }>();
         for (const item of result.installed) {
-          byAgent.set(item.agent, (byAgent.get(item.agent) || 0) + 1);
+          const path = item.path;
+          const existing = byPath.get(path) || {
+            agents: new Set<string>(),
+            skills: new Set<string>(),
+          };
+          existing.agents.add(agentManager.getAgentById(item.agent)?.name || item.agent);
+          existing.skills.add(item.skill.name);
+          byPath.set(path, existing);
         }
-        for (const [agent, count] of byAgent) {
-          logger.info(`  ${agent}: ${green(String(count))} skill(s) installed`);
+        for (const [path, details] of byPath) {
+          logger.info(`  ${relative(process.cwd(), path) || path}`);
+          logger.info(`    Agents: ${[...details.agents].join(', ')}`);
+          logger.info(`    Skills: ${green(String(details.skills.size))} installed (${[...details.skills].join(', ')})`);
         }
 
         // Show skipped skills

@@ -59,7 +59,11 @@ export class ClaudeAgent extends Agent {
       skillPaths: {
         project: '.claude/skills/',
         global: '~/.claude/skills/'
-      }
+      },
+      projectStandards: {
+        rules: 'claude',
+        skills: 'claude',
+      },
     };
 
     super(definition);

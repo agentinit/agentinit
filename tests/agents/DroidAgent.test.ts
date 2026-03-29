@@ -55,6 +55,7 @@ describe('DroidAgent', () => {
     it('should expose only project-level rules support', () => {
       expect(agent.getProjectRulesPath(testProjectPath)).toBe(resolve(testProjectPath, 'AGENTS.md'));
       expect(agent.supportsGlobalRules()).toBe(false);
+      expect(agent.supportsProjectMcpConfig()).toBe(false);
     });
   });
 

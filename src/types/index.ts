@@ -147,6 +147,11 @@ export interface AgentDefinition {
     project: string;
     global: string;
   };
+  projectStandards?: {
+    rules?: 'claude' | 'agents';
+    skills?: 'claude' | 'agents';
+  };
+  mcpConfigScope?: 'project' | 'global-only';
 }
 
 export interface AgentDetectionResult {

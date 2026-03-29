@@ -42,9 +42,12 @@ export class GeminiCliAgent extends Agent {
       rulesPath: '.gemini/settings.json',
       globalRulesPath: '~/.gemini/settings.json',
       skillPaths: {
-        project: '.gemini/skills/',
+        project: '.agents/skills/',
         global: '~/.gemini/skills/'
-      }
+      },
+      projectStandards: {
+        skills: 'agents',
+      },
     };
 
     super(definition);

@@ -1,7 +1,9 @@
 import ora from 'ora';
+import { relative } from 'path';
 import { logger } from '../utils/logger.js';
 import { Propagator } from '../core/propagator.js';
 import { ManagedStateStore } from '../core/managedState.js';
+import { AgentManager } from '../core/agentManager.js';
 
 interface SyncOptions {
   dryRun?: boolean;
@@ -11,6 +13,7 @@ interface SyncOptions {
 
 export async function syncCommand(options: SyncOptions): Promise<void> {
   const cwd = process.cwd();
+  const agentManager = new AgentManager();
   
   logger.title('🔄 AgentInit - Sync Configuration');
   
@@ -50,9 +53,13 @@ export async function syncCommand(options: SyncOptions): Promise<void> {
         logger.success(`Applied ${result.changes.length} changes:`);
         
         for (const change of result.changes) {
-          const action = change.action === 'created' ? '➕' : 
-                        change.action === 'updated' ? '📝' : '💾';
-          logger.info(`  ${action} ${change.agent}: ${change.file}`);
+          const action = change.action === 'created' ? '➕' :
+            change.action === 'updated' ? '📝' : '💾';
+          const names = change.agents
+            .map(id => agentManager.getAgentById(id)?.name || id)
+            .join(', ');
+          logger.info(`  ${action} ${relative(cwd, change.file) || change.file}`);
+          logger.info(`     Agents: ${names}`);
         }
         
         if (options.backup && result.changes.some(c => c.action === 'backed_up')) {

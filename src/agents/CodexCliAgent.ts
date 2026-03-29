@@ -43,9 +43,13 @@ export class CodexCliAgent extends Agent {
       rulesPath: '.codex/config.toml',
       globalRulesPath: '~/.codex/config.toml',
       skillPaths: {
-        project: '.codex/skills/',
+        project: '.agents/skills/',
         global: '~/.codex/skills/'
-      }
+      },
+      projectStandards: {
+        rules: 'agents',
+        skills: 'agents',
+      },
     };
 
     super(definition);

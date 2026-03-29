@@ -16,6 +16,7 @@ export interface SyncResult {
   success: boolean;
   changes: Array<{
     agent: string;
+    agents: string[];
     action: 'created' | 'updated' | 'backed_up';
     file: string;
   }>;
@@ -213,6 +214,7 @@ export class Propagator {
       }
       result.changes.push({
         agent: generatedFile.agents.join(', '),
+        agents: [...generatedFile.agents],
         action: 'backed_up',
         file: backupPath,
       });
@@ -224,6 +226,7 @@ export class Propagator {
 
     result.changes.push({
       agent: generatedFile.agents.join(', '),
+      agents: [...generatedFile.agents],
       action: exists ? 'updated' : 'created',
       file: generatedFile.path,
     });
@@ -248,8 +251,8 @@ export class Propagator {
     this.agentAdapters.set('cursor', {
       buildOutputs: async (_projectPath, content) => [
         {
-          path: '.cursorrules',
-          content: this.formatForCursor(content),
+          path: 'AGENTS.md',
+          content,
         },
       ],
     });
@@ -290,7 +293,25 @@ export class Propagator {
       ],
     });
 
+    this.agentAdapters.set('codex', {
+      buildOutputs: async (_projectPath, content) => [
+        {
+          path: 'AGENTS.md',
+          content,
+        },
+      ],
+    });
+
     this.agentAdapters.set('zed', {
+      buildOutputs: async (_projectPath, content) => [
+        {
+          path: 'AGENTS.md',
+          content,
+        },
+      ],
+    });
+
+    this.agentAdapters.set('droid', {
       buildOutputs: async (_projectPath, content) => [
         {
           path: 'AGENTS.md',

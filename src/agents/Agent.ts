@@ -264,6 +264,32 @@ export abstract class Agent {
   }
 
   /**
+   * Return the project-level shared rules standard used by this agent, if any.
+   */
+  getProjectRulesStandard(): 'claude' | 'agents' | null {
+    return this.definition.projectStandards?.rules || null;
+  }
+
+  /**
+   * Return the project-level shared skills standard used by this agent, if any.
+   */
+  getProjectSkillsStandard(): 'claude' | 'agents' | null {
+    return this.definition.projectStandards?.skills || null;
+  }
+
+  /**
+   * Check whether this agent supports project-scoped MCP configuration.
+   */
+  supportsProjectMcpConfig(): boolean {
+    const supportsAnyMcp = Object.values(this.capabilities.mcp).some(Boolean);
+    if (!supportsAnyMcp) {
+      return false;
+    }
+
+    return this.definition.mcpConfigScope !== 'global-only';
+  }
+
+  /**
    * Check if this agent supports global rules configuration
    */
   supportsGlobalRules(): boolean {

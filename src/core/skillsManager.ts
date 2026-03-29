@@ -338,19 +338,30 @@ export class SkillsManager {
 
       const result: SkillsAddResult = { installed: [], skipped: [] };
 
-      for (const skill of skills) {
-        for (const agent of agents) {
-          if (!agent.supportsSkills()) {
+      const dirToAgents = new Map<string, Agent[]>();
+      for (const agent of agents) {
+        if (!agent.supportsSkills()) {
+          for (const skill of skills) {
             result.skipped.push({ skill, reason: `${agent.name} does not support skills` });
-            continue;
           }
+          continue;
+        }
 
-          const skillsDir = agent.getSkillsDir(projectPath, options.global);
-          if (!skillsDir) {
+        const skillsDir = agent.getSkillsDir(projectPath, options.global);
+        if (!skillsDir) {
+          for (const skill of skills) {
             result.skipped.push({ skill, reason: `No skills directory for ${agent.name}` });
-            continue;
           }
+          continue;
+        }
 
+        const existing = dirToAgents.get(skillsDir) || [];
+        existing.push(agent);
+        dirToAgents.set(skillsDir, existing);
+      }
+
+      for (const skill of skills) {
+        for (const [skillsDir, dirAgents] of dirToAgents) {
           try {
             // For GitHub repos, always copy (symlinks to temp dirs would break)
             const shouldCopy = options.copy || resolved.type === 'github';
@@ -360,7 +371,10 @@ export class SkillsManager {
               skillsDir,
               shouldCopy
             );
-            result.installed.push({ skill, agent: agent.id, path: installedPath });
+
+            for (const agent of dirAgents) {
+              result.installed.push({ skill, agent: agent.id, path: installedPath });
+            }
           } catch (error: any) {
             result.skipped.push({ skill, reason: error.message });
           }

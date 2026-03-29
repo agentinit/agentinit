@@ -41,8 +41,12 @@ export class RooCodeAgent extends MarkdownRulesAgent {
       nativeConfigPath: '.roo/mcp.json',
       rulesPath: 'AGENTS.md',
       skillPaths: {
-        project: '.roo/skills/',
+        project: '.agents/skills/',
         global: '~/.roo/skills/',
+      },
+      projectStandards: {
+        rules: 'agents',
+        skills: 'agents',
       },
     };
 

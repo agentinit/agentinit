@@ -48,6 +48,9 @@ export class AiderAgent extends MarkdownRulesAgent {
       ],
       nativeConfigPath: '.mcp.json',
       rulesPath: 'AGENTS.md',
+      projectStandards: {
+        rules: 'agents',
+      },
     };
 
     super(definition);
