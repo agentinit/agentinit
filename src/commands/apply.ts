@@ -54,6 +54,7 @@ export interface ApplyWorkflowOptions {
   dryRun?: boolean;
   backup?: boolean;
   skills?: boolean;
+  copySkills?: boolean;
   gitignore?: boolean;
   gitignoreLocal?: boolean;
 }
@@ -112,6 +113,7 @@ export async function applyProjectCommand(options: ApplyWorkflowOptions): Promis
       }
       spinner.fail('Apply failed');
       syncResult.errors.forEach(error => logger.error(error));
+      syncResult.warnings.forEach(warning => logger.warning(warning));
       return;
     }
 
@@ -121,12 +123,22 @@ export async function applyProjectCommand(options: ApplyWorkflowOptions): Promis
         cwd,
         syncResult.resolvedTargets,
         managedState,
-        options.dryRun !== undefined ? { dryRun: options.dryRun } : {},
+        {
+          ...(options.dryRun !== undefined ? { dryRun: options.dryRun } : {}),
+          ...(options.copySkills !== undefined ? { copy: options.copySkills } : {}),
+        },
       )
       : {
         discovered: 0,
         sources: [] as string[],
-        installed: [] as Array<{ skill: { name: string; description: string; path: string }; agent: string; path: string }>,
+        installed: [] as Array<{
+          skill: { name: string; description: string; path: string };
+          agent: string;
+          path: string;
+          canonicalPath?: string;
+          mode: 'copy' | 'symlink';
+          symlinkFailed?: boolean;
+        }>,
         skipped: [] as Array<{ skill: { name: string; description: string; path: string }; reason: string }>,
       };
 
@@ -146,6 +158,10 @@ export async function applyProjectCommand(options: ApplyWorkflowOptions): Promis
     }
 
     spinner.succeed('Apply complete');
+
+    if (syncResult.warnings.length > 0) {
+      syncResult.warnings.forEach(warning => logger.warning(warning));
+    }
 
     if (syncResult.changes.length === 0 && projectSkills.installed.length === 0) {
       logger.info('No changes needed - generated files are already up to date');

@@ -29,6 +29,7 @@
 ### Bug Fixes
 
 * fix plugin scope handling for global MCP installs/removals and targeted removals
+* preserve revert semantics for canonical project skills and keep `skills remove` project-scoped by default
 * update docs and onboarding to the `mcp add|verify`, `rules add`, and `skills add` command model
 
 # [1.7.0](https://github.com/agentinit/agentinit/compare/v1.6.0...v1.7.0) (2025-10-17)

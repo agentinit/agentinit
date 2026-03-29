@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { access, mkdtemp, mkdir, readFile, rm, writeFile } from 'fs/promises';
+import { access, lstat, mkdtemp, mkdir, readFile, readlink, rm, symlink, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { ManagedStateStore } from '../../src/core/managedState.js';
@@ -74,5 +74,35 @@ describe('ManagedStateStore', () => {
     await expect(readFile(join(skillDir, 'SKILL.md'), 'utf8')).rejects.toThrow();
     expect(store.getEntries()).toEqual([]);
     await expect(access(join(projectDir, '.agentinit'))).rejects.toThrow();
+  });
+
+  it('restores pre-existing symlinks during revert', async () => {
+    const projectDir = await createProjectDir();
+    const agentsPath = join(projectDir, 'AGENTS.md');
+    const claudePath = join(projectDir, 'CLAUDE.md');
+
+    await writeFile(agentsPath, 'shared rules\n', 'utf8');
+    await symlink('AGENTS.md', claudePath);
+
+    const store = await ManagedStateStore.open(projectDir);
+    await store.trackGeneratedPath(claudePath, {
+      kind: 'file',
+      source: 'sync',
+      ignorePath: claudePath,
+    });
+
+    await rm(claudePath, { force: true });
+    await writeFile(claudePath, 'generated rules\n', 'utf8');
+    await store.save();
+
+    const summary = await store.revertAll();
+
+    expect(summary).toEqual({
+      restored: 1,
+      removed: 0,
+      backupsRemoved: 0,
+    });
+    expect((await lstat(claudePath)).isSymbolicLink()).toBe(true);
+    expect(await readlink(claudePath)).toBe('AGENTS.md');
   });
 });

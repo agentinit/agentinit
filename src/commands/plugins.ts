@@ -19,6 +19,7 @@ export function registerPluginsCommand(program: Command): void {
     .option('--from <marketplace>', `Marketplace source override (available: ${marketplaceHelp})`)
     .option('-a, --agent <agents...>', 'Target specific agent(s)')
     .option('-g, --global', 'Install globally')
+    .option('--copy-skills', 'Copy plugin skills instead of using canonical symlink installs')
     .option('-l, --list', 'Preview plugin contents without installing')
     .option('-y, --yes', 'Skip confirmation prompts, auto-detect all agents')
     .action(async (source: string, options) => {
@@ -97,6 +98,7 @@ export function registerPluginsCommand(program: Command): void {
           from: options.from,
           agents: agentIds,
           global: options.global,
+          copySkills: options.copySkills,
           yes: options.yes,
         });
 

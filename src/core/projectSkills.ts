@@ -1,10 +1,10 @@
-import { join } from 'path';
+import { dirname, join } from 'path';
 import { AgentManager } from './agentManager.js';
 import { SkillsManager } from './skillsManager.js';
 import { fileExists } from '../utils/fs.js';
 import { ManagedStateStore } from './managedState.js';
 import type { Agent } from '../agents/Agent.js';
-import type { SkillInfo } from '../types/skills.js';
+import type { SkillInfo, SkillInstallResult } from '../types/skills.js';
 
 const PROJECT_SKILL_SOURCE_DIRS = [
   '.agentinit/skills',
@@ -14,7 +14,7 @@ const PROJECT_SKILL_SOURCE_DIRS = [
 export interface ProjectSkillsResult {
   discovered: number;
   sources: string[];
-  installed: Array<{ skill: SkillInfo; agent: string; path: string }>;
+  installed: Array<{ skill: SkillInfo; agent: string } & SkillInstallResult>;
   skipped: Array<{ skill: SkillInfo; reason: string }>;
 }
 
@@ -51,13 +51,13 @@ export async function applyProjectSkills(
   projectPath: string,
   targetAgentIds: string[],
   managedState: ManagedStateStore,
-  options: { dryRun?: boolean } = {},
+  options: { dryRun?: boolean; copy?: boolean } = {},
 ): Promise<ProjectSkillsResult> {
   const agentManager = new AgentManager();
   const skillsManager = new SkillsManager(agentManager);
   const { sources, skills } = await discoverProjectSkills(projectPath, skillsManager);
 
-  const installed: Array<{ skill: SkillInfo; agent: string; path: string }> = [];
+  const installed: Array<{ skill: SkillInfo; agent: string } & SkillInstallResult> = [];
   const skipped: Array<{ skill: SkillInfo; reason: string }> = [];
 
   if (skills.length === 0) {
@@ -82,7 +82,6 @@ export async function applyProjectSkills(
     };
   }
 
-  const dirToAgents = new Map<string, Agent[]>();
   for (const agent of targetAgents) {
     if (!agent.supportsSkills()) {
       for (const skill of skills) {
@@ -98,36 +97,49 @@ export async function applyProjectSkills(
       }
       continue;
     }
-
-    const existing = dirToAgents.get(skillsDir) || [];
-    existing.push(agent);
-    dirToAgents.set(skillsDir, existing);
   }
 
-  for (const [skillsDir, dirAgents] of dirToAgents) {
+  for (const agent of targetAgents) {
+    if (!agent.supportsSkills()) continue;
+    if (!agent.getSkillsDir(projectPath, false)) continue;
+
     for (const skill of skills) {
       try {
-        const installPath = skillsManager.getInstallPath(skill.name, skillsDir);
-        if (!options.dryRun) {
-          await managedState.trackGeneratedPath(installPath, {
-            kind: 'directory',
-            source: 'skills',
-            ignorePath: `${skillsDir}/`,
-          });
-        }
+        const installOptions = {
+          ...(options.copy !== undefined ? { copy: options.copy } : {}),
+        };
+        const installPlan = await skillsManager.getInstallPlan(
+          skill.name,
+          agent,
+          projectPath,
+          installOptions,
+        );
 
-        const installedPath = options.dryRun
-          ? installPath
-          : await skillsManager.installSkill(
-            skill.path,
-            skill.name,
-            skillsDir,
-            true,
+        if (!options.dryRun) {
+          const generatedPaths = new Set(
+            [installPlan.path, installPlan.canonicalPath].filter((value): value is string => !!value)
           );
 
-        for (const agent of dirAgents) {
-          installed.push({ skill, agent: agent.id, path: installedPath });
+          for (const generatedPath of generatedPaths) {
+            await managedState.trackGeneratedPath(generatedPath, {
+              kind: 'directory',
+              source: 'skills',
+              ignorePath: `${dirname(generatedPath)}/`,
+            });
+          }
         }
+
+        const installResult = options.dryRun
+          ? installPlan
+          : await skillsManager.installSkillForAgent(
+            skill.path,
+            skill.name,
+            agent,
+            projectPath,
+            installOptions,
+          );
+
+        installed.push({ skill, agent: agent.id, ...installResult });
       } catch (error: any) {
         skipped.push({ skill, reason: error.message });
       }

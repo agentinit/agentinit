@@ -645,14 +645,26 @@ ${body.trim()}
     projectPath: string,
     agents: Agent[],
     options: PluginInstallOptions
-  ): Promise<{ installed: Array<{ name: string; agent: string; path: string }>; skipped: Array<{ name: string; reason: string }> }> {
-    const installed: Array<{ name: string; agent: string; path: string }> = [];
+  ): Promise<{ installed: Array<{
+    name: string;
+    agent: string;
+    path: string;
+    canonicalPath?: string;
+    mode: 'copy' | 'symlink';
+    symlinkFailed?: boolean;
+  }>; skipped: Array<{ name: string; reason: string }> }> {
+    const installed: Array<{
+      name: string;
+      agent: string;
+      path: string;
+      canonicalPath?: string;
+      mode: 'copy' | 'symlink';
+      symlinkFailed?: boolean;
+    }> = [];
     const skipped: Array<{ name: string; reason: string }> = [];
 
     if (plugin.skills.length === 0) return { installed, skipped };
 
-    // Group agents by their skills directory to avoid duplicate installs
-    const dirToAgents = new Map<string, Agent[]>();
     for (const agent of agents) {
       if (!agent.supportsSkills()) {
         for (const skill of plugin.skills) {
@@ -661,40 +673,36 @@ ${body.trim()}
         continue;
       }
 
-      const skillsDir = agent.getSkillsDir(projectPath, options.global);
-      if (!skillsDir) {
+      if (!agent.getSkillsDir(projectPath, options.global)) {
         for (const skill of plugin.skills) {
           skipped.push({ name: skill.name, reason: `No skills directory for ${agent.name}` });
         }
         continue;
       }
 
-      const existing = dirToAgents.get(skillsDir) || [];
-      existing.push(agent);
-      dirToAgents.set(skillsDir, existing);
-    }
-
-    // Install once per unique directory
-    for (const [skillsDir, dirAgents] of dirToAgents) {
       for (const skill of plugin.skills) {
         try {
-          const installedPath = skill.generatedContent
-            ? await this.skillsManager.installSkillFromContent(
+          const installOptions = {
+            ...(options.global !== undefined ? { global: options.global } : {}),
+            ...(options.copySkills !== undefined ? { copy: options.copySkills } : {}),
+          };
+          const installResult = skill.generatedContent
+            ? await this.skillsManager.installSkillFromContentForAgent(
               skill.name,
               skill.generatedContent,
-              skillsDir,
+              agent,
+              projectPath,
+              installOptions,
             )
-            : await this.skillsManager.installSkill(
+            : await this.skillsManager.installSkillForAgent(
               skill.path,
               skill.name,
-              skillsDir,
-              true // Plugins always copy to avoid temp/cache symlink issues.
+              agent,
+              projectPath,
+              installOptions,
             );
 
-          // Record for all agents sharing this directory
-          for (const agent of dirAgents) {
-            installed.push({ name: skill.name, agent: agent.id, path: installedPath });
-          }
+          installed.push({ name: skill.name, agent: agent.id, ...installResult });
         } catch (error: any) {
           skipped.push({ name: skill.name, reason: error.message });
         }
@@ -897,37 +905,64 @@ ${body.trim()}
     const retainedSkills = agentFilter
       ? plugin.components.skills.filter(skill => !agentFilter.has(skill.agent))
       : [];
-    const retainedSkillPaths = new Set(retainedSkills.map(skill => skill.path));
+    const otherPluginSkills = registry.plugins
+      .filter(entry => entry.name !== plugin.name)
+      .flatMap(entry => entry.components.skills);
+    const remainingSkillRefs = [
+      ...retainedSkills,
+      ...otherPluginSkills,
+    ];
 
     const removedSkillPaths = new Set<string>();
-    const sharedSkillPaths = new Set<string>();
+    const removedSkillKeys = new Set<string>();
+    const removedCanonicalPaths = new Set<string>();
     for (const skill of targetedSkills) {
-      if (removedSkillPaths.has(skill.path) || sharedSkillPaths.has(skill.path)) {
+      const skillKey = `${skill.agent}:${skill.path}:${skill.name}`;
+      if (removedSkillKeys.has(skillKey)) {
         continue;
       }
 
-      if (retainedSkillPaths.has(skill.path)) {
-        sharedSkillPaths.add(skill.path);
-        details.push(`Skipped shared skill path: ${skill.path}`);
+      const canonicalRef = skill.canonicalPath || skill.path;
+      const sharedCanonicalPath = remainingSkillRefs.some(other =>
+        (other.canonicalPath || other.path) === canonicalRef
+      );
+
+      if (skill.canonicalPath && skill.path === skill.canonicalPath && sharedCanonicalPath) {
+        details.push(`Skipped shared canonical skill path: ${skill.path}`);
         continue;
       }
 
-      try {
-        await fs.rm(skill.path, { recursive: true, force: true });
-        removedSkillPaths.add(skill.path);
-      } catch {
-        details.push(`Could not remove skill path: ${skill.path}`);
+      if (!removedSkillPaths.has(skill.path)) {
+        try {
+          await fs.rm(skill.path, { recursive: true, force: true });
+          removedSkillPaths.add(skill.path);
+        } catch {
+          details.push(`Could not remove skill path: ${skill.path}`);
+          continue;
+        }
       }
-    }
 
-    const removedSkills = targetedSkills.filter(skill => removedSkillPaths.has(skill.path));
-    for (const skill of removedSkills) {
+      if (
+        skill.canonicalPath &&
+        skill.canonicalPath !== skill.path &&
+        !removedCanonicalPaths.has(skill.canonicalPath) &&
+        !sharedCanonicalPath
+      ) {
+        try {
+          await fs.rm(skill.canonicalPath, { recursive: true, force: true });
+          removedCanonicalPaths.add(skill.canonicalPath);
+        } catch {
+          details.push(`Could not remove canonical skill path: ${skill.canonicalPath}`);
+        }
+      }
+
+      removedSkillKeys.add(skillKey);
       details.push(`Removed skill: ${skill.name} (${skill.agent})`);
     }
 
     const remainingSkills = [
       ...retainedSkills,
-      ...targetedSkills.filter(skill => !removedSkillPaths.has(skill.path)),
+      ...targetedSkills.filter(skill => !removedSkillKeys.has(`${skill.agent}:${skill.path}:${skill.name}`)),
     ];
 
     const targetedMcpServers = agentFilter

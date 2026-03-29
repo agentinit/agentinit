@@ -5,13 +5,24 @@ export interface SkillInfo {
   generatedContent?: string;
 }
 
+export type SkillInstallMode = 'copy' | 'symlink';
+
+export interface SkillInstallResult {
+  path: string;
+  canonicalPath?: string;
+  mode: SkillInstallMode;
+  symlinkFailed?: boolean;
+}
+
 export interface InstalledSkill {
   name: string;
   description: string;
   path: string;
+  canonicalPath?: string;
   agent: string;
   scope: 'project' | 'global';
   isSymlink: boolean;
+  mode: SkillInstallMode;
 }
 
 export interface SkillsAddOptions {
@@ -24,7 +35,7 @@ export interface SkillsAddOptions {
 }
 
 export interface SkillsAddResult {
-  installed: Array<{ skill: SkillInfo; agent: string; path: string }>;
+  installed: Array<{ skill: SkillInfo; agent: string } & SkillInstallResult>;
   skipped: Array<{ skill: SkillInfo; reason: string }>;
 }
 
@@ -37,6 +48,12 @@ export interface SkillsRemoveOptions {
   global?: boolean;
   agents?: string[];
   yes?: boolean;
+}
+
+export interface SkillsRemoveResult {
+  removed: string[];
+  notFound: string[];
+  skipped: Array<{ name: string; reason: string }>;
 }
 
 export interface SkillSource {

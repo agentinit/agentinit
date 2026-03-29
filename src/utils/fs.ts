@@ -1,5 +1,6 @@
 import { promises as fs } from 'fs';
-import { join, dirname } from 'path';
+import { platform } from 'os';
+import { join, dirname, basename, resolve, relative } from 'path';
 
 export async function fileExists(path: string): Promise<boolean> {
   try {
@@ -96,4 +97,98 @@ export async function getAgentInitTomlPath(projectPath: string): Promise<string>
 export async function ensureDirectoryExists(filePath: string): Promise<void> {
   const dir = dirname(filePath);
   await fs.mkdir(dir, { recursive: true });
+}
+
+export async function readSymlinkTarget(path: string): Promise<string | null> {
+  try {
+    return await fs.readlink(path);
+  } catch {
+    return null;
+  }
+}
+
+export async function resolveRealPathOrSelf(path: string): Promise<string> {
+  const resolvedPath = resolve(path);
+  try {
+    return await fs.realpath(resolvedPath);
+  } catch {
+    return resolvedPath;
+  }
+}
+
+export async function resolveParentSymlinks(path: string): Promise<string> {
+  const resolvedPath = resolve(path);
+  const parentDir = dirname(resolvedPath);
+  const baseName = basename(resolvedPath);
+
+  try {
+    const realParent = await fs.realpath(parentDir);
+    return join(realParent, baseName);
+  } catch {
+    return resolvedPath;
+  }
+}
+
+export async function pathsReferToSameLocation(left: string, right: string): Promise<boolean> {
+  const [realLeft, realRight] = await Promise.all([
+    resolveRealPathOrSelf(left),
+    resolveRealPathOrSelf(right),
+  ]);
+
+  if (realLeft === realRight) {
+    return true;
+  }
+
+  const [leftWithResolvedParents, rightWithResolvedParents] = await Promise.all([
+    resolveParentSymlinks(left),
+    resolveParentSymlinks(right),
+  ]);
+
+  return leftWithResolvedParents === rightWithResolvedParents;
+}
+
+export async function createRelativeSymlink(target: string, linkPath: string): Promise<boolean> {
+  try {
+    const resolvedTarget = resolve(target);
+    const resolvedLinkPath = resolve(linkPath);
+
+    if (await pathsReferToSameLocation(resolvedTarget, resolvedLinkPath)) {
+      return true;
+    }
+
+    try {
+      const stats = await fs.lstat(resolvedLinkPath);
+      if (stats.isSymbolicLink()) {
+        const existingTarget = await fs.readlink(resolvedLinkPath);
+        const resolvedExistingTarget = resolve(dirname(resolvedLinkPath), existingTarget);
+        if (resolvedExistingTarget === resolvedTarget) {
+          return true;
+        }
+        await fs.rm(resolvedLinkPath, { force: true });
+      } else {
+        await fs.rm(resolvedLinkPath, { recursive: true, force: true });
+      }
+    } catch (error) {
+      if (
+        error &&
+        typeof error === 'object' &&
+        'code' in error &&
+        (error as NodeJS.ErrnoException).code === 'ELOOP'
+      ) {
+        await fs.rm(resolvedLinkPath, { force: true }).catch(() => {});
+      }
+    }
+
+    await fs.mkdir(dirname(resolvedLinkPath), { recursive: true });
+
+    const realLinkDir = await resolveParentSymlinks(dirname(resolvedLinkPath));
+    const realTarget = await resolveRealPathOrSelf(resolvedTarget);
+    const relativeTarget = relative(realLinkDir, realTarget);
+    const symlinkType = platform() === 'win32' ? 'junction' : undefined;
+
+    await fs.symlink(relativeTarget, resolvedLinkPath, symlinkType);
+    return true;
+  } catch {
+    return false;
+  }
 }

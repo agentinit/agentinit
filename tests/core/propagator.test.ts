@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { mkdtemp, readFile, rm, writeFile } from 'fs/promises';
+import { lstat, mkdtemp, readFile, realpath, rm, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { AgentDetector } from '../../src/core/agentDetector.js';
@@ -55,5 +55,38 @@ describe('Propagator target resolution', () => {
     expect(changedFiles).toContain(claudePath);
     expect(changedFiles.every(file => file === claudePath || file === agentsPath)).toBe(true);
     await expect(readFile(join(projectDir, '.aider.conf.yml'), 'utf8')).rejects.toThrow();
+  });
+
+  it('can alias CLAUDE.md to AGENTS.md when rules_alias is enabled', async () => {
+    const projectDir = await createProjectDir();
+    await writeFile(
+      join(projectDir, 'agents.md'),
+      [
+        '---',
+        'targets:',
+        '  - claude',
+        '  - cursor',
+        'rules_alias: agents',
+        '---',
+        '# Agent Configuration',
+        '',
+        '## General',
+        '- Shared instructions',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+
+    const propagator = new Propagator();
+    const result = await propagator.syncAgentsFile(projectDir);
+
+    expect(result.success).toBe(true);
+    expect(result.warnings).toEqual([]);
+    expect(await readFile(join(projectDir, 'AGENTS.md'), 'utf8')).toContain('Shared instructions');
+    expect(await readFile(join(projectDir, 'AGENTS.md'), 'utf8')).not.toContain('Claude Configuration');
+    expect((await lstat(join(projectDir, 'CLAUDE.md'))).isSymbolicLink()).toBe(true);
+    expect(await realpath(join(projectDir, 'CLAUDE.md'))).toBe(
+      await realpath(join(projectDir, 'AGENTS.md')),
+    );
   });
 });

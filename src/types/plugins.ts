@@ -1,4 +1,4 @@
-import type { SkillInfo } from './skills.js';
+import type { SkillInfo, SkillInstallResult } from './skills.js';
 import type { MCPServerConfig } from './index.js';
 
 /**
@@ -69,7 +69,7 @@ export interface InstalledPlugin {
   installedAt: string;
   scope: 'project' | 'global';
   components: {
-    skills: Array<{ name: string; agent: string; path: string }>;
+    skills: Array<{ name: string; agent: string } & SkillInstallResult>;
     mcpServers: Array<{ name: string; agent: string }>;
   };
   warnings: string[];
@@ -92,6 +92,7 @@ export interface PluginInstallOptions {
   from?: string | undefined;
   yes?: boolean | undefined;
   list?: boolean | undefined;
+  copySkills?: boolean | undefined;
 }
 
 /**
@@ -100,7 +101,7 @@ export interface PluginInstallOptions {
 export interface PluginInstallResult {
   plugin: NormalizedPlugin;
   skills: {
-    installed: Array<{ name: string; agent: string; path: string }>;
+    installed: Array<{ name: string; agent: string } & SkillInstallResult>;
     skipped: Array<{ name: string; reason: string }>;
   };
   mcpServers: {

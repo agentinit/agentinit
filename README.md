@@ -96,6 +96,7 @@ agentinit apply                        # Sync + project skills + managed ignore 
 agentinit apply --agent claude cursor  # Target specific agents
 agentinit apply --dry-run              # Preview changes
 agentinit apply --backup               # Create sibling .agentinit.backup files
+agentinit apply --copy-skills          # Copy project skills instead of using canonical symlink installs
 agentinit apply --no-skills            # Skip project-owned skills
 agentinit apply --gitignore-local      # Write ignore entries to .git/info/exclude
 ```
@@ -170,16 +171,21 @@ Install, list, and remove reusable agent skills from local paths or GitHub repos
 # Inspect a source before installing
 agentinit skills add owner/repo --list
 
-# Install all discovered skills for detected agents
+# Install all discovered skills for detected agents using canonical storage
 agentinit skills add ./skills
 
 # Install selected skills globally for a specific agent
 agentinit skills add owner/repo --global --agent claude --skill openai-docs
 
+# Force copied installs instead of canonical symlink installs
+agentinit skills add ./skills --copy
+
 # Review and clean up installed skills
 agentinit skills list
 agentinit skills remove openai-docs
 ```
+
+Skills are installed into a canonical store by default: project installs use `.agents/skills/`, and global installs use `~/.agents/skills/`. Agent-specific paths are symlinked to that store when they differ. Use `--copy` or `--copy-skills` to force independent copies instead.
 
 ### `agentinit plugins`
 
@@ -198,6 +204,7 @@ agentinit plugins install code-review --from claude
 # Install from GitHub or a local path
 agentinit plugins install owner/repo
 agentinit plugins install ./plugins/code-review
+agentinit plugins install ./plugins/code-review --copy-skills
 
 # Inspect and remove installed plugins
 agentinit plugins list
@@ -235,6 +242,8 @@ your-project/
 ├── CLAUDE.md                 # Claude-specific config (synced)
 ├── .cursorrules              # Cursor-specific config (synced)
 ├── AGENTS.md                 # Shared AGENTS.md standard for supporting agents
+├── .agents/skills/           # Canonical project skill storage
+├── .claude/skills/           # Claude skill view (often symlinks into .agents/skills)
 ├── .windsurfrules            # Windsurf-specific config (synced)
 └── .agentinit/               # Managed state and internal backups
 ```
@@ -246,6 +255,9 @@ your-project/
 The `agents.md` file is the single source of truth for all agent configurations:
 
 ```markdown
+---
+rules_alias: agents # optional: make AGENTS.md canonical and symlink CLAUDE.md to it
+---
 # Agent Configuration for MyProject
 
 **Stack**: typescript with next.js
@@ -274,6 +286,8 @@ This is a TypeScript project using Next.js...
 ### Supported Agents
 
 `AGENTS.md` is a shared standard used by multiple tools, so AgentInit does not use it by itself as an auto-detection signal.
+
+When `rules_alias: agents` is set in `agents.md` frontmatter, AgentInit writes shared rules to `AGENTS.md` and makes `CLAUDE.md` a symlinked alias when Claude is targeted. If symlink creation fails, AgentInit falls back to writing a copied `CLAUDE.md`.
 
 | Agent | Config File | Status |
 |-------|-------------|--------|

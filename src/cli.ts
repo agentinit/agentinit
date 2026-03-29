@@ -55,6 +55,7 @@ program
   .option('-d, --dry-run', 'Preview changes without writing files')
   .option('-b, --backup', 'Create sibling .agentinit.backup files before overwriting')
   .option('--no-skills', 'Disable project-owned skills propagation')
+  .option('--copy-skills', 'Copy project-owned skills instead of using canonical symlink installs')
   .option('--no-gitignore', 'Disable managed ignore block updates')
   .option('--gitignore-local', 'Write ignore entries to .git/info/exclude instead of .gitignore')
   .allowUnknownOption(true)

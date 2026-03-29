@@ -11,6 +11,7 @@ export interface ManagedEntry {
   source: ManagedEntrySource;
   existedBefore: boolean;
   backupPath?: string;
+  backupLinkTarget?: string;
   ignorePath?: string;
 }
 
@@ -33,13 +34,18 @@ export interface RevertSummary {
 const MANAGED_STATE_FILE = 'managed-state.json';
 const BACKUPS_DIR = 'backups';
 
+type FilesystemEntryKind = ManagedEntryKind | 'symlink';
+
 function toPosixPath(value: string): string {
   return value.replace(/\\/g, '/');
 }
 
-async function pathType(targetPath: string): Promise<ManagedEntryKind | null> {
+async function pathType(targetPath: string): Promise<FilesystemEntryKind | null> {
   try {
-    const stat = await fs.stat(targetPath);
+    const stat = await fs.lstat(targetPath);
+    if (stat.isSymbolicLink()) {
+      return 'symlink';
+    }
     return stat.isDirectory() ? 'directory' : 'file';
   } catch {
     return null;
@@ -56,6 +62,10 @@ async function copyDirectory(src: string, dest: string): Promise<void> {
 
     if (entry.isDirectory()) {
       await copyDirectory(srcPath, destPath);
+    } else if (entry.isSymbolicLink()) {
+      const target = await fs.readlink(srcPath);
+      await fs.mkdir(dirname(destPath), { recursive: true });
+      await fs.symlink(target, destPath);
     } else {
       await fs.mkdir(dirname(destPath), { recursive: true });
       await fs.copyFile(srcPath, destPath);
@@ -71,7 +81,10 @@ async function copyPath(src: string, dest: string): Promise<void> {
 
   await fs.mkdir(dirname(dest), { recursive: true });
 
-  if (type === 'directory') {
+  if (type === 'symlink') {
+    const target = await fs.readlink(src);
+    await fs.symlink(target, dest);
+  } else if (type === 'directory') {
     await copyDirectory(src, dest);
   } else {
     await fs.copyFile(src, dest);
@@ -132,9 +145,22 @@ export class ManagedStateStore {
     return this.state.entries.find(entry => entry.path === relativePath);
   }
 
-  private async createBackup(targetPath: string): Promise<string | undefined> {
-    if (!(await fileExists(targetPath))) {
-      return undefined;
+  private async createBackup(targetPath: string): Promise<{
+    backupPath?: string;
+    backupLinkTarget?: string;
+  }> {
+    const type = await pathType(targetPath);
+    if (!type) {
+      return {};
+    }
+
+    if (type === 'symlink') {
+      try {
+        const backupLinkTarget = await fs.readlink(targetPath);
+        return { backupLinkTarget };
+      } catch {
+        return {};
+      }
     }
 
     const relativeTargetPath = this.normalizeRelativePath(targetPath);
@@ -144,7 +170,7 @@ export class ManagedStateStore {
       await copyPath(targetPath, backupPath);
     }
 
-    return this.normalizeRelativePath(backupPath);
+    return { backupPath: this.normalizeRelativePath(backupPath) };
   }
 
   async trackGeneratedPath(
@@ -164,14 +190,15 @@ export class ManagedStateStore {
     }
 
     const existedBefore = await fileExists(targetPath);
-    const backupPath = existedBefore ? await this.createBackup(targetPath) : undefined;
+    const backup = existedBefore ? await this.createBackup(targetPath) : {};
 
     const entry: ManagedEntry = {
       path: this.normalizeRelativePath(targetPath),
       kind: options.kind,
       source: options.source,
       existedBefore,
-      ...(backupPath ? { backupPath } : {}),
+      ...(backup.backupPath ? { backupPath: backup.backupPath } : {}),
+      ...(backup.backupLinkTarget ? { backupLinkTarget: backup.backupLinkTarget } : {}),
       ...(options.ignorePath ? { ignorePath: this.normalizeRelativePath(options.ignorePath, true) } : {}),
     };
 
@@ -219,8 +246,16 @@ export class ManagedStateStore {
     for (const entry of entries) {
       const absolutePath = resolve(this.projectPath, entry.path);
       const backupPath = entry.backupPath ? resolve(this.projectPath, entry.backupPath) : null;
+      const backupLinkTarget = entry.backupLinkTarget;
 
-      if (entry.existedBefore && backupPath && (await fileExists(backupPath))) {
+      if (entry.existedBefore && backupLinkTarget !== undefined) {
+        if (!options.dryRun) {
+          await fs.rm(absolutePath, { recursive: true, force: true }).catch(() => {});
+          await fs.mkdir(dirname(absolutePath), { recursive: true });
+          await fs.symlink(backupLinkTarget, absolutePath);
+        }
+        summary.restored++;
+      } else if (entry.existedBefore && backupPath && (await fileExists(backupPath))) {
         if (!options.dryRun) {
           await fs.rm(absolutePath, { recursive: true, force: true }).catch(() => {});
           await copyPath(backupPath, absolutePath);

@@ -153,21 +153,43 @@ export function registerSkillsCommand(program: Command): void {
         return;
       }
 
-      // Group by agent
-      const byAgent = new Map<string, typeof installed>();
+      const bySkill = new Map<string, {
+        name: string;
+        description: string;
+        path: string;
+        scope: 'project' | 'global';
+        mode: 'copy' | 'symlink';
+        isSymlink: boolean;
+        agents: Set<string>;
+      }>();
+
       for (const skill of installed) {
-        const list = byAgent.get(skill.agent) || [];
-        list.push(skill);
-        byAgent.set(skill.agent, list);
+        const canonicalPath = skill.canonicalPath || skill.path;
+        const key = `${skill.scope}:${canonicalPath}`;
+        const existing = bySkill.get(key) || {
+          name: skill.name,
+          description: skill.description,
+          path: canonicalPath,
+          scope: skill.scope,
+          mode: skill.mode,
+          isSymlink: skill.isSymlink,
+          agents: new Set<string>(),
+        };
+
+        existing.isSymlink = existing.isSymlink || skill.isSymlink;
+        if (skill.mode === 'symlink') {
+          existing.mode = 'symlink';
+        }
+        existing.agents.add(agentManager.getAgentById(skill.agent)?.name || skill.agent);
+        bySkill.set(key, existing);
       }
 
-      for (const [agent, agentSkills] of byAgent) {
-        logger.info(`\n  ${green(agent)}`);
-        for (const skill of agentSkills) {
-          const symlink = skill.isSymlink ? ' (symlink)' : '';
-          const scope = skill.scope === 'global' ? ' [global]' : '';
-          logger.info(`    ${green(skill.name)} - ${skill.description}${scope}${symlink}`);
-        }
+      for (const skill of bySkill.values()) {
+        const mode = skill.mode === 'symlink' ? ' (canonical)' : '';
+        const scope = skill.scope === 'global' ? ' [global]' : '';
+        logger.info(`\n  ${green(skill.name)} - ${skill.description}${scope}${mode}`);
+        logger.info(`    Path: ${relative(process.cwd(), skill.path) || skill.path}`);
+        logger.info(`    Agents: ${[...skill.agents].join(', ')}`);
       }
     });
 
@@ -210,7 +232,14 @@ export function registerSkillsCommand(program: Command): void {
         logger.warn(`Not found: ${result.notFound.join(', ')}`);
       }
 
-      if (result.removed.length === 0 && result.notFound.length === 0) {
+      if (result.skipped.length > 0) {
+        logger.warn(`Skipped: ${result.skipped.length}`);
+        for (const entry of result.skipped) {
+          logger.info(`  ${entry.name}: ${entry.reason}`);
+        }
+      }
+
+      if (result.removed.length === 0 && result.notFound.length === 0 && result.skipped.length === 0) {
         logger.info('Nothing to remove.');
       }
     });

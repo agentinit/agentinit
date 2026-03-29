@@ -1,7 +1,8 @@
+import { promises as fs } from 'fs';
 import { resolve } from 'path';
 import matter from 'gray-matter';
 import * as yaml from 'js-yaml';
-import { copyFile, fileExists, readFileIfExists, writeFile } from '../utils/fs.js';
+import { copyFile, createRelativeSymlink, fileExists, readFileIfExists, readSymlinkTarget, writeFile } from '../utils/fs.js';
 import { AgentDetector } from './agentDetector.js';
 import type { ManagedStateStore } from './managedState.js';
 
@@ -21,12 +22,15 @@ export interface SyncResult {
     file: string;
   }>;
   errors: string[];
+  warnings: string[];
   resolvedTargets: string[];
 }
 
 interface SyncOutput {
   path: string;
-  content: string;
+  kind?: 'file' | 'symlink';
+  content?: string;
+  target?: string;
   ignorePath?: string;
 }
 
@@ -36,7 +40,9 @@ interface AgentAdapter {
 
 interface GeneratedFile {
   path: string;
-  content: string;
+  kind: 'file' | 'symlink';
+  content?: string;
+  target?: string;
   agents: string[];
   ignorePath: string;
 }
@@ -57,6 +63,12 @@ function parseTargets(value: unknown): string[] {
   return [];
 }
 
+function parseRulesAlias(value: unknown): 'agents' | null {
+  return typeof value === 'string' && value.trim().toLowerCase() === 'agents'
+    ? 'agents'
+    : null;
+}
+
 export class Propagator {
   private readonly agentAdapters = new Map<string, AgentAdapter>();
 
@@ -69,6 +81,7 @@ export class Propagator {
       success: true,
       changes: [],
       errors: [],
+      warnings: [],
       resolvedTargets: [],
     };
 
@@ -90,14 +103,16 @@ export class Propagator {
 
       const parsed = matter(agentsContent);
       const targets = await this.resolveTargets(projectPath, options.targets, parsed.data.targets);
+      const rulesAlias = parseRulesAlias(parsed.data.rules_alias);
       result.resolvedTargets = targets;
 
-      const generatedFiles = await this.buildGeneratedFiles(projectPath, parsed.content, targets);
+      const generatedFiles = await this.buildGeneratedFiles(projectPath, parsed.content, targets, rulesAlias);
 
       for (const generatedFile of generatedFiles) {
         try {
           const syncResult = await this.writeGeneratedFile(projectPath, generatedFile, options);
           result.changes.push(...syncResult.changes);
+          result.warnings.push(...syncResult.warnings);
           if (!syncResult.success) {
             result.errors.push(...syncResult.errors);
           }
@@ -146,10 +161,30 @@ export class Propagator {
     projectPath: string,
     content: string,
     targets: string[],
+    rulesAlias: 'agents' | null,
   ): Promise<GeneratedFile[]> {
     const generatedFiles = new Map<string, GeneratedFile>();
 
+    if (rulesAlias === 'agents' && targets.includes('claude')) {
+      this.mergeGeneratedFile(projectPath, generatedFiles, {
+        path: 'AGENTS.md',
+        kind: 'file',
+        content,
+      }, 'claude');
+
+      this.mergeGeneratedFile(projectPath, generatedFiles, {
+        path: 'CLAUDE.md',
+        kind: 'symlink',
+        target: 'AGENTS.md',
+        content,
+      }, 'claude');
+    }
+
     for (const target of targets) {
+      if (target === 'claude' && rulesAlias === 'agents') {
+        continue;
+      }
+
       const adapter = this.agentAdapters.get(target);
       if (!adapter) {
         throw new Error(`No adapter found for agent: ${target}`);
@@ -157,27 +192,48 @@ export class Propagator {
 
       const outputs = await adapter.buildOutputs(projectPath, content);
       for (const output of outputs) {
-        const outputPath = resolve(projectPath, output.path);
-        const existing = generatedFiles.get(outputPath);
-
-        if (existing) {
-          if (existing.content !== output.content) {
-            throw new Error(`Conflicting generated content for ${output.path}`);
-          }
-          existing.agents.push(target);
-          continue;
-        }
-
-        generatedFiles.set(outputPath, {
-          path: outputPath,
-          content: normalizeContent(output.content),
-          agents: [target],
-          ignorePath: output.ignorePath ?? output.path,
-        });
+        this.mergeGeneratedFile(projectPath, generatedFiles, output, target);
       }
     }
 
     return [...generatedFiles.values()];
+  }
+
+  private mergeGeneratedFile(
+    projectPath: string,
+    generatedFiles: Map<string, GeneratedFile>,
+    output: SyncOutput,
+    agentId: string,
+  ): void {
+    const outputPath = resolve(projectPath, output.path);
+    const nextKind = output.kind ?? 'file';
+    const nextContent = nextKind === 'file' || output.content !== undefined
+      ? normalizeContent(output.content || '')
+      : undefined;
+    const existing = generatedFiles.get(outputPath);
+
+    if (existing) {
+      if (existing.kind !== nextKind) {
+        throw new Error(`Conflicting generated output type for ${output.path}`);
+      }
+      if (existing.target !== output.target) {
+        throw new Error(`Conflicting generated symlink target for ${output.path}`);
+      }
+      if (existing.content !== nextContent) {
+        throw new Error(`Conflicting generated content for ${output.path}`);
+      }
+      existing.agents.push(agentId);
+      return;
+    }
+
+    generatedFiles.set(outputPath, {
+      path: outputPath,
+      kind: nextKind,
+      agents: [agentId],
+      ignorePath: output.ignorePath ?? output.path,
+      ...(nextContent !== undefined ? { content: nextContent } : {}),
+      ...(output.target !== undefined ? { target: output.target } : {}),
+    });
   }
 
   private async writeGeneratedFile(
@@ -189,11 +245,18 @@ export class Propagator {
       success: true,
       changes: [],
       errors: [],
+      warnings: [],
       resolvedTargets: [],
     };
 
     const exists = await fileExists(generatedFile.path);
-    const existingContent = exists ? await readFileIfExists(generatedFile.path) : null;
+    const existingStats = exists ? await fs.lstat(generatedFile.path).catch(() => null) : null;
+    const existingContent = exists && !existingStats?.isSymbolicLink()
+      ? await readFileIfExists(generatedFile.path)
+      : null;
+    const existingTarget = existingStats?.isSymbolicLink()
+      ? await readSymlinkTarget(generatedFile.path)
+      : null;
 
     if (options.managedState && !options.dryRun) {
       await options.managedState.trackGeneratedPath(generatedFile.path, {
@@ -203,7 +266,21 @@ export class Propagator {
       });
     }
 
-    if (exists && existingContent === generatedFile.content) {
+    if (
+      generatedFile.kind === 'file' &&
+      exists &&
+      !existingStats?.isSymbolicLink() &&
+      existingContent === generatedFile.content
+    ) {
+      return result;
+    }
+
+    if (
+      generatedFile.kind === 'symlink' &&
+      exists &&
+      existingStats?.isSymbolicLink() &&
+      existingTarget === generatedFile.target
+    ) {
       return result;
     }
 
@@ -221,7 +298,24 @@ export class Propagator {
     }
 
     if (!options.dryRun) {
-      await writeFile(generatedFile.path, generatedFile.content);
+      if (generatedFile.kind === 'file') {
+        if (existingStats?.isSymbolicLink()) {
+          await fs.rm(generatedFile.path, { force: true }).catch(() => {});
+        }
+        await writeFile(generatedFile.path, generatedFile.content || '');
+      } else {
+        const symlinkCreated = await createRelativeSymlink(
+          resolve(projectPath, generatedFile.target || ''),
+          generatedFile.path,
+        );
+
+        if (!symlinkCreated) {
+          await writeFile(generatedFile.path, generatedFile.content || '');
+          result.warnings.push(
+            `Could not create symlink for ${generatedFile.path}; wrote a copied file instead.`,
+          );
+        }
+      }
     }
 
     result.changes.push({

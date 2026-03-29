@@ -46,6 +46,10 @@ export async function syncCommand(options: SyncOptions): Promise<void> {
     
     if (result.success) {
       spinner.succeed('Synchronization complete');
+
+      if (result.warnings.length > 0) {
+        result.warnings.forEach(warning => logger.warning(warning));
+      }
       
       if (result.changes.length === 0) {
         logger.info('No changes needed - all configurations are up to date');
@@ -71,6 +75,9 @@ export async function syncCommand(options: SyncOptions): Promise<void> {
       
       for (const error of result.errors) {
         logger.error(error);
+      }
+      for (const warning of result.warnings) {
+        logger.warning(warning);
       }
       
       if (result.changes.length > 0) {

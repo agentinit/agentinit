@@ -1,19 +1,29 @@
 import { resolve, join, relative } from 'path';
 import { promises as fs } from 'fs';
-import { tmpdir } from 'os';
+import { homedir, tmpdir } from 'os';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import matter from 'gray-matter';
-import { readFileIfExists, listFiles, fileExists, isDirectory } from '../utils/fs.js';
+import {
+  createRelativeSymlink,
+  fileExists,
+  isDirectory,
+  listFiles,
+  pathsReferToSameLocation,
+  readFileIfExists,
+  resolveRealPathOrSelf,
+} from '../utils/fs.js';
 import { AgentManager } from './agentManager.js';
 import type { Agent } from '../agents/Agent.js';
 import type {
   SkillInfo,
   InstalledSkill,
+  SkillInstallResult,
   SkillsAddOptions,
   SkillsAddResult,
   SkillsListOptions,
   SkillsRemoveOptions,
+  SkillsRemoveResult,
   SkillSource
 } from '../types/skills.js';
 
@@ -241,6 +251,140 @@ export class SkillsManager {
     return destPath;
   }
 
+  getCanonicalSkillsDir(projectPath: string, global: boolean = false): string {
+    return global
+      ? resolve(homedir(), '.agents/skills')
+      : resolve(projectPath, '.agents/skills');
+  }
+
+  async getInstallPlan(
+    skillName: string,
+    agent: Agent,
+    projectPath: string,
+    options: { global?: boolean; copy?: boolean } = {}
+  ): Promise<SkillInstallResult> {
+    const normalizedSkillName = this.normalizeSkillName(skillName);
+    const skillsDir = agent.getSkillsDir(projectPath, options.global);
+
+    if (!skillsDir) {
+      throw new Error(`No skills directory for ${agent.name}`);
+    }
+
+    const agentPath = this.resolveInstallPath(skillsDir, normalizedSkillName);
+    if (options.copy) {
+      return {
+        path: agentPath,
+        mode: 'copy',
+      };
+    }
+
+    const canonicalPath = this.resolveInstallPath(
+      this.getCanonicalSkillsDir(projectPath, options.global ?? false),
+      normalizedSkillName,
+    );
+
+    if (await pathsReferToSameLocation(canonicalPath, agentPath)) {
+      return {
+        path: canonicalPath,
+        canonicalPath,
+        mode: 'symlink',
+      };
+    }
+
+    return {
+      path: agentPath,
+      canonicalPath,
+      mode: 'symlink',
+    };
+  }
+
+  async installSkillForAgent(
+    skillPath: string,
+    skillName: string,
+    agent: Agent,
+    projectPath: string,
+    options: { global?: boolean; copy?: boolean } = {}
+  ): Promise<SkillInstallResult> {
+    const plan = await this.getInstallPlan(skillName, agent, projectPath, options);
+    const skillsDir = agent.getSkillsDir(projectPath, options.global);
+
+    if (!skillsDir) {
+      throw new Error(`No skills directory for ${agent.name}`);
+    }
+
+    if (plan.mode === 'copy') {
+      await this.installSkill(skillPath, skillName, skillsDir, true);
+      return plan;
+    }
+
+    const canonicalPath = plan.canonicalPath;
+    if (!canonicalPath) {
+      throw new Error(`Missing canonical path for ${skillName}`);
+    }
+
+    await this.cleanAndCreateDirectory(canonicalPath);
+    await this.copyDir(skillPath, canonicalPath);
+
+    if (plan.path === canonicalPath) {
+      return plan;
+    }
+
+    const symlinkCreated = await createRelativeSymlink(canonicalPath, plan.path);
+    if (!symlinkCreated) {
+      await this.cleanAndCreateDirectory(plan.path);
+      await this.copyDir(skillPath, plan.path);
+      return {
+        ...plan,
+        symlinkFailed: true,
+      };
+    }
+
+    return plan;
+  }
+
+  async installSkillFromContentForAgent(
+    skillName: string,
+    skillContent: string,
+    agent: Agent,
+    projectPath: string,
+    options: { global?: boolean; copy?: boolean } = {}
+  ): Promise<SkillInstallResult> {
+    const plan = await this.getInstallPlan(skillName, agent, projectPath, options);
+    const skillsDir = agent.getSkillsDir(projectPath, options.global);
+
+    if (!skillsDir) {
+      throw new Error(`No skills directory for ${agent.name}`);
+    }
+
+    if (plan.mode === 'copy') {
+      await this.installSkillFromContent(skillName, skillContent, skillsDir);
+      return plan;
+    }
+
+    const canonicalPath = plan.canonicalPath;
+    if (!canonicalPath) {
+      throw new Error(`Missing canonical path for ${skillName}`);
+    }
+
+    await this.cleanAndCreateDirectory(canonicalPath);
+    await fs.writeFile(join(canonicalPath, 'SKILL.md'), skillContent, 'utf8');
+
+    if (plan.path === canonicalPath) {
+      return plan;
+    }
+
+    const symlinkCreated = await createRelativeSymlink(canonicalPath, plan.path);
+    if (!symlinkCreated) {
+      await this.installSkillFromContent(skillName, skillContent, skillsDir);
+      return {
+        ...plan,
+        symlinkFailed: true,
+      };
+    }
+
+    return plan;
+  }
+
   private normalizeSkillName(skillName: string): string {
     const normalized = skillName.trim();
 
@@ -271,23 +415,25 @@ export class SkillsManager {
     return this.resolveInstallPath(targetDir, this.normalizeSkillName(skillName));
   }
 
+  private async cleanAndCreateDirectory(path: string): Promise<void> {
+    await fs.rm(path, { recursive: true, force: true }).catch(() => {});
+    await fs.mkdir(path, { recursive: true });
+  }
+
+  private isWithinPath(basePath: string, targetPath: string): boolean {
+    const relativePath = relative(resolve(basePath), resolve(targetPath));
+    return relativePath === '' || (
+      !relativePath.startsWith('..') &&
+      !relativePath.includes('/../') &&
+      !relativePath.includes('\\..\\')
+    );
+  }
+
   /**
    * Recursively copy a directory
    */
   private async copyDir(src: string, dest: string): Promise<void> {
-    await fs.mkdir(dest, { recursive: true });
-    const entries = await fs.readdir(src, { withFileTypes: true });
-
-    for (const entry of entries) {
-      const srcPath = join(src, entry.name);
-      const destPath = join(dest, entry.name);
-
-      if (entry.isDirectory()) {
-        await this.copyDir(srcPath, destPath);
-      } else {
-        await fs.copyFile(srcPath, destPath);
-      }
-    }
+    await fs.cp(src, dest, { recursive: true, dereference: true });
   }
 
   /**
@@ -337,8 +483,8 @@ export class SkillsManager {
       }
 
       const result: SkillsAddResult = { installed: [], skipped: [] };
+      const installableAgents: Agent[] = [];
 
-      const dirToAgents = new Map<string, Agent[]>();
       for (const agent of agents) {
         if (!agent.supportsSkills()) {
           for (const skill of skills) {
@@ -355,26 +501,25 @@ export class SkillsManager {
           continue;
         }
 
-        const existing = dirToAgents.get(skillsDir) || [];
-        existing.push(agent);
-        dirToAgents.set(skillsDir, existing);
+        installableAgents.push(agent);
       }
 
       for (const skill of skills) {
-        for (const [skillsDir, dirAgents] of dirToAgents) {
+        for (const agent of installableAgents) {
           try {
-            // For GitHub repos, always copy (symlinks to temp dirs would break)
-            const shouldCopy = options.copy || resolved.type === 'github';
-            const installedPath = await this.installSkill(
+            const installOptions = {
+              ...(options.global !== undefined ? { global: options.global } : {}),
+              ...(options.copy !== undefined ? { copy: options.copy } : {}),
+            };
+            const installed = await this.installSkillForAgent(
               skill.path,
               skill.name,
-              skillsDir,
-              shouldCopy
+              agent,
+              projectPath,
+              installOptions
             );
 
-            for (const agent of dirAgents) {
-              result.installed.push({ skill, agent: agent.id, path: installedPath });
-            }
+            result.installed.push({ skill, agent: agent.id, ...installed });
           } catch (error: any) {
             result.skipped.push({ skill, reason: error.message });
           }
@@ -395,6 +540,14 @@ export class SkillsManager {
    */
   async listInstalled(projectPath: string, options: SkillsListOptions = {}): Promise<InstalledSkill[]> {
     const agents = await this.getTargetAgents(projectPath, options);
+    return this.listInstalledForAgents(projectPath, agents, options);
+  }
+
+  private async listInstalledForAgents(
+    projectPath: string,
+    agents: Agent[],
+    options: SkillsListOptions = {}
+  ): Promise<InstalledSkill[]> {
     const installed: InstalledSkill[] = [];
 
     for (const agent of agents) {
@@ -430,9 +583,17 @@ export class SkillsManager {
 
           // Check if it's a symlink
           let isSymlink = false;
+          let canonicalPath: string | undefined;
           try {
             const stat = await fs.lstat(entryPath);
             isSymlink = stat.isSymbolicLink();
+            const canonicalBase = this.getCanonicalSkillsDir(projectPath, scope === 'global');
+            const resolvedEntryPath = await resolveRealPathOrSelf(entryPath);
+            if (this.isWithinPath(canonicalBase, resolvedEntryPath)) {
+              canonicalPath = resolvedEntryPath;
+            } else if (this.isWithinPath(canonicalBase, entryPath)) {
+              canonicalPath = resolve(entryPath);
+            }
           } catch {}
 
           installed.push({
@@ -441,7 +602,9 @@ export class SkillsManager {
             path: entryPath,
             agent: agent.id,
             scope,
-            isSymlink
+            isSymlink,
+            mode: canonicalPath ? 'symlink' : 'copy',
+            ...(canonicalPath ? { canonicalPath } : {}),
           });
         }
       }
@@ -457,47 +620,89 @@ export class SkillsManager {
     skillNames: string[],
     projectPath: string,
     options: SkillsRemoveOptions = {}
-  ): Promise<{ removed: string[]; notFound: string[] }> {
+  ): Promise<SkillsRemoveResult> {
     const agents = await this.getTargetAgents(projectPath, options);
+    const allAgents = this.agentManager.getAllAgents().filter(agent => agent.supportsSkills());
     const removed: string[] = [];
     const notFound: string[] = [];
+    const skipped: Array<{ name: string; reason: string }> = [];
     const namesLower = new Set(skillNames.map(n => n.toLowerCase()));
+    const targetAgentIds = new Set(agents.map(agent => agent.id));
+    const installed = await this.listInstalledForAgents(projectPath, allAgents, options);
+    const scopedInstalled = installed.filter(entry =>
+      options.global ? entry.scope === 'global' : entry.scope === 'project'
+    );
+    const targetedEntries = scopedInstalled.filter(entry =>
+      targetAgentIds.has(entry.agent) &&
+      namesLower.has(entry.name.toLowerCase())
+    );
+    const targetedKeys = new Set(
+      targetedEntries.map(entry => `${entry.agent}:${entry.scope}:${entry.path}:${entry.name}`)
+    );
+    const remainingEntries = installed.filter(
+      entry => !targetedKeys.has(`${entry.agent}:${entry.scope}:${entry.path}:${entry.name}`)
+    );
+    const removedPaths = new Set<string>();
+    const removedCanonicalPaths = new Set<string>();
 
-    for (const agent of agents) {
-      if (!agent.supportsSkills()) continue;
+    for (const entry of targetedEntries) {
+      const removedEntry = `${entry.agent}:${entry.name}`;
 
-      const scopes: Array<{ scope: 'project' | 'global'; dir: string | null }> = [];
-      if (!options.global) {
-        scopes.push({ scope: 'project', dir: agent.getSkillsDir(projectPath, false) });
-      }
-      if (options.global) {
-        scopes.push({ scope: 'global', dir: agent.getSkillsDir(projectPath, true) });
-      }
+      if (entry.canonicalPath && entry.path === entry.canonicalPath) {
+        const stillReferenced = remainingEntries.some(other =>
+          other.name.toLowerCase() === entry.name.toLowerCase() &&
+          other.canonicalPath === entry.canonicalPath
+        );
 
-      for (const { dir } of scopes) {
-        if (!dir || !(await fileExists(dir))) continue;
-
-        const entries = await listFiles(dir);
-        for (const entry of entries) {
-          if (!namesLower.has(entry.toLowerCase())) continue;
-
-          const entryPath = join(dir, entry);
-          try {
-            await fs.rm(entryPath, { recursive: true, force: true });
-            removed.push(`${agent.id}:${entry}`);
-          } catch {}
+        if (stillReferenced) {
+          skipped.push({
+            name: entry.name,
+            reason: `Shared canonical path still used by another agent: ${entry.canonicalPath}`,
+          });
+          continue;
         }
       }
+
+      if (!removedPaths.has(entry.path)) {
+        try {
+          await fs.rm(entry.path, { recursive: true, force: true });
+          removedPaths.add(entry.path);
+        } catch {
+          skipped.push({
+            name: entry.name,
+            reason: `Could not remove skill path: ${entry.path}`,
+          });
+          continue;
+        }
+      }
+
+      if (
+        entry.canonicalPath &&
+        entry.canonicalPath !== entry.path &&
+        !removedCanonicalPaths.has(entry.canonicalPath)
+      ) {
+        const stillReferenced = remainingEntries.some(other =>
+          other.name.toLowerCase() === entry.name.toLowerCase() &&
+          other.canonicalPath === entry.canonicalPath
+        );
+
+        if (!stillReferenced) {
+          await fs.rm(entry.canonicalPath, { recursive: true, force: true }).catch(() => {});
+          removedCanonicalPaths.add(entry.canonicalPath);
+        }
+      }
+
+      removed.push(removedEntry);
     }
 
     // Check which names were not found anywhere
-    const removedNames = new Set(removed.map(r => r.split(':')[1]?.toLowerCase()));
+    const foundNames = new Set(targetedEntries.map(entry => entry.name.toLowerCase()));
     for (const name of skillNames) {
-      if (!removedNames.has(name.toLowerCase())) {
+      if (!foundNames.has(name.toLowerCase())) {
         notFound.push(name);
       }
     }
 
-    return { removed, notFound };
+    return { removed, notFound, skipped };
   }
 }

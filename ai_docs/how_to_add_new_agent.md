@@ -200,6 +200,21 @@ interface ConfigFileDefinition {
 
 Important: `AGENTS.md` is a cross-agent standard, not a reliable auto-detection signal for any single agent. If your agent supports `AGENTS.md`, treat it as a generated/shared output format, and use only agent-specific files for detection.
 
+### 4.1 Skills Support
+
+If your agent supports reusable skills, define `capabilities.skills = true` and add `skillPaths` to the agent definition.
+
+```typescript
+skillPaths: {
+  project: '.youragent/skills/',
+  global: '~/.youragent/skills/',
+}
+```
+
+`skillPaths` should describe the agent's native view of installed skills. AgentInit may install project-owned skills into the canonical project store at `.agents/skills/` or the canonical global store at `~/.agents/skills/`, then symlink that canonical copy into the agent-specific path when the paths differ. Agents that already read from `.agents/skills/` can point `skillPaths.project` there directly.
+
+Do not use shared skill directories by themselves as detection signals. As with `AGENTS.md`, shared skill paths can exist because another tool or agent created them.
+
 **Benefits:**
 - Better error messages showing file purposes
 - Support for Cursor's modern MDC system with better organization and scoping

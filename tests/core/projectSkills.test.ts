@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'fs/promises';
+import { mkdtemp, mkdir, readFile, rm, writeFile, lstat, realpath } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { ManagedStateStore } from '../../src/core/managedState.js';
@@ -28,7 +28,7 @@ describe('applyProjectSkills', () => {
     );
   }
 
-  it('installs project-owned skills for supported targets and dedupes shared directories', async () => {
+  it('installs project-owned skills into canonical locations for supported targets', async () => {
     const projectDir = await createProjectDir();
     await createSkill(join(projectDir, '.agentinit/skills/shared-skill'), 'shared-skill', 'Shared skill');
     await createSkill(join(projectDir, 'skills/roo-skill'), 'roo-skill', 'Roo skill');
@@ -50,6 +50,14 @@ describe('applyProjectSkills', () => {
     expect(await readFile(join(projectDir, '.claude/skills/roo-skill/SKILL.md'), 'utf8')).toContain('name: roo-skill');
     expect(await readFile(join(projectDir, '.agents/skills/shared-skill/SKILL.md'), 'utf8')).toContain('name: shared-skill');
     expect(await readFile(join(projectDir, '.agents/skills/roo-skill/SKILL.md'), 'utf8')).toContain('name: roo-skill');
+    expect((await lstat(join(projectDir, '.claude/skills/shared-skill'))).isSymbolicLink()).toBe(true);
+    expect(await realpath(join(projectDir, '.claude/skills/shared-skill'))).toBe(
+      await realpath(join(projectDir, '.agents/skills/shared-skill')),
+    );
+
+    const claudeInstall = result.installed.find(entry => entry.agent === 'claude' && entry.skill.name === 'shared-skill');
+    expect(claudeInstall?.canonicalPath).toBe(join(projectDir, '.agents/skills/shared-skill'));
+    expect(claudeInstall?.mode).toBe('symlink');
 
     expect(managedState.getEntries()).toHaveLength(4);
     expect(managedState.getIgnorePaths()).toEqual(expect.arrayContaining([
@@ -58,5 +66,25 @@ describe('applyProjectSkills', () => {
       '.claude/skills/',
       '.agents/skills/',
     ]));
+  });
+
+  it('tracks generated project skill paths before install so revert removes them', async () => {
+    const projectDir = await createProjectDir();
+    await createSkill(join(projectDir, 'skills/shared-skill'), 'shared-skill', 'Shared skill');
+
+    const managedState = await ManagedStateStore.open(projectDir);
+    await applyProjectSkills(projectDir, ['claude', 'copilot'], managedState);
+    await managedState.save();
+
+    const summary = await managedState.revertAll();
+
+    expect(summary).toEqual({
+      restored: 0,
+      removed: 2,
+      backupsRemoved: 0,
+    });
+    await expect(lstat(join(projectDir, '.claude/skills/shared-skill'))).rejects.toThrow();
+    await expect(lstat(join(projectDir, '.agents/skills/shared-skill'))).rejects.toThrow();
+    expect(managedState.getEntries()).toEqual([]);
   });
 });

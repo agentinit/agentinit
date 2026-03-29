@@ -339,8 +339,8 @@ describe('PluginManager', () => {
       scope: 'project',
       components: {
         skills: [
-          { name: 'example-skill', agent: 'alpha', path: sharedSkillPath },
-          { name: 'example-skill', agent: 'beta', path: sharedSkillPath },
+          { name: 'example-skill', agent: 'alpha', path: sharedSkillPath, canonicalPath: sharedSkillPath, mode: 'symlink' },
+          { name: 'example-skill', agent: 'beta', path: sharedSkillPath, canonicalPath: sharedSkillPath, mode: 'symlink' },
         ],
         mcpServers: [],
       },
@@ -352,7 +352,7 @@ describe('PluginManager', () => {
     });
 
     expect(result.removed).toBe(false);
-    expect(result.details).toContain(`Skipped shared skill path: ${sharedSkillPath}`);
+    expect(result.details).toContain(`Skipped shared canonical skill path: ${sharedSkillPath}`);
 
     const registry = await manager.getRegistry(projectDir, false);
     expect(registry.plugins).toHaveLength(1);
