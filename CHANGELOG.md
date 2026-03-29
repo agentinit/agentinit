@@ -1,3 +1,10 @@
+# [1.11.0](https://github.com/agentinit/agentinit/compare/v1.10.0...v1.11.0) (2026-03-29)
+
+
+### Features
+
+* **skills:** prompt for install scope before agent selection ([6b75f27](https://github.com/agentinit/agentinit/commit/6b75f272e657f958de9a28c85d0635f9ccdbe431))
+
 # [1.10.0](https://github.com/agentinit/agentinit/compare/v1.9.0...v1.10.0) (2026-03-29)
 
 
