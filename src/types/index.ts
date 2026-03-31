@@ -224,6 +224,8 @@ export type {
   PluginRegistry,
   PluginInstallOptions,
   PluginInstallResult,
+  PluginInspectionResult,
+  NativePluginPreview,
   ClaudePluginManifest,
   CursorPluginManifest,
 } from './plugins.js';

@@ -17,10 +17,12 @@ import type {
   MarketplaceRegistry,
   MarketplacePlugin,
   NativePluginComponent,
+  NativePluginPreview,
   InstalledPlugin,
   PluginRegistry,
   PluginInstallOptions,
   PluginInstallResult,
+  PluginInspectionResult,
   ClaudePluginManifest,
   CursorPluginManifest,
 } from '../types/plugins.js';
@@ -77,6 +79,12 @@ type NativeClaudeInstallTarget = {
   features: string[];
 };
 
+type LoadedPluginContext = {
+  plugin: NormalizedPlugin & { nativeClaudeBundle?: ClaudeBundleSelection; resolvedPluginDir: string };
+  effectiveSource: PluginSource;
+  tempDir: string | null;
+};
+
 type ClaudeInstalledPluginsState = {
   version: 2;
   plugins: Record<string, Array<{
@@ -91,10 +99,44 @@ type ClaudeInstalledPluginsState = {
 export class PluginManager {
   private agentManager: AgentManager;
   private skillsManager: SkillsManager;
+  private preparedInstallContexts = new Map<string, LoadedPluginContext>();
 
   constructor(agentManager?: AgentManager) {
     this.agentManager = agentManager || new AgentManager();
     this.skillsManager = new SkillsManager(this.agentManager);
+  }
+
+  private getPreparedInstallKey(source: string, from?: string): string {
+    return `${from || ''}\n${source}`;
+  }
+
+  private async cleanupLoadedPluginContext(context: LoadedPluginContext | null | undefined): Promise<void> {
+    if (context?.tempDir) {
+      await fs.rm(context.tempDir, { recursive: true, force: true }).catch(() => {});
+    }
+  }
+
+  private async storePreparedInstallContext(source: string, from: string | undefined, context: LoadedPluginContext): Promise<void> {
+    const key = this.getPreparedInstallKey(source, from);
+    const existing = this.preparedInstallContexts.get(key);
+    this.preparedInstallContexts.set(key, context);
+    if (existing && existing !== context) {
+      await this.cleanupLoadedPluginContext(existing);
+    }
+  }
+
+  private takePreparedInstallContext(source: string, from?: string): LoadedPluginContext | null {
+    const key = this.getPreparedInstallKey(source, from);
+    const existing = this.preparedInstallContexts.get(key) || null;
+    if (existing) {
+      this.preparedInstallContexts.delete(key);
+    }
+    return existing;
+  }
+
+  async discardPreparedPlugin(source: string, options: Pick<PluginInstallOptions, 'from'> = {}): Promise<void> {
+    const context = this.takePreparedInstallContext(source, options.from);
+    await this.cleanupLoadedPluginContext(context);
   }
 
   private parseGitHubRepo(url: string): { owner: string; repo: string } | null {
@@ -262,6 +304,111 @@ export class PluginManager {
     };
   }
 
+  private async loadPluginContext(
+    source: string,
+    options: Pick<PluginInstallOptions, 'from'> = {},
+  ): Promise<LoadedPluginContext> {
+    const resolved = this.resolveSource(source, { from: options.from });
+    let effectiveSource = resolved;
+    let pluginDir: string;
+    let tempDir: string | null = null;
+    const resolutionWarnings: string[] = [];
+
+    if (resolved.type === 'marketplace') {
+      try {
+        pluginDir = await this.resolveMarketplacePlugin(
+          resolved.pluginName!,
+          resolved.marketplace || 'claude'
+        );
+      } catch (error) {
+        if (!(error instanceof MarketplacePluginNotFoundError)) {
+          throw error;
+        }
+
+        const fallbackSource = this.deriveGitHubFallbackSource(source, resolved.marketplace);
+        if (!fallbackSource || !fallbackSource.url) {
+          throw error;
+        }
+
+        const fallbackUrl = this.formatGitHubRepoUrl(fallbackSource) || fallbackSource.url.replace(/\.git$/, '');
+        resolutionWarnings.push(error.message);
+        resolutionWarnings.push(
+          `Marketplace lookup failed; trying unverified GitHub repository ${fallbackUrl} instead.`
+        );
+
+        try {
+          tempDir = await this.skillsManager.cloneRepo(fallbackSource.url);
+        } catch (fallbackError) {
+          throw new Error(
+            `${error.message} Tried unverified GitHub repository ${fallbackUrl} but failed: ${fallbackError instanceof Error ? fallbackError.message : 'Unknown error'}`
+          );
+        }
+
+        effectiveSource = {
+          ...fallbackSource,
+          ...(resolved.pluginName ? { pluginName: resolved.pluginName } : {}),
+        };
+        pluginDir = tempDir;
+      }
+    } else if (resolved.type === 'github') {
+      if (!resolved.url) throw new Error(`Invalid source: ${source}`);
+      tempDir = await this.skillsManager.cloneRepo(resolved.url);
+      pluginDir = tempDir;
+    } else {
+      pluginDir = resolve(resolved.path || source);
+      if (!(await fileExists(pluginDir))) {
+        throw new Error(`Local path not found: ${pluginDir}`);
+      }
+    }
+
+    return {
+      plugin: await this.loadPluginFromDirectory(pluginDir, effectiveSource, resolutionWarnings),
+      effectiveSource,
+      tempDir,
+    };
+  }
+
+  private async buildPluginInspection(context: LoadedPluginContext): Promise<PluginInspectionResult> {
+    const nativeTarget = await this.getClaudeNativeInstallTarget(
+      context.plugin,
+      context.plugin.resolvedPluginDir,
+    );
+
+    return {
+      plugin: context.plugin,
+      nativePreview: nativeTarget ? this.toNativePluginPreview(nativeTarget) : null,
+    };
+  }
+
+  async preparePluginInstall(
+    source: string,
+    options: Pick<PluginInstallOptions, 'from'> = {},
+  ): Promise<PluginInspectionResult> {
+    const context = await this.loadPluginContext(source, options);
+
+    try {
+      const inspection = await this.buildPluginInspection(context);
+      await this.storePreparedInstallContext(source, options.from, context);
+      return inspection;
+    } catch (error) {
+      await this.cleanupLoadedPluginContext(context);
+      throw error;
+    }
+  }
+
+  async inspectPlugin(
+    source: string,
+    options: Pick<PluginInstallOptions, 'from'> = {},
+  ): Promise<PluginInspectionResult> {
+    const context = await this.loadPluginContext(source, options);
+
+    try {
+      return await this.buildPluginInspection(context);
+    } finally {
+      await this.cleanupLoadedPluginContext(context);
+    }
+  }
+
   private slugifyPluginNamespace(value: string): string {
     return value
       .trim()
@@ -370,6 +517,10 @@ export class PluginManager {
     const hasClaudeTarget = agents.some(agent => agent.id === 'claude');
     const featureLabel = nativeTarget.features.join(', ');
     if (!hasClaudeTarget) {
+      skipped.push({
+        agent: 'claude',
+        reason: `Claude Code was not selected; skipped native plugin components (${featureLabel}).`,
+      });
       warnings.push(
         `Claude Code-native plugin components detected (${featureLabel}), but no Claude Code target was selected; skipped native install.`
       );
@@ -417,6 +568,15 @@ export class PluginManager {
     warnings.push('Reload plugins in Claude Code with /reload-plugins to activate native plugin components.');
 
     return { installed, skipped, warnings };
+  }
+
+  private toNativePluginPreview(target: NativeClaudeInstallTarget): NativePluginPreview {
+    return {
+      agent: 'claude',
+      pluginKey: target.pluginKey,
+      installPath: target.installPath,
+      features: target.features,
+    };
   }
 
   private async removeNativeClaudePlugin(component: NativePluginComponent): Promise<boolean> {
@@ -965,63 +1125,12 @@ ${body.trim()}
     projectPath: string,
     options: PluginInstallOptions = {}
   ): Promise<PluginInstallResult> {
-    const resolved = this.resolveSource(source, { from: options.from });
-    let effectiveSource = resolved;
-    let pluginDir: string;
-    let tempDir: string | null = null;
-    const resolutionWarnings: string[] = [];
-
-    // 1. Resolve source to a local directory
-    if (resolved.type === 'marketplace') {
-      try {
-        pluginDir = await this.resolveMarketplacePlugin(
-          resolved.pluginName!,
-          resolved.marketplace || 'claude'
-        );
-      } catch (error) {
-        if (!(error instanceof MarketplacePluginNotFoundError)) {
-          throw error;
-        }
-
-        const fallbackSource = this.deriveGitHubFallbackSource(source, resolved.marketplace);
-        if (!fallbackSource || !fallbackSource.url) {
-          throw error;
-        }
-
-        const fallbackUrl = this.formatGitHubRepoUrl(fallbackSource) || fallbackSource.url.replace(/\.git$/, '');
-        resolutionWarnings.push(error.message);
-        resolutionWarnings.push(
-          `Marketplace lookup failed; trying unverified GitHub repository ${fallbackUrl} instead.`
-        );
-
-        try {
-          tempDir = await this.skillsManager.cloneRepo(fallbackSource.url);
-        } catch (fallbackError) {
-          throw new Error(
-            `${error.message} Tried unverified GitHub repository ${fallbackUrl} but failed: ${fallbackError instanceof Error ? fallbackError.message : 'Unknown error'}`
-          );
-        }
-
-        effectiveSource = {
-          ...fallbackSource,
-          ...(resolved.pluginName ? { pluginName: resolved.pluginName } : {}),
-        };
-        pluginDir = tempDir;
-      }
-    } else if (resolved.type === 'github') {
-      if (!resolved.url) throw new Error(`Invalid source: ${source}`);
-      tempDir = await this.skillsManager.cloneRepo(resolved.url);
-      pluginDir = tempDir;
-    } else {
-      pluginDir = resolve(resolved.path || source);
-      if (!(await fileExists(pluginDir))) {
-        throw new Error(`Local path not found: ${pluginDir}`);
-      }
-    }
+    const context = this.takePreparedInstallContext(source, options.from)
+      || await this.loadPluginContext(source, { from: options.from });
 
     try {
       // 2. Parse plugin
-      const plugin = await this.loadPluginFromDirectory(pluginDir, effectiveSource, resolutionWarnings);
+      const plugin = context.plugin;
 
       // 3. If --list, return early with contents
       if (options.list) {
@@ -1062,7 +1171,7 @@ ${body.trim()}
           name: plugin.name,
           version: plugin.version,
           description: plugin.description,
-          source: effectiveSource,
+          source: context.effectiveSource,
           format: plugin.format,
           installedAt: new Date().toISOString(),
           scope: options.global ? 'global' : 'project',
@@ -1084,9 +1193,7 @@ ${body.trim()}
         warnings: installWarnings,
       };
     } finally {
-      if (tempDir) {
-        await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
-      }
+      await this.cleanupLoadedPluginContext(context);
     }
   }
 

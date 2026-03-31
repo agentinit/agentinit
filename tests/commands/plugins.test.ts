@@ -1,12 +1,25 @@
 import { Command } from 'commander';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import prompts from 'prompts';
 import { registerPluginsCommand } from '../../src/commands/plugins.js';
 import { PluginManager } from '../../src/core/pluginManager.js';
 import { logger } from '../../src/utils/logger.js';
 
+vi.mock('prompts', () => ({
+  default: vi.fn(),
+}));
+
 describe('plugins command', () => {
+  const originalHome = process.env.HOME;
+
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.mocked(prompts).mockReset();
+    if (originalHome === undefined) {
+      delete process.env.HOME;
+    } else {
+      process.env.HOME = originalHome;
+    }
   });
 
   it('requires an explicit marketplace for plugins search', async () => {
@@ -46,5 +59,236 @@ describe('plugins command', () => {
     expect(PluginManager.prototype.listMarketplacePlugins).toHaveBeenCalledWith('claude', 'code', undefined);
     expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('Found 1 plugin(s):'));
     expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('agentinit plugins install claude/<name>'));
+  });
+
+  it('shows Claude-native warnings before prompting and prints install paths', async () => {
+    process.env.HOME = '/Users/tester';
+
+    const titleSpy = vi.spyOn(logger, 'title').mockImplementation(() => {});
+    const subtitleSpy = vi.spyOn(logger, 'subtitle').mockImplementation(() => {});
+    const infoSpy = vi.spyOn(logger, 'info').mockImplementation(() => {});
+    const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => {});
+
+    vi.spyOn(PluginManager.prototype, 'preparePluginInstall').mockResolvedValue({
+      plugin: {
+        name: 'codex',
+        version: '1.0.1',
+        description: 'Bundled Codex plugin',
+        format: 'claude',
+        source: { type: 'github', url: 'https://github.com/openai/codex-plugin-cc.git' },
+        skills: [
+          { name: 'codex-review', description: 'Review code with Codex', path: '/tmp/review.md' },
+        ],
+        mcpServers: [],
+        warnings: [
+          'Plugin "codex-plugin-cc" not found in OpenAI Skills marketplace.',
+          'Marketplace lookup failed; trying unverified GitHub repository https://github.com/openai/codex-plugin-cc instead.',
+          'Source "https://github.com/openai/codex-plugin-cc" is a Claude Code marketplace bundle; using bundled plugin "codex".',
+          'Hooks (hooks/) are Claude Code-specific',
+          'Agent definitions (agents/) are Claude Code-specific',
+        ],
+      },
+      nativePreview: {
+        agent: 'claude',
+        pluginKey: 'codex@agentinit-openai-codex',
+        installPath: '/Users/tester/.claude/plugins/cache/agentinit-openai-codex/codex/1.0.1',
+        features: ['commands', 'hooks', 'agents'],
+      },
+    });
+
+    vi.spyOn(PluginManager.prototype, 'groupAgentsBySkillsDir').mockResolvedValue([
+      {
+        dir: '.claude/skills/',
+        agents: [{ id: 'claude' } as any],
+        agentNames: ['Claude Code'],
+        compatibleAgents: [],
+        compatibleAgentNames: [],
+      },
+      {
+        dir: '.agents/skills/',
+        agents: [{ id: 'cursor' } as any, { id: 'copilot' } as any],
+        agentNames: ['Cursor IDE', 'GitHub Copilot'],
+        compatibleAgents: [],
+        compatibleAgentNames: [],
+      },
+    ]);
+
+    vi.mocked(prompts).mockResolvedValue({
+      groups: [['claude']],
+    } as never);
+
+    const installPluginSpy = vi.spyOn(PluginManager.prototype, 'installPlugin').mockResolvedValue({
+      plugin: {
+        name: 'codex',
+        version: '1.0.1',
+        description: 'Bundled Codex plugin',
+        format: 'claude',
+        source: { type: 'github', url: 'https://github.com/openai/codex-plugin-cc.git' },
+        skills: [
+          { name: 'codex-review', description: 'Review code with Codex', path: '/tmp/review.md' },
+        ],
+        mcpServers: [],
+        warnings: [
+          'Plugin "codex-plugin-cc" not found in OpenAI Skills marketplace.',
+          'Marketplace lookup failed; trying unverified GitHub repository https://github.com/openai/codex-plugin-cc instead.',
+          'Source "https://github.com/openai/codex-plugin-cc" is a Claude Code marketplace bundle; using bundled plugin "codex".',
+        ],
+      },
+      skills: {
+        installed: [
+          {
+            name: 'codex-review',
+            agent: 'claude',
+            path: `${process.cwd()}/.claude/skills/codex-review`,
+            canonicalPath: `${process.cwd()}/.agents/skills/codex-review`,
+            mode: 'symlink',
+          },
+        ],
+        skipped: [],
+      },
+      mcpServers: { applied: [], skipped: [] },
+      nativePlugins: {
+        installed: [
+          {
+            agent: 'claude',
+            pluginKey: 'codex@agentinit-openai-codex',
+            installPath: '/Users/tester/.claude/plugins/cache/agentinit-openai-codex/codex/1.0.1',
+          },
+        ],
+        skipped: [],
+      },
+      warnings: [
+        'Plugin "codex-plugin-cc" not found in OpenAI Skills marketplace.',
+        'Marketplace lookup failed; trying unverified GitHub repository https://github.com/openai/codex-plugin-cc instead.',
+        'Source "https://github.com/openai/codex-plugin-cc" is a Claude Code marketplace bundle; using bundled plugin "codex".',
+        'Claude Code-native plugin components detected (commands, hooks, agents); they will only work in Claude Code and install into ~/.claude/plugins.',
+        'Reload plugins in Claude Code with /reload-plugins to activate native plugin components.',
+      ],
+    });
+
+    const program = new Command();
+    registerPluginsCommand(program);
+
+    await program.parseAsync(['plugins', 'install', 'openai/codex-plugin-cc'], { from: 'user' });
+
+    expect(titleSpy).toHaveBeenCalledWith('🔌 AgentInit - Plugins');
+    expect(subtitleSpy).toHaveBeenCalledWith('Source');
+    expect(subtitleSpy).toHaveBeenCalledWith('Compatibility');
+    expect(vi.mocked(prompts)).toHaveBeenCalledOnce();
+    expect(vi.mocked(prompts).mock.calls[0]?.[0]).toMatchObject({
+      choices: [
+        expect.objectContaining({ selected: true }),
+        expect.objectContaining({ selected: true }),
+      ],
+    });
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Claude Code-only components detected: commands, hooks, agents'));
+    expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('Claude native install path: ~/.claude/plugins/cache/agentinit-openai-codex/codex/1.0.1'));
+    expect(installPluginSpy).toHaveBeenCalledWith(
+      'openai/codex-plugin-cc',
+      process.cwd(),
+      expect.objectContaining({ agents: ['claude'] }),
+    );
+    expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('Claude Code:'));
+    expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('.claude/skills'));
+  });
+
+  it('warns explicitly when Claude-native install is skipped after deselecting Claude', async () => {
+    process.env.HOME = '/Users/tester';
+
+    const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => {});
+    vi.spyOn(logger, 'info').mockImplementation(() => {});
+    vi.spyOn(logger, 'title').mockImplementation(() => {});
+    vi.spyOn(logger, 'subtitle').mockImplementation(() => {});
+
+    vi.spyOn(PluginManager.prototype, 'preparePluginInstall').mockResolvedValue({
+      plugin: {
+        name: 'codex',
+        version: '1.0.1',
+        description: 'Bundled Codex plugin',
+        format: 'claude',
+        source: { type: 'github', url: 'https://github.com/openai/codex-plugin-cc.git' },
+        skills: [
+          { name: 'codex-review', description: 'Review code with Codex', path: '/tmp/review.md' },
+        ],
+        mcpServers: [],
+        warnings: [],
+      },
+      nativePreview: {
+        agent: 'claude',
+        pluginKey: 'codex@agentinit-openai-codex',
+        installPath: '/Users/tester/.claude/plugins/cache/agentinit-openai-codex/codex/1.0.1',
+        features: ['commands', 'hooks', 'agents'],
+      },
+    });
+
+    vi.spyOn(PluginManager.prototype, 'groupAgentsBySkillsDir').mockResolvedValue([
+      {
+        dir: '.claude/skills/',
+        agents: [{ id: 'claude' } as any],
+        agentNames: ['Claude Code'],
+        compatibleAgents: [],
+        compatibleAgentNames: [],
+      },
+      {
+        dir: '.agents/skills/',
+        agents: [{ id: 'cursor' } as any],
+        agentNames: ['Cursor IDE'],
+        compatibleAgents: [],
+        compatibleAgentNames: [],
+      },
+    ]);
+
+    vi.mocked(prompts).mockResolvedValue({
+      groups: [['cursor']],
+    } as never);
+
+    vi.spyOn(PluginManager.prototype, 'installPlugin').mockResolvedValue({
+      plugin: {
+        name: 'codex',
+        version: '1.0.1',
+        description: 'Bundled Codex plugin',
+        format: 'claude',
+        source: { type: 'github', url: 'https://github.com/openai/codex-plugin-cc.git' },
+        skills: [
+          { name: 'codex-review', description: 'Review code with Codex', path: '/tmp/review.md' },
+        ],
+        mcpServers: [],
+        warnings: [],
+      },
+      skills: {
+        installed: [
+          {
+            name: 'codex-review',
+            agent: 'cursor',
+            path: `${process.cwd()}/.agents/skills/codex-review`,
+            canonicalPath: `${process.cwd()}/.agents/skills/codex-review`,
+            mode: 'symlink',
+          },
+        ],
+        skipped: [],
+      },
+      mcpServers: { applied: [], skipped: [] },
+      nativePlugins: {
+        installed: [],
+        skipped: [
+          {
+            agent: 'claude',
+            reason: 'Claude Code was not selected; skipped native plugin components (commands, hooks, agents).',
+          },
+        ],
+      },
+      warnings: [
+        'Claude Code-native plugin components detected (commands, hooks, agents), but no Claude Code target was selected; skipped native install.',
+      ],
+    });
+
+    const program = new Command();
+    registerPluginsCommand(program);
+
+    await program.parseAsync(['plugins', 'install', 'openai/codex-plugin-cc'], { from: 'user' });
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Skipped native plugin payload for claude: Claude Code was not selected; skipped native plugin components'),
+    );
   });
 });

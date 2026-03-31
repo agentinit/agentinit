@@ -1,9 +1,12 @@
 import { Command } from 'commander';
 import ora from 'ora';
+import prompts from 'prompts';
+import { dirname, relative } from 'path';
 import { green, dim, bold, cyan } from 'kleur/colors';
 import { logger } from '../utils/logger.js';
 import { PluginManager } from '../core/pluginManager.js';
 import { AgentManager } from '../core/agentManager.js';
+import type { PluginInspectionResult, PluginInstallResult } from '../types/plugins.js';
 
 export function registerPluginsCommand(program: Command): void {
   const marketplaceHelp = new PluginManager().getMarketplaceIds().join(', ');
@@ -32,13 +35,12 @@ export function registerPluginsCommand(program: Command): void {
       if (options.list) {
         const spinner = ora('Fetching plugin...').start();
         try {
-          const result = await pluginManager.installPlugin(source, process.cwd(), {
+          const preview = await pluginManager.inspectPlugin(source, {
             from: options.from,
-            list: true,
           });
 
           spinner.stop();
-          const p = result.plugin;
+          const p = preview.plugin;
 
           console.log('');
           logger.info(`${bold(p.name)} ${dim(`v${p.version}`)} ${dim(`[${p.format} format]`)}`);
@@ -59,16 +61,11 @@ export function registerPluginsCommand(program: Command): void {
             }
           }
 
-          if (p.warnings.length > 0) {
-            console.log('');
-            for (const w of p.warnings) {
-              logger.warn(w);
-            }
-          }
-
           if (p.skills.length === 0 && p.mcpServers.length === 0) {
             logger.info('  No portable components found (no skills or MCP servers).');
           }
+
+          renderPluginWarnings(preview, process.cwd());
         } catch (error) {
           spinner.fail('Failed to fetch plugin');
           logger.error(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -78,16 +75,42 @@ export function registerPluginsCommand(program: Command): void {
 
       // Interactive agent selection if not --yes and not --agent
       let agentIds = options.agent as string[] | undefined;
+      let preview: PluginInspectionResult | null = null;
+      let previewRendered = false;
       if (!agentIds && !options.yes) {
+        const previewSpinner = ora('Inspecting plugin...').start();
         try {
-          agentIds = await interactiveAgentSelect(pluginManager, process.cwd(), options.global);
+          preview = await pluginManager.preparePluginInstall(source, {
+            from: options.from,
+          });
+          previewSpinner.stop();
+          renderPluginWarnings(preview, process.cwd());
+          previewRendered = true;
+        } catch (error) {
+          previewSpinner.fail('Failed to inspect plugin');
+          logger.error(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+          return;
+        }
+
+        try {
+          agentIds = await interactiveAgentSelect(
+            pluginManager,
+            agentManager,
+            process.cwd(),
+            options.global,
+            preview,
+          );
           if (!agentIds || agentIds.length === 0) {
+            await pluginManager.discardPreparedPlugin(source, { from: options.from });
             logger.info('No agents selected. Aborting.');
             return;
           }
-        } catch {
+        } catch (error) {
           // Fallback to auto-detect if interactive fails (e.g., no TTY)
-          logger.info('Auto-detecting agents...');
+          logger.info('Interactive prompt unavailable. Auto-detecting agents...');
+          if (error instanceof Error && error.message) {
+            logger.debug(error.message);
+          }
         }
       }
 
@@ -109,50 +132,14 @@ export function registerPluginsCommand(program: Command): void {
 
         if (totalSkills === 0 && totalMcp === 0 && totalNative === 0) {
           spinner.warn(`Plugin "${p.name}" has no portable components to install.`);
-          if (result.warnings.length > 0) {
-            for (const w of result.warnings) {
-              logger.warn(w);
-            }
+          if (!previewRendered) {
+            renderPluginWarnings(result, process.cwd());
           }
           return;
         }
 
         spinner.succeed(`Installed plugin ${green(bold(p.name))} ${dim(`v${p.version}`)}`);
-
-        // Skills breakdown
-        if (totalSkills > 0) {
-          const byAgent = new Map<string, number>();
-          for (const item of result.skills.installed) {
-            byAgent.set(item.agent, (byAgent.get(item.agent) || 0) + 1);
-          }
-          for (const [agent, count] of byAgent) {
-            logger.info(`  ${agent}: ${green(String(count))} skill(s)`);
-          }
-
-          const copiedFallbacks = result.skills.installed.filter(item => item.symlinkFailed);
-          if (copiedFallbacks.length > 0) {
-            logger.warn(`Symlink creation failed for ${copiedFallbacks.length} skill install(s); copied the files instead.`);
-          }
-        }
-
-        // MCP breakdown
-        if (totalMcp > 0) {
-          const byAgent = new Map<string, string[]>();
-          for (const item of result.mcpServers.applied) {
-            const list = byAgent.get(item.agent) || [];
-            list.push(item.name);
-            byAgent.set(item.agent, list);
-          }
-          for (const [agent, servers] of byAgent) {
-            logger.info(`  ${agent}: ${cyan(String(servers.length))} MCP server(s) [${servers.join(', ')}]`);
-          }
-        }
-
-        if (totalNative > 0) {
-          for (const nativePlugin of result.nativePlugins.installed) {
-            logger.info(`  ${nativePlugin.agent}: native plugin payload installed at ${nativePlugin.installPath}`);
-          }
-        }
+        renderInstalledComponents(result, agentManager, process.cwd());
 
         // Skipped
         if (result.skills.skipped.length > 0 || result.mcpServers.skipped.length > 0 || result.nativePlugins.skipped.length > 0) {
@@ -168,12 +155,8 @@ export function registerPluginsCommand(program: Command): void {
           }
         }
 
-        // Warnings
-        if (result.warnings.length > 0) {
-          console.log('');
-          for (const w of result.warnings) {
-            logger.warn(w);
-          }
+        if (!previewRendered) {
+          renderPluginWarnings(result, process.cwd());
         }
 
         logger.success('Plugin installation complete.');
@@ -330,13 +313,220 @@ export function registerPluginsCommand(program: Command): void {
     });
 }
 
+function formatPathForDisplay(pathValue: string, projectPath: string): string {
+  if (pathValue.startsWith(`${projectPath}/`)) {
+    return relative(projectPath, pathValue) || '.';
+  }
+  const homePrefix = `${process.env.HOME || ''}/`;
+  if (homePrefix !== '/' && pathValue.startsWith(homePrefix)) {
+    return `~/${pathValue.slice(homePrefix.length)}`;
+  }
+  return pathValue;
+}
+
+function getAgentLabel(agentIds: string[], agentManager: AgentManager): string {
+  return agentIds
+    .map(agentId => agentManager.getAgentById(agentId)?.name || agentId)
+    .join(', ');
+}
+
+function getPortableComponentSummary(preview: PluginInspectionResult): string {
+  const parts: string[] = [];
+  if (preview.plugin.skills.length > 0) {
+    parts.push(`${preview.plugin.skills.length} skill(s)`);
+  }
+  if (preview.plugin.mcpServers.length > 0) {
+    parts.push(`${preview.plugin.mcpServers.length} MCP server(s)`);
+  }
+  return parts.length > 0 ? parts.join(', ') : 'No portable components';
+}
+
+function getSourceWarnings(warnings: string[]): string[] {
+  const lines: string[] = [];
+
+  for (const warning of warnings) {
+    const missingMatch = warning.match(/^Plugin "(.+)" not found in (.+) marketplace\.$/);
+    if (missingMatch) {
+      lines.push(`${missingMatch[2]} marketplace does not contain "${missingMatch[1]}".`);
+      continue;
+    }
+
+    const fallbackMatch = warning.match(/^Marketplace lookup failed; trying unverified GitHub repository (.+) instead\.$/);
+    if (fallbackMatch) {
+      lines.push(`Falling back to unverified GitHub repository: ${fallbackMatch[1]}`);
+      continue;
+    }
+
+    const bundleMatch = warning.match(/^Source "(.+)" is a Claude Code marketplace bundle; using bundled plugin "(.+)"\.$/);
+    if (bundleMatch) {
+      lines.push(`Claude Code marketplace bundle detected: ${bundleMatch[1]}`);
+      lines.push(`Using bundled plugin "${bundleMatch[2]}".`);
+    }
+  }
+
+  return lines;
+}
+
+function getRemainingWarnings(warnings: string[]): string[] {
+  return warnings.filter(warning =>
+    !/^Plugin "(.+)" not found in (.+) marketplace\.$/.test(warning)
+    && !/^Marketplace lookup failed; trying unverified GitHub repository (.+) instead\.$/.test(warning)
+    && !/^Source "(.+)" is a Claude Code marketplace bundle; using bundled plugin "(.+)"\.$/.test(warning)
+    && !/^Hooks \(hooks\/\) are Claude Code-specific$/.test(warning)
+    && !/^Agent definitions \(agents\/\) are Claude Code-specific$/.test(warning)
+    && !/^Claude Code-native plugin components detected \((.+)\);/.test(warning)
+    && !/^Claude Code-native plugin components detected \((.+)\), but no Claude Code target was selected; skipped native install\.$/.test(warning)
+    && warning !== 'Reload plugins in Claude Code with /reload-plugins to activate native plugin components.'
+  );
+}
+
+function getNativeCompatibilityWarning(
+  previewOrResult: PluginInspectionResult | PluginInstallResult,
+): { features: string[]; installPath?: string; skipped: boolean } | null {
+  if ('nativePreview' in previewOrResult) {
+    if (!previewOrResult.nativePreview) {
+      return null;
+    }
+
+    return {
+      features: previewOrResult.nativePreview.features,
+      installPath: previewOrResult.nativePreview.installPath,
+      skipped: false,
+    };
+  }
+
+  const warnings = previewOrResult.warnings;
+  const skippedMatch = warnings
+    .map((warning: string) => warning.match(/^Claude Code-native plugin components detected \((.+)\), but no Claude Code target was selected; skipped native install\.$/))
+    .find(Boolean);
+  if (skippedMatch) {
+    return {
+      features: skippedMatch[1]!.split(',').map((value: string) => value.trim()).filter(Boolean),
+      skipped: true,
+    };
+  }
+
+  const installedMatch = warnings
+    .map((warning: string) => warning.match(/^Claude Code-native plugin components detected \((.+)\); they will only work in Claude Code and install into ~\/\.claude\/plugins\.$/))
+    .find(Boolean);
+  if (installedMatch) {
+    const installPath = previewOrResult.nativePlugins.installed[0]?.installPath;
+    return {
+      features: installedMatch[1]!.split(',').map((value: string) => value.trim()).filter(Boolean),
+      skipped: false,
+      ...(installPath ? { installPath } : {}),
+    };
+  }
+
+  return null;
+}
+
+function renderPluginWarnings(
+  previewOrResult: PluginInspectionResult | PluginInstallResult,
+  projectPath: string,
+): void {
+  const allWarnings = 'nativePreview' in previewOrResult
+    ? previewOrResult.plugin.warnings
+    : previewOrResult.warnings;
+  const sourceWarnings = getSourceWarnings(previewOrResult.plugin.warnings);
+  if (sourceWarnings.length > 0) {
+    console.log('');
+    logger.subtitle('Source');
+    for (const warning of sourceWarnings) {
+      logger.warn(`  ${warning}`);
+    }
+  }
+
+  const nativeWarning = getNativeCompatibilityWarning(previewOrResult);
+  if (nativeWarning) {
+    console.log('');
+    logger.subtitle('Compatibility');
+    logger.warn(`  Claude Code-only components detected: ${nativeWarning.features.join(', ')}`);
+    if (nativeWarning.installPath) {
+      logger.info(`  Claude native install path: ${formatPathForDisplay(nativeWarning.installPath, projectPath)}`);
+    }
+    if (nativeWarning.skipped) {
+      logger.warn('  No Claude Code target selected. Native Claude installation was skipped.');
+    } else {
+      logger.info('  Non-Claude targets install only the portable skills and MCP servers.');
+      logger.info(
+        'nativePreview' in previewOrResult
+          ? '  If you install to Claude Code, reload plugins with /reload-plugins afterward.'
+          : '  Reload plugins in Claude Code with /reload-plugins after install.'
+      );
+    }
+  }
+
+  const otherWarnings = getRemainingWarnings(allWarnings);
+  if (otherWarnings.length > 0) {
+    console.log('');
+    logger.subtitle('Warnings');
+    for (const warning of otherWarnings) {
+      logger.warn(`  ${warning}`);
+    }
+  }
+}
+
+function renderInstalledComponents(
+  result: PluginInstallResult,
+  agentManager: AgentManager,
+  projectPath: string,
+): void {
+  const skillGroups = new Map<string, { agents: Set<string>; skillNames: Set<string> }>();
+  for (const item of result.skills.installed) {
+    const targetDir = dirname(item.path);
+    const existing = skillGroups.get(targetDir) || { agents: new Set<string>(), skillNames: new Set<string>() };
+    existing.agents.add(item.agent);
+    existing.skillNames.add(item.name);
+    skillGroups.set(targetDir, existing);
+  }
+
+  if (skillGroups.size > 0) {
+    logger.subtitle('Skills');
+    for (const [targetDir, data] of skillGroups) {
+      logger.info(
+        `  ${getAgentLabel([...data.agents], agentManager)}: ${green(String(data.skillNames.size))} skill(s) -> ${formatPathForDisplay(targetDir, projectPath)}`
+      );
+    }
+
+    const copiedFallbacks = result.skills.installed.filter(item => item.symlinkFailed);
+    if (copiedFallbacks.length > 0) {
+      logger.warn(`  Symlink creation failed for ${copiedFallbacks.length} skill install(s); copied the files instead.`);
+    }
+  }
+
+  if (result.mcpServers.applied.length > 0) {
+    logger.subtitle('MCP');
+    const byAgent = new Map<string, string[]>();
+    for (const item of result.mcpServers.applied) {
+      const list = byAgent.get(item.agent) || [];
+      list.push(item.name);
+      byAgent.set(item.agent, list);
+    }
+    for (const [agent, servers] of byAgent) {
+      logger.info(`  ${agentManager.getAgentById(agent)?.name || agent}: ${cyan(String(servers.length))} server(s) [${servers.join(', ')}]`);
+    }
+  }
+
+  if (result.nativePlugins.installed.length > 0) {
+    logger.subtitle('Native');
+    for (const nativePlugin of result.nativePlugins.installed) {
+      logger.info(
+        `  ${agentManager.getAgentById(nativePlugin.agent)?.name || nativePlugin.agent}: ${formatPathForDisplay(nativePlugin.installPath, projectPath)}`
+      );
+    }
+  }
+}
+
 /**
  * Interactive agent selection grouped by shared skills directory
  */
 async function interactiveAgentSelect(
   pluginManager: PluginManager,
+  agentManager: AgentManager,
   projectPath: string,
-  global?: boolean
+  global: boolean | undefined,
+  preview: PluginInspectionResult,
 ): Promise<string[] | undefined> {
   const groups = await pluginManager.groupAgentsBySkillsDir(projectPath, global);
 
@@ -345,34 +535,34 @@ async function interactiveAgentSelect(
     return undefined;
   }
 
-  // If only one group, auto-select
-  if (groups.length === 1) {
-    const group = groups[0]!;
-    const compatible = group.compatibleAgentNames.length > 0
-      ? dim(` (also compatible: ${group.compatibleAgentNames.join(', ')})`)
-      : '';
-    logger.info(`Installing to ${green(group.dir)} → ${group.agentNames.join(', ')}${compatible}`);
-    return group.agents.map(a => a.id);
-  }
+  const response = await prompts({
+    type: 'multiselect',
+    name: 'groups',
+    message: 'Select target agent skills directories:',
+    instructions: false,
+    min: 1,
+    choices: groups.map(group => {
+      const containsClaude = group.agents.some(agent => agent.id === 'claude');
+      const compatible = group.compatibleAgentNames.length > 0
+        ? dim(` (also compatible: ${group.compatibleAgentNames.join(', ')})`)
+        : '';
+      const description = preview.nativePreview
+        ? containsClaude
+          ? `${getPortableComponentSummary(preview)}. Also installs the Claude native plugin at ${formatPathForDisplay(preview.nativePreview.installPath, projectPath)}.`
+          : `${getPortableComponentSummary(preview)} only. Claude-only components remain unavailable for these agents.`
+        : getPortableComponentSummary(preview);
 
-  // Use @inquirer/prompts for interactive selection
-  try {
-    const { checkbox } = await import('@inquirer/prompts');
-    const choices = groups.map(group => ({
-      name: `${group.dir.padEnd(16)} → ${group.agentNames.join(', ')}${group.compatibleAgentNames.length > 0 ? dim(` (also compatible: ${group.compatibleAgentNames.join(', ')})`) : ''}`,
-      value: group.agents.map(a => a.id),
-      checked: true,
-    }));
+      return {
+        title: `${group.dir} -> ${getAgentLabel(group.agents.map(agent => agent.id), agentManager)}${compatible}`,
+        description,
+        value: group.agents.map(agent => agent.id),
+        selected: true,
+      };
+    }),
+  });
 
-    const selected = await checkbox({
-      message: 'Select where to install:',
-      choices,
-    });
-
-    // Flatten the array of arrays
-    return (selected as string[][]).flat();
-  } catch {
-    // If inquirer not available, fall back to auto-detect
-    return groups.flatMap(g => g.agents.map(a => a.id));
-  }
+  const selected = Array.isArray(response.groups)
+    ? [...new Set((response.groups as string[][]).flat())]
+    : [];
+  return selected.length > 0 ? selected : undefined;
 }

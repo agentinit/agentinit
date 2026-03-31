@@ -63,6 +63,13 @@ export interface NativePluginComponent {
   installPath: string;
 }
 
+export interface NativePluginPreview {
+  agent: string;
+  pluginKey: string;
+  installPath: string;
+  features: string[];
+}
+
 /**
  * Record of a plugin that has been installed
  */
@@ -120,6 +127,11 @@ export interface PluginInstallResult {
     skipped: Array<{ agent: string; reason: string }>;
   };
   warnings: string[];
+}
+
+export interface PluginInspectionResult {
+  plugin: NormalizedPlugin;
+  nativePreview: NativePluginPreview | null;
 }
 
 /**

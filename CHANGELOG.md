@@ -88,6 +88,7 @@
 * prevent `skills remove` from deleting shared native skill paths that are still used by another agent
 * update docs and onboarding to the `mcp add|verify`, `rules add`, and `skills add` command model
 * parse Claude Code marketplace bundle repos like `openai/codex-plugin-cc` when installing portable skills or plugins
+* keep interactive plugin target defaults on all detected agents, warn clearly when Claude-native payloads are skipped, and reuse the previewed remote source during install
 
 # [1.7.0](https://github.com/agentinit/agentinit/compare/v1.6.0...v1.7.0) (2025-10-17)
 

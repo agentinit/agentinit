@@ -273,6 +273,43 @@ describe('PluginManager', () => {
     ]));
   });
 
+  it('inspects Claude-native plugin metadata before install', async () => {
+    const homeDir = await createTempDir('agentinit-home-');
+    process.env.HOME = homeDir;
+
+    const bundleDir = await createClaudeMarketplaceBundleDir('openai-codex');
+    const manager = new PluginManager(new StubAgentManager({}) as never);
+
+    const result = await manager.inspectPlugin(bundleDir);
+
+    expect(result.plugin.name).toBe('codex');
+    expect(result.nativePreview).toEqual({
+      agent: 'claude',
+      pluginKey: 'codex@agentinit-openai-codex',
+      installPath: join(homeDir, '.claude', 'plugins', 'cache', 'agentinit-openai-codex', 'codex', '1.0.1'),
+      features: ['commands', 'agents'],
+    });
+  });
+
+  it('reuses the prepared remote plugin context during interactive install', async () => {
+    const homeDir = await createTempDir('agentinit-home-');
+    process.env.HOME = homeDir;
+
+    const projectDir = await createTempDir('agentinit-project-');
+    const bundleDir = await createClaudeMarketplaceBundleDir('openai-codex');
+    const claude = new StubAgent('claude');
+    const manager = new PluginManager(new StubAgentManager({ claude }) as never);
+
+    const cloneRepoSpy = vi.spyOn(SkillsManager.prototype, 'cloneRepo').mockResolvedValue(bundleDir);
+
+    await manager.preparePluginInstall('https://github.com/openai/codex-plugin-cc');
+    await manager.installPlugin('https://github.com/openai/codex-plugin-cc', projectDir, {
+      agents: ['claude'],
+    });
+
+    expect(cloneRepoSpy).toHaveBeenCalledTimes(1);
+  });
+
   it('installs Claude-native plugin payloads only for Claude Code and tracks them in the registry', async () => {
     const homeDir = await createTempDir('agentinit-home-');
     process.env.HOME = homeDir;
