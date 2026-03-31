@@ -5,6 +5,7 @@ import { getFullGlobalConfigPath } from '../utils/paths.js';
 import { RulesApplicator } from '../core/rulesApplicator.js';
 import type {
   AgentDefinition,
+  AgentDetectionScope,
   MCPServerConfig,
   AgentDetectionResult,
   ConfigFileDefinition
@@ -34,6 +35,13 @@ export abstract class Agent {
    */
   get name(): string {
     return this.definition.name;
+  }
+
+  /**
+   * Get the scope of signals that should count for auto-detection.
+   */
+  getDetectionScope(): AgentDetectionScope {
+    return this.definition.detectionScope || 'project';
   }
 
   /**

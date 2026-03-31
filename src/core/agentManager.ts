@@ -5,6 +5,7 @@ import { GeminiCliAgent } from '../agents/GeminiCliAgent.js';
 import { CursorAgent } from '../agents/CursorAgent.js';
 import { DroidAgent } from '../agents/DroidAgent.js';
 import { CopilotAgent } from '../agents/CopilotAgent.js';
+import { OpenClawAgent } from '../agents/OpenClawAgent.js';
 import { AiderAgent } from '../agents/AiderAgent.js';
 import { ClineAgent } from '../agents/ClineAgent.js';
 import { WindsurfAgent } from '../agents/WindsurfAgent.js';
@@ -12,6 +13,10 @@ import { RooCodeAgent } from '../agents/RooCodeAgent.js';
 import { ZedAgent } from '../agents/ZedAgent.js';
 import { Agent } from '../agents/Agent.js';
 import type { AgentDetectionResult } from '../types/index.js';
+
+interface AgentDetectionOptions {
+  includeEnvironment?: boolean;
+}
 
 /**
  * Manager class for AI coding agents
@@ -40,7 +45,8 @@ export class AgentManager {
       new WindsurfAgent(),
       new RooCodeAgent(),
       new ZedAgent(),
-      new DroidAgent()
+      new DroidAgent(),
+      new OpenClawAgent(),
     ];
   }
 
@@ -65,13 +71,31 @@ export class AgentManager {
     return this.agents.map(agent => agent.id);
   }
 
+  private shouldIncludeForDetection(
+    agent: Agent,
+    options: AgentDetectionOptions,
+  ): boolean {
+    if (options.includeEnvironment) {
+      return true;
+    }
+
+    return agent.getDetectionScope() !== 'environment';
+  }
+
   /**
    * Detect which agents are present in the given project path
    */
-  async detectAgents(projectPath: string): Promise<AgentDetectionResult[]> {
+  async detectAgents(
+    projectPath: string,
+    options: AgentDetectionOptions = {},
+  ): Promise<AgentDetectionResult[]> {
     const results: AgentDetectionResult[] = [];
 
     for (const agent of this.agents) {
+      if (!this.shouldIncludeForDetection(agent, options)) {
+        continue;
+      }
+
       const detection = await agent.detectPresence(projectPath);
       if (detection) {
         results.push(detection);
@@ -84,9 +108,17 @@ export class AgentManager {
   /**
    * Detect a specific agent by ID in the project path
    */
-  async detectAgentById(projectPath: string, agentId: string): Promise<AgentDetectionResult | null> {
+  async detectAgentById(
+    projectPath: string,
+    agentId: string,
+    options: AgentDetectionOptions = {},
+  ): Promise<AgentDetectionResult | null> {
     const agent = this.getAgentById(agentId);
     if (!agent) {
+      return null;
+    }
+
+    if (!this.shouldIncludeForDetection(agent, options)) {
       return null;
     }
 
@@ -96,8 +128,11 @@ export class AgentManager {
   /**
    * Get the primary detected agent (first one found, prioritized by registration order)
    */
-  async getPrimaryAgent(projectPath: string): Promise<AgentDetectionResult | null> {
-    const detectedAgents = await this.detectAgents(projectPath);
+  async getPrimaryAgent(
+    projectPath: string,
+    options: AgentDetectionOptions = {},
+  ): Promise<AgentDetectionResult | null> {
+    const detectedAgents = await this.detectAgents(projectPath, options);
     return detectedAgents.length > 0 ? detectedAgents[0]! : null;
   }
 
@@ -113,16 +148,22 @@ export class AgentManager {
   /**
    * Check if any agents are present in the project
    */
-  async hasAnyAgents(projectPath: string): Promise<boolean> {
-    const detected = await this.detectAgents(projectPath);
+  async hasAnyAgents(
+    projectPath: string,
+    options: AgentDetectionOptions = {},
+  ): Promise<boolean> {
+    const detected = await this.detectAgents(projectPath, options);
     return detected.length > 0;
   }
 
   /**
    * Get a summary of all detected agents
    */
-  async getDetectionSummary(projectPath: string): Promise<string> {
-    const detected = await this.detectAgents(projectPath);
+  async getDetectionSummary(
+    projectPath: string,
+    options: AgentDetectionOptions = {},
+  ): Promise<string> {
+    const detected = await this.detectAgents(projectPath, options);
     
     if (detected.length === 0) {
       return 'No AI coding agents detected in this project.';

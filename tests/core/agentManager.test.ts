@@ -4,6 +4,7 @@ import { ClaudeAgent } from '../../src/agents/ClaudeAgent.js';
 import { ClaudeDesktopAgent } from '../../src/agents/ClaudeDesktopAgent.js';
 import { CodexCliAgent } from '../../src/agents/CodexCliAgent.js';
 import { GeminiCliAgent } from '../../src/agents/GeminiCliAgent.js';
+import { OpenClawAgent } from '../../src/agents/OpenClawAgent.js';
 import { CursorAgent } from '../../src/agents/CursorAgent.js';
 import { promises as fs } from 'fs';
 
@@ -25,6 +26,7 @@ describe('AgentManager', () => {
     'roo',
     'zed',
     'droid',
+    'openclaw',
   ];
 
   beforeEach(() => {
@@ -52,12 +54,14 @@ describe('AgentManager', () => {
       const codexAgent = manager.getAgentById('codex');
       const geminiAgent = manager.getAgentById('gemini');
       const cursorAgent = manager.getAgentById('cursor');
+      const openClawAgent = manager.getAgentById('openclaw');
 
       expect(claudeAgent).toBeInstanceOf(ClaudeAgent);
       expect(claudeDesktopAgent).toBeInstanceOf(ClaudeDesktopAgent);
       expect(codexAgent).toBeInstanceOf(CodexCliAgent);
       expect(geminiAgent).toBeInstanceOf(GeminiCliAgent);
       expect(cursorAgent).toBeInstanceOf(CursorAgent);
+      expect(openClawAgent).toBeInstanceOf(OpenClawAgent);
     });
 
     it('should return undefined for unknown agent ID', () => {
@@ -119,6 +123,33 @@ describe('AgentManager', () => {
       expect(detected).toHaveLength(2);
       expect(detected.some(d => d.agent.id === 'claude')).toBe(true);
       expect(detected.some(d => d.agent.id === 'codex')).toBe(true);
+    });
+
+    it('should ignore OpenClaw by default when only environment signals exist', async () => {
+      accessSpy.mockImplementation((path: string) => {
+        if (path.toString().includes('.openclaw')) {
+          return Promise.resolve(undefined);
+        }
+        return Promise.reject(new Error('not found'));
+      });
+
+      const detected = await manager.detectAgents(testProjectPath);
+
+      expect(detected).toHaveLength(0);
+    });
+
+    it('should detect OpenClaw when environment signals are included explicitly', async () => {
+      accessSpy.mockImplementation((path: string) => {
+        if (path.toString().includes('.openclaw')) {
+          return Promise.resolve(undefined);
+        }
+        return Promise.reject(new Error('not found'));
+      });
+
+      const detected = await manager.detectAgents(testProjectPath, { includeEnvironment: true });
+
+      expect(detected).toHaveLength(1);
+      expect(detected[0]?.agent.id).toBe('openclaw');
     });
 
     it('should return empty array when no agents detected', async () => {

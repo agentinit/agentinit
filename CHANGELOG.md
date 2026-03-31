@@ -106,6 +106,7 @@
 ### Features
 
 * support the `openai` marketplace for skills and plugin installs
+* add OpenClaw as a skills target with shared project installs via `.agents/skills/` and dedicated global installs via `~/.openclaw/skills/`
 * warn and fall back to unverified GitHub repos for marketplace misses like `openai/codex-plugin-cc`
 * install Claude Code-native plugin payloads during `plugins install` when Claude-only components are detected and Claude Code is targeted
 

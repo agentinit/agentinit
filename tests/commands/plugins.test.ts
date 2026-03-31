@@ -388,6 +388,10 @@ describe('plugins command', () => {
           title: expect.stringContaining('~/.copilot/skills/'),
           description: expect.stringContaining('Skills will be installed here, but Claude-specific components will not be fully available for these agents.'),
         }),
+        expect.objectContaining({
+          title: expect.stringContaining('~/.openclaw/skills/'),
+          description: expect.stringContaining('Skills will be installed here, but Claude-specific components will not be fully available for these agents.'),
+        }),
       ]),
     });
     expect(installPluginSpy).toHaveBeenCalledWith(

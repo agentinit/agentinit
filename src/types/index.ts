@@ -5,6 +5,8 @@ export interface AgentConfig {
   detected: boolean;
 }
 
+export type AgentDetectionScope = 'project' | 'environment' | 'both';
+
 export interface StackInfo {
   language: string;
   framework?: string;
@@ -152,6 +154,7 @@ export interface AgentDefinition {
     skills?: 'claude' | 'agents';
   };
   mcpConfigScope?: 'project' | 'global-only';
+  detectionScope?: AgentDetectionScope;
 }
 
 export interface AgentDetectionResult {

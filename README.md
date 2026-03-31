@@ -187,6 +187,7 @@ agentinit skills add openai/codex-plugin-cc
 
 # Install selected skills globally for a specific agent
 agentinit skills add owner/repo --global --agent claude --skill openai-docs
+agentinit skills add owner/repo --global --agent openclaw
 
 # Force copied installs instead of canonical symlink installs
 agentinit skills add ./skills --copy
@@ -199,6 +200,8 @@ agentinit skills remove openai-docs
 If you run `skills add` without `--agent` or `--yes`, AgentInit prompts for install scope first (`project` or `global`), then prompts for the agent skill directories to target. If no project agent files are detected, it still lets you choose project agent directories manually and points you to `agentinit init` for future auto-detection.
 
 Skills are installed into a canonical store by default: project installs use `.agents/skills/`, and global installs use `~/.agents/skills/`. Agent-specific paths are symlinked to that store when they differ. Use `--copy` or `--copy-skills` to force independent copies instead.
+
+OpenClaw participates in the shared project skills ecosystem via `.agents/skills/`, and also exposes a dedicated global skills directory at `~/.openclaw/skills/`. AgentInit treats `~/.openclaw` as an availability signal when offering OpenClaw install targets, but does not count that home-directory marker as a project-level agent detection signal.
 
 Some agents share the same native skills directory. For example, Claude Code and Claude Desktop both use `~/.claude/skills/`, so `skills remove --agent ...` will skip deleting that shared path while another agent still depends on it.
 
@@ -314,6 +317,8 @@ This is a TypeScript project using Next.js...
 
 When `rules_alias: agents` is set in `agents.md` frontmatter, AgentInit writes shared rules to `AGENTS.md` and makes `CLAUDE.md` a symlinked alias when Claude is targeted. If symlink creation fails, AgentInit falls back to writing a copied `CLAUDE.md`.
 
+Supported agents today are Claude Code, Claude Desktop, Cursor, Windsurf, GitHub Copilot, Aider, Cline, OpenAI Codex CLI, Google Gemini CLI, OpenClaw, RooCode, Zed, and Droid. Codeium remains partial/in progress.
+
 | Agent | Config File | Status |
 |-------|-------------|--------|
 | Claude | `CLAUDE.md` | ✅ |
@@ -325,6 +330,7 @@ When `rules_alias: agents` is set in `agents.md` frontmatter, AgentInit writes s
 | Cline | `.clinerules` | ✅ |
 | Codex CLI | `.codex/config.toml` | ✅ |
 | Gemini CLI | `.gemini/settings.json` | ✅ |
+| OpenClaw | `~/.openclaw` presence, `~/.openclaw/skills/` | ✅ skills |
 | RooCode | `AGENTS.md`, `.roo/mcp.json` | ✅ |
 | Zed | `AGENTS.md`, `.zed/settings.json` | ✅ |
 | Droid | `AGENTS.md`, `.factory/mcp.json` | ✅ |

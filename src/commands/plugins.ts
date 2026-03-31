@@ -39,7 +39,7 @@ export function registerPluginsCommand(program: Command): void {
     .option('-g, --global', 'Install globally')
     .option('--copy-skills', 'Copy plugin skills instead of using canonical symlink installs')
     .option('-l, --list', 'Preview plugin contents without installing')
-    .option('-y, --yes', 'Skip confirmation prompts, auto-detect all agents')
+    .option('-y, --yes', 'Skip confirmation prompts, auto-detect project-configured agents')
     .action(async (source: string, options) => {
       logger.title('🔌 AgentInit - Plugins');
 

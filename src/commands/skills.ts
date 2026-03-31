@@ -44,7 +44,7 @@ export function registerSkillsCommand(program: Command): void {
     .option('-s, --skill <names...>', 'Install only specific skills by name')
     .option('-l, --list', 'List available skills from the source without installing')
     .option('--copy', 'Copy skill files instead of symlinking')
-    .option('-y, --yes', 'Skip prompts and auto-detect project agents only')
+    .option('-y, --yes', 'Skip prompts and auto-detect project-configured agents only')
     .action(async (source: string, options) => {
       logger.title('📦 AgentInit - Skills');
 

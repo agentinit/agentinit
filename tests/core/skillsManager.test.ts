@@ -397,6 +397,30 @@ describe('SkillsManager', () => {
     });
   });
 
+  it('does not auto-target OpenClaw from a home-directory marker alone', async () => {
+    const originalHome = process.env.HOME;
+    const manager = new SkillsManager();
+    const projectDir = await mkdtemp(join(tmpdir(), 'agentinit-skill-project-'));
+    const homeDir = await mkdtemp(join(tmpdir(), 'agentinit-skill-home-'));
+    tempDirs.push(projectDir, homeDir);
+
+    process.env.HOME = homeDir;
+
+    try {
+      await mkdir(join(homeDir, '.openclaw'), { recursive: true });
+
+      const targets = await manager.getTargetAgents(projectDir, {});
+
+      expect(targets).toEqual([]);
+    } finally {
+      if (originalHome === undefined) {
+        delete process.env.HOME;
+      } else {
+        process.env.HOME = originalHome;
+      }
+    }
+  });
+
   it('resolves bare skill names from the default public skills catalog', async () => {
     const manager = new SkillsManager();
     const projectDir = await mkdtemp(join(tmpdir(), 'agentinit-skill-project-'));
