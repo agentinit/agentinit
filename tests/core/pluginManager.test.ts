@@ -313,6 +313,16 @@ describe('PluginManager', () => {
   it('installs Claude-native plugin payloads only for Claude Code and tracks them in the registry', async () => {
     const homeDir = await createTempDir('agentinit-home-');
     process.env.HOME = homeDir;
+    await mkdir(join(homeDir, '.claude'), { recursive: true });
+    await writeFile(
+      join(homeDir, '.claude', 'settings.json'),
+      JSON.stringify({
+        enabledPlugins: {
+          'frontend-design@claude-code-plugins': true,
+        },
+        model: 'opus',
+      }, null, 2),
+    );
 
     const projectDir = await createTempDir('agentinit-project-');
     const bundleDir = await createClaudeMarketplaceBundleDir('openai-codex');
@@ -341,6 +351,12 @@ describe('PluginManager', () => {
     const installedPlugins = JSON.parse(await readFile(join(homeDir, '.claude', 'plugins', 'installed_plugins.json'), 'utf8'));
     expect(installedPlugins.plugins['codex@agentinit-openai-codex'][0].installPath).toBe(expectedInstallPath);
     expect(await readFile(join(expectedInstallPath, '.claude-plugin', 'plugin.json'), 'utf8')).toContain('"name": "codex"');
+    const settings = JSON.parse(await readFile(join(homeDir, '.claude', 'settings.json'), 'utf8'));
+    expect(settings.enabledPlugins).toEqual({
+      'frontend-design@claude-code-plugins': true,
+      'codex@agentinit-openai-codex': true,
+    });
+    expect(settings.model).toBe('opus');
 
     const registry = await manager.getRegistry(projectDir, false);
     expect(registry.plugins).toHaveLength(1);
@@ -356,6 +372,15 @@ describe('PluginManager', () => {
   it('removes Claude-native plugin payloads when removing the plugin', async () => {
     const homeDir = await createTempDir('agentinit-home-');
     process.env.HOME = homeDir;
+    await mkdir(join(homeDir, '.claude'), { recursive: true });
+    await writeFile(
+      join(homeDir, '.claude', 'settings.json'),
+      JSON.stringify({
+        enabledPlugins: {
+          'frontend-design@claude-code-plugins': true,
+        },
+      }, null, 2),
+    );
 
     const projectDir = await createTempDir('agentinit-project-');
     const bundleDir = await createClaudeMarketplaceBundleDir('openai-codex');
@@ -374,6 +399,10 @@ describe('PluginManager', () => {
       'Removed from plugin registry',
     ]));
     await expect(readFile(join(homeDir, '.claude', 'plugins', 'installed_plugins.json'), 'utf8')).resolves.toContain('"plugins": {}');
+    const settings = JSON.parse(await readFile(join(homeDir, '.claude', 'settings.json'), 'utf8'));
+    expect(settings.enabledPlugins).toEqual({
+      'frontend-design@claude-code-plugins': true,
+    });
 
     const registry = await manager.getRegistry(projectDir, false);
     expect(registry.plugins).toEqual([]);

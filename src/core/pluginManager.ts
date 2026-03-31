@@ -67,6 +67,10 @@ function getClaudeInstalledPluginsPath(): string {
   return join(homedir(), '.claude', 'plugins', 'installed_plugins.json');
 }
 
+function getClaudeSettingsPath(): string {
+  return join(homedir(), '.claude', 'settings.json');
+}
+
 type ClaudeBundleSelection = {
   bundleName: string;
   pluginName: string;
@@ -94,6 +98,11 @@ type ClaudeInstalledPluginsState = {
     installedAt: string;
     lastUpdated: string;
   }>>;
+};
+
+type ClaudeSettingsState = {
+  enabledPlugins?: Record<string, boolean>;
+  [key: string]: unknown;
 };
 
 export class PluginManager {
@@ -500,6 +509,32 @@ export class PluginManager {
     await writeFile(getClaudeInstalledPluginsPath(), JSON.stringify(state, null, 2));
   }
 
+  private async readClaudeSettings(): Promise<ClaudeSettingsState> {
+    const content = await readFileIfExists(getClaudeSettingsPath());
+    if (!content) {
+      return {};
+    }
+
+    try {
+      const parsed = JSON.parse(content) as ClaudeSettingsState;
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        return {};
+      }
+
+      if (parsed.enabledPlugins && (typeof parsed.enabledPlugins !== 'object' || Array.isArray(parsed.enabledPlugins))) {
+        return { ...parsed, enabledPlugins: {} };
+      }
+
+      return parsed;
+    } catch {
+      return {};
+    }
+  }
+
+  private async saveClaudeSettings(state: ClaudeSettingsState): Promise<void> {
+    await writeFile(getClaudeSettingsPath(), JSON.stringify(state, null, 2));
+  }
+
   private async installNativeClaudePlugin(
     plugin: NormalizedPlugin & { nativeClaudeBundle?: ClaudeBundleSelection },
     pluginDir: string,
@@ -560,6 +595,13 @@ export class PluginManager {
     }];
     await this.saveClaudeInstalledPlugins(claudeInstalled);
 
+    const claudeSettings = await this.readClaudeSettings();
+    claudeSettings.enabledPlugins = {
+      ...(claudeSettings.enabledPlugins || {}),
+      [nativeTarget.pluginKey]: true,
+    };
+    await this.saveClaudeSettings(claudeSettings);
+
     installed.push({
       agent: 'claude',
       pluginKey: nativeTarget.pluginKey,
@@ -591,6 +633,12 @@ export class PluginManager {
     }
 
     await this.saveClaudeInstalledPlugins(claudeInstalled);
+    const claudeSettings = await this.readClaudeSettings();
+    if (claudeSettings.enabledPlugins && component.pluginKey in claudeSettings.enabledPlugins) {
+      const { [component.pluginKey]: _removed, ...remainingEnabledPlugins } = claudeSettings.enabledPlugins;
+      claudeSettings.enabledPlugins = remainingEnabledPlugins;
+      await this.saveClaudeSettings(claudeSettings);
+    }
     await fs.rm(component.installPath, { recursive: true, force: true }).catch(() => {});
     return true;
   }

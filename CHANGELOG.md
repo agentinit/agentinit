@@ -96,6 +96,7 @@
 * update docs and onboarding to the `mcp add|verify`, `rules add`, and `skills add` command model
 * parse Claude Code marketplace bundle repos like `openai/codex-plugin-cc` when installing portable skills or plugins
 * keep interactive plugin target defaults on all detected agents, warn clearly when Claude-native payloads are skipped, and reuse the previewed remote source during install
+* enable Claude-native plugin payloads in `~/.claude/settings.json` so installed Claude plugins actually activate
 
 # [1.7.0](https://github.com/agentinit/agentinit/compare/v1.6.0...v1.7.0) (2025-10-17)
 
