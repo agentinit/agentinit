@@ -1,3 +1,10 @@
+# [1.13.0](https://github.com/agentinit/agentinit/compare/v1.12.1...v1.13.0) (2026-03-31)
+
+
+### Features
+
+* **plugins:** install Claude-native plugin payloads ([24c0188](https://github.com/agentinit/agentinit/commit/24c0188f5e2f148b53937975bbfcbc83064dc7e8))
+
 ## [1.12.1](https://github.com/agentinit/agentinit/compare/v1.12.0...v1.12.1) (2026-03-31)
 
 
