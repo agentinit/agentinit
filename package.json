@@ -1,6 +1,6 @@
 {
   "name": "agentinit",
-  "version": "1.13.3",
+  "version": "1.13.4",
   "description": "CLI tool and library for managing AI coding agents and verifying MCP servers",
   "repository": {
     "type": "git",

@@ -1,3 +1,10 @@
+## [1.13.4](https://github.com/agentinit/agentinit/compare/v1.13.3...v1.13.4) (2026-03-31)
+
+
+### Bug Fixes
+
+* **plugins:** clarify target selection messaging ([f1c9008](https://github.com/agentinit/agentinit/commit/f1c90084102900a9e4b52582918971efbf0cd35d))
+
 ## [1.13.3](https://github.com/agentinit/agentinit/compare/v1.13.2...v1.13.3) (2026-03-31)
 
 
