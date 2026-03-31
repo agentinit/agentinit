@@ -1,3 +1,10 @@
+## [1.13.1](https://github.com/agentinit/agentinit/compare/v1.13.0...v1.13.1) (2026-03-31)
+
+
+### Bug Fixes
+
+* **plugins:** keep default targets and reuse preview context ([0ae11ae](https://github.com/agentinit/agentinit/commit/0ae11aee3fc0c40f2eec0b8b9c6f6a4e45ed949a))
+
 # [1.13.0](https://github.com/agentinit/agentinit/compare/v1.12.1...v1.13.0) (2026-03-31)
 
 
