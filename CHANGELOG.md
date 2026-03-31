@@ -1,3 +1,10 @@
+## [1.13.2](https://github.com/agentinit/agentinit/compare/v1.13.1...v1.13.2) (2026-03-31)
+
+
+### Bug Fixes
+
+* **plugins:** enable Claude native installs ([29a098a](https://github.com/agentinit/agentinit/commit/29a098a008e89776f201d2a30e8c34263c624338))
+
 ## [1.13.1](https://github.com/agentinit/agentinit/compare/v1.13.0...v1.13.1) (2026-03-31)
 
 
