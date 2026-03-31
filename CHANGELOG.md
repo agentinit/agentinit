@@ -1,3 +1,10 @@
+## [1.12.1](https://github.com/agentinit/agentinit/compare/v1.12.0...v1.12.1) (2026-03-31)
+
+
+### Bug Fixes
+
+* **skills:** preselect canonical global target ([452923f](https://github.com/agentinit/agentinit/commit/452923f90603999cd7647bde52a4ca348609fc11))
+
 # [1.12.0](https://github.com/agentinit/agentinit/compare/v1.11.1...v1.12.0) (2026-03-31)
 
 
