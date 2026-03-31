@@ -1,3 +1,10 @@
+# [1.12.0](https://github.com/agentinit/agentinit/compare/v1.11.1...v1.12.0) (2026-03-31)
+
+
+### Features
+
+* **skills:** clarify install targets and protect shared paths ([3df0510](https://github.com/agentinit/agentinit/commit/3df0510e6f92e0fffc28a46337439d012f939ca0))
+
 ## [1.11.1](https://github.com/agentinit/agentinit/compare/v1.11.0...v1.11.1) (2026-03-31)
 
 
