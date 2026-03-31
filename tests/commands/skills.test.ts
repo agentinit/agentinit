@@ -192,7 +192,7 @@ describe('skills command', () => {
     ]);
   });
 
-  it('shows the canonical global skills store first in the global selection prompt', async () => {
+  it('shows the canonical global skills store first and preselected in the global selection prompt', async () => {
     vi.spyOn(SkillsManager.prototype, 'addFromSource').mockResolvedValue({
       installed: [
         {
@@ -226,7 +226,7 @@ describe('skills command', () => {
 
     expect(groupsPrompt?.choices[0]?.title).toContain('~/.agents/skills/ ->');
     expect(groupsPrompt?.choices[0]?.description).toContain('AGENTS.md ecosystem');
-    expect(groupsPrompt?.choices[0]?.selected).toBe(false);
+    expect(groupsPrompt?.choices[0]?.selected).toBe(true);
     expect(groupsPrompt?.choices.some((choice: Record<string, any>) => choice.title.startsWith('~/.claude/skills/ -> Claude Code, Claude Desktop'))).toBe(true);
     expect(groupsPrompt?.choices.some((choice: Record<string, any>) => choice.title.startsWith('~/.codex/skills/ -> OpenAI Codex CLI'))).toBe(true);
     expect(groupsPrompt?.choices.find((choice: Record<string, any>) => choice.title.startsWith('~/.claude/skills/ -> Claude Code, Claude Desktop'))?.selected).toBe(true);

@@ -389,7 +389,6 @@ async function resolveInteractiveSkillTargets(
       value: group.agents.map(agent => agent.id),
       selected: shouldPreselectSkillGroup(
         group,
-        availableGroups,
         installGlobal,
         detectedGroups.length > 0,
         recommendedAgentId,
@@ -588,7 +587,6 @@ function describeGlobalSkillGroup(group: SkillAgentGroup): string | undefined {
 
 function shouldPreselectSkillGroup(
   group: SkillAgentGroup,
-  allGroups: SkillAgentGroup[],
   installGlobal: boolean,
   hasDetectedGroups: boolean,
   recommendedAgentId?: string,
@@ -599,19 +597,15 @@ function shouldPreselectSkillGroup(
     return hasDetectedGroups || includesRecommendedAgent;
   }
 
+  if (group.kind === 'canonical-shared') {
+    return true;
+  }
+
   if (!includesRecommendedAgent) {
     return false;
   }
 
-  if (group.kind !== 'canonical-shared') {
-    return true;
-  }
-
-  return !allGroups.some(other =>
-    other !== group &&
-    other.kind !== 'canonical-shared' &&
-    other.agents.some(agent => agent.id === recommendedAgentId),
-  );
+  return true;
 }
 
 function formatCompatibleAgents(group: SkillAgentGroup): string {
