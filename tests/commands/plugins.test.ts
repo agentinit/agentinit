@@ -291,4 +291,89 @@ describe('plugins command', () => {
       expect.stringContaining('Skipped native plugin payload for claude: Claude Code was not selected; skipped native plugin components'),
     );
   });
+
+  it('prompts to install globally when no project agent skills directories are detected', async () => {
+    process.env.HOME = '/Users/tester';
+
+    const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => {});
+    vi.spyOn(logger, 'info').mockImplementation(() => {});
+    vi.spyOn(logger, 'title').mockImplementation(() => {});
+    vi.spyOn(logger, 'subtitle').mockImplementation(() => {});
+
+    vi.spyOn(PluginManager.prototype, 'preparePluginInstall').mockResolvedValue({
+      plugin: {
+        name: 'codex',
+        version: '1.0.1',
+        description: 'Bundled Codex plugin',
+        format: 'claude',
+        source: { type: 'github', url: 'https://github.com/openai/codex-plugin-cc.git' },
+        skills: [
+          { name: 'codex-review', description: 'Review code with Codex', path: '/tmp/review.md' },
+        ],
+        mcpServers: [],
+        warnings: [],
+      },
+      nativePreview: {
+        agent: 'claude',
+        pluginKey: 'codex@agentinit-openai-codex',
+        installPath: '/Users/tester/.claude/plugins/cache/agentinit-openai-codex/codex/1.0.1',
+        features: ['commands', 'hooks', 'agents'],
+      },
+    });
+
+    vi.spyOn(PluginManager.prototype, 'groupAgentsBySkillsDir').mockResolvedValue([]);
+
+    vi.mocked(prompts)
+      .mockResolvedValueOnce({ scope: 'global' } as never)
+      .mockResolvedValueOnce({ groups: [['claude']] } as never);
+
+    const installPluginSpy = vi.spyOn(PluginManager.prototype, 'installPlugin').mockResolvedValue({
+      plugin: {
+        name: 'codex',
+        version: '1.0.1',
+        description: 'Bundled Codex plugin',
+        format: 'claude',
+        source: { type: 'github', url: 'https://github.com/openai/codex-plugin-cc.git' },
+        skills: [
+          { name: 'codex-review', description: 'Review code with Codex', path: '/tmp/review.md' },
+        ],
+        mcpServers: [],
+        warnings: [],
+      },
+      skills: {
+        installed: [
+          {
+            name: 'codex-review',
+            agent: 'claude',
+            path: '/Users/tester/.claude/skills/codex-review',
+            canonicalPath: '/Users/tester/.agents/skills/codex-review',
+            mode: 'symlink',
+          },
+        ],
+        skipped: [],
+      },
+      mcpServers: { applied: [], skipped: [] },
+      nativePlugins: {
+        installed: [],
+        skipped: [],
+      },
+      warnings: [],
+    });
+
+    const program = new Command();
+    registerPluginsCommand(program);
+
+    await program.parseAsync(['plugins', 'install', 'openai/codex-plugin-cc'], { from: 'user' });
+
+    expect(warnSpy).toHaveBeenCalledWith('No agents with skills support detected in this project.');
+    expect(vi.mocked(prompts)).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(prompts).mock.calls[0]?.[0]).toMatchObject({
+      message: 'Install this plugin globally instead?',
+    });
+    expect(installPluginSpy).toHaveBeenCalledWith(
+      'openai/codex-plugin-cc',
+      process.cwd(),
+      expect.objectContaining({ agents: ['claude'], global: true }),
+    );
+  });
 });

@@ -6,7 +6,22 @@ import { green, dim, bold, cyan } from 'kleur/colors';
 import { logger } from '../utils/logger.js';
 import { PluginManager } from '../core/pluginManager.js';
 import { AgentManager } from '../core/agentManager.js';
+import type { Agent } from '../agents/Agent.js';
 import type { PluginInspectionResult, PluginInstallResult } from '../types/plugins.js';
+
+type PluginAgentGroup = {
+  dir: string;
+  displayDir: string;
+  agents: Agent[];
+  agentNames: string[];
+  compatibleAgentNames: string[];
+};
+
+type PluginTargetSelection = {
+  agents?: string[];
+  global?: boolean;
+  aborted?: boolean;
+};
 
 export function registerPluginsCommand(program: Command): void {
   const marketplaceHelp = new PluginManager().getMarketplaceIds().join(', ');
@@ -75,6 +90,7 @@ export function registerPluginsCommand(program: Command): void {
 
       // Interactive agent selection if not --yes and not --agent
       let agentIds = options.agent as string[] | undefined;
+      let targetGlobal = options.global as boolean | undefined;
       let preview: PluginInspectionResult | null = null;
       let previewRendered = false;
       if (!agentIds && !options.yes) {
@@ -93,18 +109,20 @@ export function registerPluginsCommand(program: Command): void {
         }
 
         try {
-          agentIds = await interactiveAgentSelect(
+          const selection = await interactiveAgentSelect(
             pluginManager,
             agentManager,
             process.cwd(),
-            options.global,
+            targetGlobal,
             preview,
           );
-          if (!agentIds || agentIds.length === 0) {
+          if (!selection || selection.aborted || !selection.agents || selection.agents.length === 0) {
             await pluginManager.discardPreparedPlugin(source, { from: options.from });
             logger.info('No agents selected. Aborting.');
             return;
           }
+          agentIds = selection.agents;
+          targetGlobal = selection.global ?? targetGlobal;
         } catch (error) {
           // Fallback to auto-detect if interactive fails (e.g., no TTY)
           logger.info('Interactive prompt unavailable. Auto-detecting agents...');
@@ -120,7 +138,7 @@ export function registerPluginsCommand(program: Command): void {
         const result = await pluginManager.installPlugin(source, process.cwd(), {
           from: options.from,
           agents: agentIds,
-          global: options.global,
+          global: targetGlobal,
           copySkills: options.copySkills,
           yes: options.yes,
         });
@@ -518,6 +536,36 @@ function renderInstalledComponents(
   }
 }
 
+function buildGlobalPluginGroups(
+  agentManager: AgentManager,
+  projectPath: string,
+): PluginAgentGroup[] {
+  const dirToAgents = new Map<string, Agent[]>();
+
+  for (const agent of agentManager.getAllAgents()) {
+    if (!agent.supportsSkills()) {
+      continue;
+    }
+
+    const skillsDir = agent.getSkillsDir(projectPath, true);
+    if (!skillsDir) {
+      continue;
+    }
+
+    const existing = dirToAgents.get(skillsDir) || [];
+    existing.push(agent);
+    dirToAgents.set(skillsDir, existing);
+  }
+
+  return Array.from(dirToAgents.entries()).map(([dir, agents]) => ({
+    dir,
+    displayDir: formatPathForDisplay(dir, projectPath),
+    agents,
+    agentNames: agents.map(agent => agent.name),
+    compatibleAgentNames: [],
+  }));
+}
+
 /**
  * Interactive agent selection grouped by shared skills directory
  */
@@ -527,18 +575,53 @@ async function interactiveAgentSelect(
   projectPath: string,
   global: boolean | undefined,
   preview: PluginInspectionResult,
-): Promise<string[] | undefined> {
-  const groups = await pluginManager.groupAgentsBySkillsDir(projectPath, global);
+): Promise<PluginTargetSelection | undefined> {
+  let installGlobal = !!global;
+  let groups: PluginAgentGroup[] = installGlobal
+    ? buildGlobalPluginGroups(agentManager, projectPath)
+    : (await pluginManager.groupAgentsBySkillsDir(projectPath, false)).map(group => ({
+      ...group,
+      displayDir: group.dir,
+    }));
+
+  if (groups.length === 0 && !installGlobal) {
+    logger.warn('No agents with skills support detected in this project.');
+    const scopeResponse = await prompts({
+      type: 'select',
+      name: 'scope',
+      message: 'Install this plugin globally instead?',
+      choices: [
+        {
+          title: 'Globally',
+          value: 'global',
+        },
+        {
+          title: 'Cancel',
+          value: 'cancel',
+        },
+      ],
+      initial: 0,
+    });
+
+    if (scopeResponse.scope !== 'global') {
+      return { aborted: true };
+    }
+
+    installGlobal = true;
+    groups = buildGlobalPluginGroups(agentManager, projectPath);
+  }
 
   if (groups.length === 0) {
-    logger.warn('No agents with skills support detected in this project.');
-    return undefined;
+    logger.warn('No supported agents expose a skills directory.');
+    return { aborted: true };
   }
 
   const response = await prompts({
     type: 'multiselect',
     name: 'groups',
-    message: 'Select target agent skills directories:',
+    message: installGlobal
+      ? 'Select target global agent skills directories:'
+      : 'Select target agent skills directories:',
     instructions: false,
     min: 1,
     choices: groups.map(group => {
@@ -553,7 +636,7 @@ async function interactiveAgentSelect(
         : getPortableComponentSummary(preview);
 
       return {
-        title: `${group.dir} -> ${getAgentLabel(group.agents.map(agent => agent.id), agentManager)}${compatible}`,
+        title: `${group.displayDir} -> ${getAgentLabel(group.agents.map(agent => agent.id), agentManager)}${compatible}`,
         description,
         value: group.agents.map(agent => agent.id),
         selected: true,
@@ -564,5 +647,10 @@ async function interactiveAgentSelect(
   const selected = Array.isArray(response.groups)
     ? [...new Set((response.groups as string[][]).flat())]
     : [];
-  return selected.length > 0 ? selected : undefined;
+  return selected.length > 0
+    ? {
+      agents: selected,
+      ...(installGlobal ? { global: true } : {}),
+    }
+    : undefined;
 }
