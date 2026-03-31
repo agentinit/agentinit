@@ -3,6 +3,7 @@ import { mkdtemp, mkdir, rm, writeFile, readdir, lstat, readFile, realpath } fro
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { ClaudeAgent } from '../../src/agents/ClaudeAgent.js';
+import { ClaudeDesktopAgent } from '../../src/agents/ClaudeDesktopAgent.js';
 import { CodexCliAgent } from '../../src/agents/CodexCliAgent.js';
 import { PluginManager } from '../../src/core/pluginManager.js';
 import { SkillsManager } from '../../src/core/skillsManager.js';
@@ -74,6 +75,137 @@ describe('SkillsManager', () => {
     expect(await readFile(join(canonicalPath, 'SKILL.md'), 'utf8')).toContain('name: safe-skill');
   });
 
+  it('retains the shared native global Claude skills path even after the symlink exists', async () => {
+    const originalHome = process.env.HOME;
+    const manager = new SkillsManager();
+    const srcDir = await mkdtemp(join(tmpdir(), 'agentinit-skill-src-'));
+    const projectDir = await mkdtemp(join(tmpdir(), 'agentinit-skill-project-'));
+    const homeDir = await mkdtemp(join(tmpdir(), 'agentinit-skill-home-'));
+    tempDirs.push(srcDir, projectDir, homeDir);
+
+    process.env.HOME = homeDir;
+
+    try {
+      await mkdir(srcDir, { recursive: true });
+      await writeFile(join(srcDir, 'SKILL.md'), '---\nname: frontend-design\ndescription: test\n---\n');
+
+      const claudeResult = await manager.installSkillForAgent(
+        srcDir,
+        'frontend-design',
+        new ClaudeAgent(),
+        projectDir,
+        { global: true },
+      );
+      const desktopResult = await manager.installSkillForAgent(
+        srcDir,
+        'frontend-design',
+        new ClaudeDesktopAgent(),
+        projectDir,
+        { global: true },
+      );
+
+      const nativePath = join(homeDir, '.claude/skills', 'frontend-design');
+      const canonicalPath = join(homeDir, '.agents/skills', 'frontend-design');
+
+      expect(claudeResult).toMatchObject({
+        path: nativePath,
+        canonicalPath,
+        mode: 'symlink',
+      });
+      expect(desktopResult).toMatchObject({
+        path: nativePath,
+        canonicalPath,
+        mode: 'symlink',
+      });
+      expect((await lstat(nativePath)).isSymbolicLink()).toBe(true);
+      expect(await realpath(nativePath)).toBe(await realpath(canonicalPath));
+    } finally {
+      if (originalHome === undefined) {
+        delete process.env.HOME;
+      } else {
+        process.env.HOME = originalHome;
+      }
+    }
+  });
+
+  it('skips removing a shared native global skills path while another agent still uses it', async () => {
+    const originalHome = process.env.HOME;
+    const manager = new SkillsManager();
+    const srcDir = await mkdtemp(join(tmpdir(), 'agentinit-skill-src-'));
+    const projectDir = await mkdtemp(join(tmpdir(), 'agentinit-skill-project-'));
+    const homeDir = await mkdtemp(join(tmpdir(), 'agentinit-skill-home-'));
+    tempDirs.push(srcDir, projectDir, homeDir);
+
+    process.env.HOME = homeDir;
+
+    try {
+      await mkdir(srcDir, { recursive: true });
+      await writeFile(join(srcDir, 'SKILL.md'), '---\nname: frontend-design\ndescription: test\n---\n');
+
+      await manager.installSkillForAgent(srcDir, 'frontend-design', new ClaudeAgent(), projectDir, { global: true });
+      await manager.installSkillForAgent(srcDir, 'frontend-design', new ClaudeDesktopAgent(), projectDir, { global: true });
+
+      const nativePath = join(homeDir, '.claude/skills', 'frontend-design');
+      const canonicalPath = join(homeDir, '.agents/skills', 'frontend-design');
+      const result = await manager.remove(['frontend-design'], projectDir, {
+        agents: ['claude'],
+        global: true,
+      });
+
+      expect(result.removed).toEqual([]);
+      expect(result.notFound).toEqual([]);
+      expect(result.skipped[0]?.reason).toContain(nativePath);
+      expect((await lstat(nativePath)).isSymbolicLink()).toBe(true);
+      expect(await realpath(nativePath)).toBe(await realpath(canonicalPath));
+    } finally {
+      if (originalHome === undefined) {
+        delete process.env.HOME;
+      } else {
+        process.env.HOME = originalHome;
+      }
+    }
+  });
+
+  it('removes a shared native global skills path when all sharing agents are targeted', async () => {
+    const originalHome = process.env.HOME;
+    const manager = new SkillsManager();
+    const srcDir = await mkdtemp(join(tmpdir(), 'agentinit-skill-src-'));
+    const projectDir = await mkdtemp(join(tmpdir(), 'agentinit-skill-project-'));
+    const homeDir = await mkdtemp(join(tmpdir(), 'agentinit-skill-home-'));
+    tempDirs.push(srcDir, projectDir, homeDir);
+
+    process.env.HOME = homeDir;
+
+    try {
+      await mkdir(srcDir, { recursive: true });
+      await writeFile(join(srcDir, 'SKILL.md'), '---\nname: frontend-design\ndescription: test\n---\n');
+
+      await manager.installSkillForAgent(srcDir, 'frontend-design', new ClaudeAgent(), projectDir, { global: true });
+      await manager.installSkillForAgent(srcDir, 'frontend-design', new ClaudeDesktopAgent(), projectDir, { global: true });
+
+      const nativePath = join(homeDir, '.claude/skills', 'frontend-design');
+      const canonicalPath = join(homeDir, '.agents/skills', 'frontend-design');
+      const result = await manager.remove(['frontend-design'], projectDir, {
+        agents: ['claude', 'claude-desktop'],
+        global: true,
+      });
+
+      expect(result).toEqual({
+        removed: ['claude:frontend-design', 'claude-desktop:frontend-design'],
+        notFound: [],
+        skipped: [],
+      });
+      await expect(lstat(nativePath)).rejects.toThrow();
+      await expect(lstat(canonicalPath)).rejects.toThrow();
+    } finally {
+      if (originalHome === undefined) {
+        delete process.env.HOME;
+      } else {
+        process.env.HOME = originalHome;
+      }
+    }
+  });
+
   it('skips removing a shared canonical path when another agent still references it', async () => {
     const manager = new SkillsManager();
     const srcDir = await mkdtemp(join(tmpdir(), 'agentinit-skill-src-'));
@@ -120,11 +252,11 @@ describe('SkillsManager', () => {
       const globalPath = join(homeDir, '.claude/skills/scoped-skill');
 
       const projectResult = await manager.remove(['scoped-skill'], projectDir, {
-        agents: ['claude'],
+        agents: ['claude', 'claude-desktop'],
       });
 
       expect(projectResult).toEqual({
-        removed: ['claude:scoped-skill'],
+        removed: ['claude:scoped-skill', 'claude-desktop:scoped-skill'],
         notFound: [],
         skipped: [],
       });
@@ -132,12 +264,12 @@ describe('SkillsManager', () => {
       expect(await readFile(join(globalPath, 'SKILL.md'), 'utf8')).toContain('name: scoped-skill');
 
       const globalResult = await manager.remove(['scoped-skill'], projectDir, {
-        agents: ['claude'],
+        agents: ['claude', 'claude-desktop'],
         global: true,
       });
 
       expect(globalResult).toEqual({
-        removed: ['claude:scoped-skill'],
+        removed: ['claude:scoped-skill', 'claude-desktop:scoped-skill'],
         notFound: [],
         skipped: [],
       });

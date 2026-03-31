@@ -1,4 +1,5 @@
 import { Command } from 'commander';
+import { homedir } from 'os';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { registerSkillsCommand } from '../../src/commands/skills.js';
 import { SkillsManager } from '../../src/core/skillsManager.js';
@@ -32,6 +33,21 @@ vi.mock('ora', () => ({
 }));
 
 describe('skills command', () => {
+  function formatPromptPath(path: string): string {
+    const normalizedPath = path.replace(/\\/g, '/').replace(/\/?$/, '/');
+    const normalizedHome = homedir().replace(/\\/g, '/');
+
+    if (normalizedPath === `${normalizedHome}/`) {
+      return '~/';
+    }
+
+    if (normalizedPath.startsWith(`${normalizedHome}/`)) {
+      return normalizedPath.replace(normalizedHome, '~');
+    }
+
+    return normalizedPath;
+  }
+
   afterEach(() => {
     vi.restoreAllMocks();
     promptsMock.mockReset();
@@ -123,6 +139,97 @@ describe('skills command', () => {
       }),
     );
     expect(addFromSourceSpy.mock.calls[0]?.[2]).not.toHaveProperty('global');
+  });
+
+  it('shows install locations in the scope selection prompt', async () => {
+    vi.spyOn(AgentManager.prototype, 'detectAgents').mockResolvedValue([
+      {
+        agent: new AgentManager().getAgentById('claude')!,
+        configPath: '/tmp/project/CLAUDE.md',
+      },
+    ]);
+    vi.spyOn(SkillsManager.prototype, 'addFromSource').mockResolvedValue({
+      installed: [
+        {
+          skill: {
+            name: 'skill-creator',
+            description: 'Create skills',
+            path: '/tmp/skill-creator',
+          },
+          agent: 'claude',
+          path: '/tmp/project/.claude/skills/skill-creator',
+          mode: 'copy',
+        },
+      ],
+      skipped: [],
+      warnings: [],
+    });
+
+    let scopePrompt: Record<string, any> | undefined;
+    promptsMock
+      .mockImplementationOnce(async prompt => {
+        scopePrompt = prompt as Record<string, any>;
+        return { scope: 'project' };
+      })
+      .mockResolvedValueOnce({ groups: [['claude']] });
+
+    const program = new Command();
+    registerSkillsCommand(program);
+
+    await program.parseAsync(['skills', 'add', 'claude/skill-creator'], { from: 'user' });
+
+    expect(scopePrompt?.choices).toEqual([
+      {
+        title: 'This project',
+        value: 'project',
+        description: formatPromptPath(process.cwd()),
+      },
+      {
+        title: 'Globally',
+        value: 'global',
+        description: '~/.agents/skills/',
+      },
+    ]);
+  });
+
+  it('shows the canonical global skills store first in the global selection prompt', async () => {
+    vi.spyOn(SkillsManager.prototype, 'addFromSource').mockResolvedValue({
+      installed: [
+        {
+          skill: {
+            name: 'frontend-design',
+            description: 'Build distinctive interfaces',
+            path: '/tmp/frontend-design',
+          },
+          agent: 'claude',
+          path: '/tmp/.claude/skills/frontend-design',
+          canonicalPath: '/tmp/.agents/skills/frontend-design',
+          mode: 'symlink',
+        },
+      ],
+      skipped: [],
+      warnings: [],
+    });
+
+    let groupsPrompt: Record<string, any> | undefined;
+    promptsMock
+      .mockResolvedValueOnce({ scope: 'global' })
+      .mockImplementationOnce(async prompt => {
+        groupsPrompt = prompt as Record<string, any>;
+        return { groups: [['claude']] };
+      });
+
+    const program = new Command();
+    registerSkillsCommand(program);
+
+    await program.parseAsync(['skills', 'add', 'claude/frontend-design'], { from: 'user' });
+
+    expect(groupsPrompt?.choices[0]?.title).toContain('~/.agents/skills/ ->');
+    expect(groupsPrompt?.choices[0]?.description).toContain('AGENTS.md ecosystem');
+    expect(groupsPrompt?.choices[0]?.selected).toBe(false);
+    expect(groupsPrompt?.choices.some((choice: Record<string, any>) => choice.title.startsWith('~/.claude/skills/ -> Claude Code, Claude Desktop'))).toBe(true);
+    expect(groupsPrompt?.choices.some((choice: Record<string, any>) => choice.title.startsWith('~/.codex/skills/ -> OpenAI Codex CLI'))).toBe(true);
+    expect(groupsPrompt?.choices.find((choice: Record<string, any>) => choice.title.startsWith('~/.claude/skills/ -> Claude Code, Claude Desktop'))?.selected).toBe(true);
   });
 
   it('shows actionable guidance when --yes leaves skills add with no target agents', async () => {

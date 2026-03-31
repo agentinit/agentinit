@@ -2,7 +2,7 @@ import { Command } from 'commander';
 import ora from 'ora';
 import prompts from 'prompts';
 import { homedir } from 'os';
-import { relative } from 'path';
+import { relative, resolve } from 'path';
 import { green, dim } from 'kleur/colors';
 import { logger } from '../utils/logger.js';
 import { SkillsManager } from '../core/skillsManager.js';
@@ -17,6 +17,8 @@ interface SkillAgentGroup {
   agentNames: string[];
   compatibleAgents: Agent[];
   compatibleAgentNames: string[];
+  description?: string;
+  kind?: 'native' | 'canonical-shared';
 }
 
 interface SkillTargetSelection {
@@ -327,8 +329,16 @@ async function resolveInteractiveSkillTargets(
       name: 'scope',
       message: 'Where should the skill be installed?',
       choices: [
-        { title: 'This project', value: 'project' },
-        { title: 'Globally', value: 'global' },
+        {
+          title: 'This project',
+          value: 'project',
+          description: formatPromptPath(projectPath),
+        },
+        {
+          title: 'Globally',
+          value: 'global',
+          description: getCanonicalGlobalSkillsDisplayPath(),
+        },
       ],
       initial: 0,
     });
@@ -345,9 +355,13 @@ async function resolveInteractiveSkillTargets(
   const detectedGroups = installGlobal
     ? []
     : await getDetectedSkillGroups(agentManager, projectPath, false);
-  const availableGroups = detectedGroups.length > 0
+  let availableGroups = detectedGroups.length > 0
     ? detectedGroups
     : getSupportedSkillGroups(agentManager, projectPath, installGlobal);
+
+  if (installGlobal) {
+    availableGroups = prependCanonicalGlobalGroup(agentManager, projectPath, availableGroups);
+  }
 
   if (availableGroups.length === 0) {
     logger.warn('No supported agents expose a skills directory.');
@@ -371,10 +385,15 @@ async function resolveInteractiveSkillTargets(
     min: 1,
     choices: availableGroups.map(group => ({
       title: `${group.displayDir} -> ${group.agentNames.join(', ')}${formatCompatibleAgents(group)}`,
+      ...(group.description ? { description: group.description } : {}),
       value: group.agents.map(agent => agent.id),
-      selected: installGlobal
-        ? !!recommendedAgentId && group.agents.some(agent => agent.id === recommendedAgentId)
-        : detectedGroups.length > 0 || (!!recommendedAgentId && group.agents.some(agent => agent.id === recommendedAgentId)),
+      selected: shouldPreselectSkillGroup(
+        group,
+        availableGroups,
+        installGlobal,
+        detectedGroups.length > 0,
+        recommendedAgentId,
+      ),
     })),
   });
 
@@ -456,7 +475,60 @@ function buildSkillGroups(
     agentNames: groupedAgents.map(agent => agent.name),
     compatibleAgents: [],
     compatibleAgentNames: [],
+    kind: 'native',
   }));
+}
+
+function prependCanonicalGlobalGroup(
+  agentManager: AgentManager,
+  projectPath: string,
+  groups: SkillAgentGroup[],
+): SkillAgentGroup[] {
+  const canonicalDir = getCanonicalGlobalSkillsDir();
+  const sharedAgents = agentManager.getAllAgents().filter(agent =>
+    agent.supportsSkills() &&
+    agent.getProjectSkillsStandard() === 'agents' &&
+    !!agent.getSkillsDir(projectPath, true),
+  );
+
+  if (sharedAgents.length === 0) {
+    return groups;
+  }
+
+  const existingCanonicalIndex = groups.findIndex(group => resolve(group.dir) === canonicalDir);
+  if (existingCanonicalIndex >= 0) {
+    const existingCanonical = groups[existingCanonicalIndex]!;
+    const remaining = groups.filter((_, index) => index !== existingCanonicalIndex);
+
+    return [
+      {
+        ...existingCanonical,
+        description: existingCanonical.description || 'Canonical shared skills store for the open AGENTS.md ecosystem.',
+        kind: 'canonical-shared',
+      },
+      ...remaining,
+    ];
+  }
+
+  return [
+    {
+      dir: canonicalDir,
+      displayDir: formatSkillsDir(projectPath, canonicalDir),
+      agents: sharedAgents,
+      agentNames: sharedAgents.map(agent => agent.name),
+      compatibleAgents: [],
+      compatibleAgentNames: [],
+      description: 'Canonical shared skills store for the open AGENTS.md ecosystem.',
+      kind: 'canonical-shared',
+    },
+    ...groups.map(group => {
+      const description = group.description || describeGlobalSkillGroup(group);
+      return {
+        ...group,
+        ...(description ? { description } : {}),
+      };
+    }),
+  ];
 }
 
 function formatSkillsDir(projectPath: string, dir: string): string {
@@ -473,6 +545,73 @@ function formatSkillsDir(projectPath: string, dir: string): string {
   }
 
   return normalizedDir;
+}
+
+function formatPromptPath(path: string): string {
+  const normalizedPath = path.replace(/\\/g, '/').replace(/\/?$/, '/');
+  const normalizedHome = homedir().replace(/\\/g, '/');
+
+  if (normalizedPath === `${normalizedHome}/`) {
+    return '~/';
+  }
+
+  if (normalizedPath.startsWith(`${normalizedHome}/`)) {
+    return normalizedPath.replace(normalizedHome, '~');
+  }
+
+  return normalizedPath;
+}
+
+function getCanonicalGlobalSkillsDir(): string {
+  return resolve(homedir(), '.agents/skills');
+}
+
+function getCanonicalGlobalSkillsDisplayPath(): string {
+  return formatPromptPath(getCanonicalGlobalSkillsDir());
+}
+
+function describeGlobalSkillGroup(group: SkillAgentGroup): string | undefined {
+  if (group.kind === 'canonical-shared') {
+    return group.description;
+  }
+
+  if (group.agents.every(agent => agent.getProjectSkillsStandard() === 'agents')) {
+    return `Native agent directory linked to ${getCanonicalGlobalSkillsDisplayPath()} when symlinks are used.`;
+  }
+
+  if (group.agents.every(agent => agent.getProjectSkillsStandard() === 'claude')) {
+    return 'Native Claude-compatible skills directory.';
+  }
+
+  return undefined;
+}
+
+function shouldPreselectSkillGroup(
+  group: SkillAgentGroup,
+  allGroups: SkillAgentGroup[],
+  installGlobal: boolean,
+  hasDetectedGroups: boolean,
+  recommendedAgentId?: string,
+): boolean {
+  const includesRecommendedAgent = !!recommendedAgentId && group.agents.some(agent => agent.id === recommendedAgentId);
+
+  if (!installGlobal) {
+    return hasDetectedGroups || includesRecommendedAgent;
+  }
+
+  if (!includesRecommendedAgent) {
+    return false;
+  }
+
+  if (group.kind !== 'canonical-shared') {
+    return true;
+  }
+
+  return !allGroups.some(other =>
+    other !== group &&
+    other.kind !== 'canonical-shared' &&
+    other.agents.some(agent => agent.id === recommendedAgentId),
+  );
 }
 
 function formatCompatibleAgents(group: SkillAgentGroup): string {

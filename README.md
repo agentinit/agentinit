@@ -196,6 +196,8 @@ If you run `skills add` without `--agent` or `--yes`, AgentInit prompts for inst
 
 Skills are installed into a canonical store by default: project installs use `.agents/skills/`, and global installs use `~/.agents/skills/`. Agent-specific paths are symlinked to that store when they differ. Use `--copy` or `--copy-skills` to force independent copies instead.
 
+Some agents share the same native skills directory. For example, Claude Code and Claude Desktop both use `~/.claude/skills/`, so `skills remove --agent ...` will skip deleting that shared path while another agent still depends on it.
+
 Bare skill names default to the public skills catalog used by the open agent skills ecosystem: `vercel-labs/agent-skills`. Use `./name` for a local path, `owner/repo` for an explicit GitHub repository, or `--from <marketplace>` / `<marketplace>/<name>` for marketplace-backed sources.
 
 Marketplace-backed `skills add` installs only the discovered skills. If a marketplace source also contains MCP servers or other portable components, AgentInit warns and points you to `agentinit plugins install ...` for the full install.

@@ -213,6 +213,8 @@ skillPaths: {
 
 `skillPaths` should describe the agent's native view of installed skills. AgentInit may install project-owned skills into the canonical project store at `.agents/skills/` or the canonical global store at `~/.agents/skills/`, then symlink that canonical copy into the agent-specific path when the paths differ. Agents that already read from `.agents/skills/` can point `skillPaths.project` there directly.
 
+If multiple agents intentionally share the same native skills directory, define the same `skillPaths` values for each of them. AgentInit treats that path as shared ownership during removals and should not delete it for only one agent while another still references the same installed skill.
+
 Do not use shared skill directories by themselves as detection signals. As with `AGENTS.md`, shared skill paths can exist because another tool or agent created them.
 
 **Benefits:**

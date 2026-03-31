@@ -9,7 +9,6 @@ import {
   fileExists,
   isDirectory,
   listFiles,
-  pathsReferToSameLocation,
   readFileIfExists,
   resolveRealPathOrSelf,
 } from '../utils/fs.js';
@@ -452,7 +451,7 @@ export class SkillsManager {
       normalizedSkillName,
     );
 
-    if (await pathsReferToSameLocation(canonicalPath, agentPath)) {
+    if (agentPath === canonicalPath) {
       return {
         path: canonicalPath,
         canonicalPath,
@@ -736,8 +735,11 @@ export class SkillsManager {
             const stat = await fs.lstat(entryPath);
             isSymlink = stat.isSymbolicLink();
             const canonicalBase = this.getCanonicalSkillsDir(projectPath, scope === 'global');
-            const resolvedEntryPath = await resolveRealPathOrSelf(entryPath);
-            if (this.isWithinPath(canonicalBase, resolvedEntryPath)) {
+            const [resolvedEntryPath, resolvedCanonicalBase] = await Promise.all([
+              resolveRealPathOrSelf(entryPath),
+              resolveRealPathOrSelf(canonicalBase),
+            ]);
+            if (this.isWithinPath(resolvedCanonicalBase, resolvedEntryPath)) {
               canonicalPath = resolvedEntryPath;
             } else if (this.isWithinPath(canonicalBase, entryPath)) {
               canonicalPath = resolve(entryPath);
@@ -809,6 +811,20 @@ export class SkillsManager {
           });
           continue;
         }
+      }
+
+      const sharedPathStillReferenced = remainingEntries.some(other =>
+        other.name.toLowerCase() === entry.name.toLowerCase() &&
+        other.scope === entry.scope &&
+        other.path === entry.path
+      );
+
+      if (sharedPathStillReferenced) {
+        skipped.push({
+          name: entry.name,
+          reason: `Shared skill path still used by another agent: ${entry.path}`,
+        });
+        continue;
       }
 
       if (!removedPaths.has(entry.path)) {
