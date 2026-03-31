@@ -566,6 +566,36 @@ function buildGlobalPluginGroups(
   }));
 }
 
+function getPluginGroupDescription(
+  group: PluginAgentGroup,
+  preview: PluginInspectionResult,
+  projectPath: string,
+): string {
+  const portableSummary = getPortableComponentSummary(preview);
+  if (!preview.nativePreview) {
+    return portableSummary;
+  }
+
+  const containsClaudeCode = group.agents.some(agent => agent.id === 'claude');
+  if (!containsClaudeCode) {
+    return `${portableSummary}. Skills will be installed here, but Claude-specific components will not be fully available for these agents.`;
+  }
+
+  const otherAgents = group.agents
+    .filter(agent => agent.id !== 'claude')
+    .map(agent => agent.name);
+  const installPath = formatPathForDisplay(preview.nativePreview.installPath, projectPath);
+
+  if (otherAgents.length === 0) {
+    return `${portableSummary}. Full plugin support is available in Claude Code; the native plugin installs at ${installPath}.`;
+  }
+
+  const otherAgentsLabel = otherAgents.join(', ');
+  const shareVerb = otherAgents.length === 1 ? 'shares' : 'share';
+  const receiveVerb = otherAgents.length === 1 ? 'receives' : 'receive';
+  return `${portableSummary}. Full plugin support is available in Claude Code; the native plugin installs at ${installPath}. ${otherAgentsLabel} ${shareVerb} this skills directory but only ${receiveVerb} the installed skills.`;
+}
+
 /**
  * Interactive agent selection grouped by shared skills directory
  */
@@ -620,24 +650,18 @@ async function interactiveAgentSelect(
     type: 'multiselect',
     name: 'groups',
     message: installGlobal
-      ? 'Select target global agent skills directories:'
-      : 'Select target agent skills directories:',
+      ? 'Select which global agents should receive this plugin:'
+      : 'Select which agents should receive this plugin:',
     instructions: false,
     min: 1,
     choices: groups.map(group => {
-      const containsClaude = group.agents.some(agent => agent.id === 'claude');
       const compatible = group.compatibleAgentNames.length > 0
         ? dim(` (also compatible: ${group.compatibleAgentNames.join(', ')})`)
         : '';
-      const description = preview.nativePreview
-        ? containsClaude
-          ? `${getPortableComponentSummary(preview)}. Also installs the Claude native plugin at ${formatPathForDisplay(preview.nativePreview.installPath, projectPath)}.`
-          : `${getPortableComponentSummary(preview)} only. Claude-only components remain unavailable for these agents.`
-        : getPortableComponentSummary(preview);
 
       return {
         title: `${group.displayDir} -> ${getAgentLabel(group.agents.map(agent => agent.id), agentManager)}${compatible}`,
-        description,
+        description: getPluginGroupDescription(group, preview, projectPath),
         value: group.agents.map(agent => agent.id),
         selected: true,
       };

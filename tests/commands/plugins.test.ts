@@ -176,9 +176,16 @@ describe('plugins command', () => {
     expect(subtitleSpy).toHaveBeenCalledWith('Compatibility');
     expect(vi.mocked(prompts)).toHaveBeenCalledOnce();
     expect(vi.mocked(prompts).mock.calls[0]?.[0]).toMatchObject({
+      message: 'Select which agents should receive this plugin:',
       choices: [
-        expect.objectContaining({ selected: true }),
-        expect.objectContaining({ selected: true }),
+        expect.objectContaining({
+          selected: true,
+          description: expect.stringContaining('Full plugin support is available in Claude Code; the native plugin installs at ~/.claude/plugins/cache/agentinit-openai-codex/codex/1.0.1.'),
+        }),
+        expect.objectContaining({
+          selected: true,
+          description: expect.stringContaining('Skills will be installed here, but Claude-specific components will not be fully available for these agents.'),
+        }),
       ],
     });
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Claude Code-only components detected: commands, hooks, agents'));
@@ -369,6 +376,19 @@ describe('plugins command', () => {
     expect(vi.mocked(prompts)).toHaveBeenCalledTimes(2);
     expect(vi.mocked(prompts).mock.calls[0]?.[0]).toMatchObject({
       message: 'Install this plugin globally instead?',
+    });
+    expect(vi.mocked(prompts).mock.calls[1]?.[0]).toMatchObject({
+      message: 'Select which global agents should receive this plugin:',
+      choices: expect.arrayContaining([
+        expect.objectContaining({
+          title: expect.stringContaining('~/.claude/skills/'),
+          description: expect.stringContaining('Claude Desktop shares this skills directory but only receives the installed skills.'),
+        }),
+        expect.objectContaining({
+          title: expect.stringContaining('~/.copilot/skills/'),
+          description: expect.stringContaining('Skills will be installed here, but Claude-specific components will not be fully available for these agents.'),
+        }),
+      ]),
     });
     expect(installPluginSpy).toHaveBeenCalledWith(
       'openai/codex-plugin-cc',
