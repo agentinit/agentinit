@@ -1,3 +1,10 @@
+## [1.13.3](https://github.com/agentinit/agentinit/compare/v1.13.2...v1.13.3) (2026-03-31)
+
+
+### Bug Fixes
+
+* **plugins:** prompt for global install fallback ([ebaf306](https://github.com/agentinit/agentinit/commit/ebaf306a0a04e8c7f19094231f00818fffb9bcb9))
+
 ## [1.13.2](https://github.com/agentinit/agentinit/compare/v1.13.1...v1.13.2) (2026-03-31)
 
 
