@@ -244,9 +244,31 @@ describe('PluginManager', () => {
     ]);
     expect(result.plugin.warnings).toEqual(expect.arrayContaining([
       'Plugin "codex-plugin-cc" not found in OpenAI Skills marketplace.',
-      'Marketplace lookup failed; trying unverified GitHub repository https://github.com/openai/codex-plugin-cc instead.',
+      'Marketplace lookup failed; trying verified GitHub repository https://github.com/openai/codex-plugin-cc instead.',
       'Source "https://github.com/openai/codex-plugin-cc" is a Claude Code marketplace bundle; using bundled plugin "codex".',
       'Agent definitions (agents/) are Claude Code-specific',
+    ]));
+  });
+
+  it('keeps other marketplace fallback repositories unverified', async () => {
+    const projectDir = await createTempDir('agentinit-project-');
+    const pluginDir = await createPluginDir('community-plugin');
+    const manager = new PluginManager(new StubAgentManager({}) as never);
+
+    vi.spyOn(manager, 'resolveMarketplacePlugin').mockRejectedValueOnce(
+      new MarketplacePluginNotFoundError('community-plugin', 'openai', 'OpenAI Skills', []),
+    );
+    const cloneRepoSpy = vi.spyOn(SkillsManager.prototype, 'cloneRepo').mockResolvedValue(pluginDir);
+
+    const result = await manager.installPlugin('community-plugin', projectDir, {
+      from: 'openai',
+      list: true,
+    });
+
+    expect(cloneRepoSpy).toHaveBeenCalledWith('https://github.com/openai/community-plugin.git');
+    expect(result.plugin.warnings).toEqual(expect.arrayContaining([
+      'Plugin "community-plugin" not found in OpenAI Skills marketplace.',
+      'Marketplace lookup failed; trying unverified GitHub repository https://github.com/openai/community-plugin instead.',
     ]));
   });
 

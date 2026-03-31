@@ -7,7 +7,7 @@
 
 ## Project Context
 
-This is a typescript project. The codebase follows modern development practices with automated testing using jest.
+This is a typescript project. The codebase follows modern development practices with automated testing using vitest.
 
 ## Development Guidelines
 
@@ -18,7 +18,7 @@ This is a typescript project. The codebase follows modern development practices 
 - Add comments for complex logic
 
 ### Testing Strategy
-- Write unit tests for all business logic using jest
+- Write unit tests for all business logic using vitest
 - Aim for high test coverage (>80%)
 - Include integration tests for critical paths
 - Test edge cases and error scenarios

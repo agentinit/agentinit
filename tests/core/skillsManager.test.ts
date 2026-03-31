@@ -384,7 +384,7 @@ describe('SkillsManager', () => {
     expect(cloneRepoSpy).toHaveBeenCalledWith('https://github.com/openai/codex-plugin-cc.git');
     expect(result.warnings).toEqual(expect.arrayContaining([
       'Plugin "codex-plugin-cc" not found in OpenAI Skills marketplace.',
-      'Marketplace lookup failed; trying unverified GitHub repository https://github.com/openai/codex-plugin-cc instead.',
+      'Marketplace lookup failed; trying verified GitHub repository https://github.com/openai/codex-plugin-cc instead.',
       'Source "https://github.com/openai/codex-plugin-cc" is a Claude Code marketplace bundle; using bundled plugin "codex".',
       'Agent definitions (agents/) are Claude Code-specific',
     ]));

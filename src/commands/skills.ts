@@ -46,7 +46,7 @@ export function registerSkillsCommand(program: Command): void {
     .option('--copy', 'Copy skill files instead of symlinking')
     .option('-y, --yes', 'Skip prompts and auto-detect project-configured agents only')
     .action(async (source: string, options) => {
-      logger.title('📦 AgentInit - Skills');
+      logger.titleBox('AgentInit  Skills');
 
       const agentManager = new AgentManager();
       const skillsManager = new SkillsManager(agentManager);
@@ -119,7 +119,7 @@ export function registerSkillsCommand(program: Command): void {
     .option('-g, --global', 'List only global skills')
     .option('-a, --agent <agents...>', 'Filter by specific agent(s)')
     .action(async (options) => {
-      logger.title('📦 AgentInit - Skills');
+      logger.titleBox('AgentInit  Skills');
 
       const agentManager = new AgentManager();
       const skillsManager = new SkillsManager(agentManager);
@@ -183,7 +183,7 @@ export function registerSkillsCommand(program: Command): void {
     .option('-a, --agent <agents...>', 'Target specific agent(s)')
     .option('-y, --yes', 'Skip confirmation prompts')
     .action(async (names: string[], options) => {
-      logger.title('📦 AgentInit - Skills');
+      logger.titleBox('AgentInit  Skills');
 
       if (!names || names.length === 0) {
         if (!options.yes) {

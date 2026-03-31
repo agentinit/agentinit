@@ -11,7 +11,7 @@ interface RevertOptions {
 export async function revertCommand(options: RevertOptions): Promise<void> {
   const cwd = process.cwd();
 
-  logger.title('↩️ AgentInit - Revert');
+  logger.titleBox('AgentInit  Revert');
 
   if (options.dryRun) {
     logger.info('Running in dry-run mode - no files will be modified');

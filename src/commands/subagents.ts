@@ -8,6 +8,6 @@ interface SubagentsOptions {
 }
 
 export async function subagentsCommand(options: SubagentsOptions): Promise<void> {
-  logger.title('🤖 AgentInit - Sub-agents');
+  logger.titleBox('AgentInit  Sub-agents');
   logger.info('Sub-agent management coming soon...');
 }

@@ -23,7 +23,7 @@ describe('plugins command', () => {
   });
 
   it('requires an explicit marketplace for plugins search', async () => {
-    const titleSpy = vi.spyOn(logger, 'title').mockImplementation(() => {});
+    const titleBoxSpy = vi.spyOn(logger, 'titleBox').mockImplementation(() => {});
     const infoSpy = vi.spyOn(logger, 'info').mockImplementation(() => {});
 
     const program = new Command();
@@ -31,13 +31,13 @@ describe('plugins command', () => {
 
     await program.parseAsync(['plugins', 'search'], { from: 'user' });
 
-    expect(titleSpy).toHaveBeenCalledWith('🔌 AgentInit - Plugin Search');
+    expect(titleBoxSpy).toHaveBeenCalledWith('AgentInit  Plugin Search');
     expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('Please specify a marketplace with --from <marketplace>.'));
     expect(infoSpy).toHaveBeenCalledWith('  agentinit plugins search --from claude');
   });
 
   it('searches the requested marketplace explicitly', async () => {
-    const titleSpy = vi.spyOn(logger, 'title').mockImplementation(() => {});
+    const titleBoxSpy = vi.spyOn(logger, 'titleBox').mockImplementation(() => {});
     const infoSpy = vi.spyOn(logger, 'info').mockImplementation(() => {});
     vi.spyOn(PluginManager.prototype, 'listMarketplacePlugins').mockResolvedValue([
       {
@@ -55,7 +55,7 @@ describe('plugins command', () => {
 
     await program.parseAsync(['plugins', 'search', 'code', '--from', 'claude'], { from: 'user' });
 
-    expect(titleSpy).toHaveBeenCalledWith('🔌 AgentInit - Plugin Search');
+    expect(titleBoxSpy).toHaveBeenCalledWith('AgentInit  Plugin Search');
     expect(PluginManager.prototype.listMarketplacePlugins).toHaveBeenCalledWith('claude', 'code', undefined);
     expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('Found 1 plugin(s):'));
     expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('agentinit plugins install claude/<name>'));
@@ -64,8 +64,9 @@ describe('plugins command', () => {
   it('shows Claude-native warnings before prompting and prints install paths', async () => {
     process.env.HOME = '/Users/tester';
 
-    const titleSpy = vi.spyOn(logger, 'title').mockImplementation(() => {});
-    const subtitleSpy = vi.spyOn(logger, 'subtitle').mockImplementation(() => {});
+    const titleBoxSpy = vi.spyOn(logger, 'titleBox').mockImplementation(() => {});
+    const sectionSpy = vi.spyOn(logger, 'section').mockImplementation(() => {});
+    const treeSpy = vi.spyOn(logger, 'tree').mockImplementation(() => {});
     const infoSpy = vi.spyOn(logger, 'info').mockImplementation(() => {});
     const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => {});
 
@@ -82,7 +83,7 @@ describe('plugins command', () => {
         mcpServers: [],
         warnings: [
           'Plugin "codex-plugin-cc" not found in OpenAI Skills marketplace.',
-          'Marketplace lookup failed; trying unverified GitHub repository https://github.com/openai/codex-plugin-cc instead.',
+          'Marketplace lookup failed; trying verified GitHub repository https://github.com/openai/codex-plugin-cc instead.',
           'Source "https://github.com/openai/codex-plugin-cc" is a Claude Code marketplace bundle; using bundled plugin "codex".',
           'Hooks (hooks/) are Claude Code-specific',
           'Agent definitions (agents/) are Claude Code-specific',
@@ -130,7 +131,7 @@ describe('plugins command', () => {
         mcpServers: [],
         warnings: [
           'Plugin "codex-plugin-cc" not found in OpenAI Skills marketplace.',
-          'Marketplace lookup failed; trying unverified GitHub repository https://github.com/openai/codex-plugin-cc instead.',
+          'Marketplace lookup failed; trying verified GitHub repository https://github.com/openai/codex-plugin-cc instead.',
           'Source "https://github.com/openai/codex-plugin-cc" is a Claude Code marketplace bundle; using bundled plugin "codex".',
         ],
       },
@@ -159,7 +160,7 @@ describe('plugins command', () => {
       },
       warnings: [
         'Plugin "codex-plugin-cc" not found in OpenAI Skills marketplace.',
-        'Marketplace lookup failed; trying unverified GitHub repository https://github.com/openai/codex-plugin-cc instead.',
+        'Marketplace lookup failed; trying verified GitHub repository https://github.com/openai/codex-plugin-cc instead.',
         'Source "https://github.com/openai/codex-plugin-cc" is a Claude Code marketplace bundle; using bundled plugin "codex".',
         'Claude Code-native plugin components detected (commands, hooks, agents); they will only work in Claude Code and install into ~/.claude/plugins.',
         'Reload plugins in Claude Code with /reload-plugins to activate native plugin components.',
@@ -171,9 +172,9 @@ describe('plugins command', () => {
 
     await program.parseAsync(['plugins', 'install', 'openai/codex-plugin-cc'], { from: 'user' });
 
-    expect(titleSpy).toHaveBeenCalledWith('🔌 AgentInit - Plugins');
-    expect(subtitleSpy).toHaveBeenCalledWith('Source');
-    expect(subtitleSpy).toHaveBeenCalledWith('Compatibility');
+    expect(titleBoxSpy).toHaveBeenCalledWith('AgentInit  Plugins');
+    expect(sectionSpy).toHaveBeenCalledWith('Source');
+    expect(sectionSpy).toHaveBeenCalledWith('Compatibility');
     expect(vi.mocked(prompts)).toHaveBeenCalledOnce();
     expect(vi.mocked(prompts).mock.calls[0]?.[0]).toMatchObject({
       message: 'Select which agents should receive this plugin:',
@@ -188,15 +189,47 @@ describe('plugins command', () => {
         }),
       ],
     });
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Claude Code-only components detected: commands, hooks, agents'));
-    expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('Claude native install path: ~/.claude/plugins/cache/agentinit-openai-codex/codex/1.0.1'));
+    // Claude-related warnings now go through logger.tree() with orange coloring
+    expect(treeSpy).toHaveBeenCalledWith(expect.stringContaining('Claude Code'), expect.any(Boolean));
+    expect(treeSpy).toHaveBeenCalledWith(expect.stringContaining('native install path'), expect.any(Boolean));
     expect(installPluginSpy).toHaveBeenCalledWith(
       'openai/codex-plugin-cc',
       process.cwd(),
       expect.objectContaining({ agents: ['claude'] }),
     );
-    expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('Claude Code:'));
-    expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('.claude/skills'));
+    // Installed components now rendered via logger.tree() and logger.section()
+    expect(sectionSpy).toHaveBeenCalledWith('Skills');
+    expect(treeSpy).toHaveBeenCalledWith(expect.stringContaining('.claude/skills'), expect.any(Boolean));
+  });
+
+  it('keeps non-allowlisted GitHub fallback repos explicitly unverified', async () => {
+    const treeSpy = vi.spyOn(logger, 'tree').mockImplementation(() => {});
+    vi.spyOn(logger, 'titleBox').mockImplementation(() => {});
+
+    vi.spyOn(PluginManager.prototype, 'inspectPlugin').mockResolvedValue({
+      plugin: {
+        name: 'community-plugin',
+        version: '0.2.0',
+        description: 'Community plugin',
+        format: 'claude',
+        source: { type: 'github', url: 'https://github.com/acme/community-plugin.git' },
+        skills: [],
+        mcpServers: [],
+        warnings: [
+          'Plugin "community-plugin" not found in Claude Code marketplace.',
+          'Marketplace lookup failed; trying unverified GitHub repository https://github.com/acme/community-plugin instead.',
+        ],
+      },
+      nativePreview: null,
+    });
+
+    const program = new Command();
+    registerPluginsCommand(program);
+
+    await program.parseAsync(['plugins', 'install', 'acme/community-plugin', '--list'], { from: 'user' });
+
+    expect(treeSpy).toHaveBeenCalledWith(expect.stringContaining('Unverified GitHub repository: https://github.com/acme/community-plugin'), expect.any(Boolean));
+    expect(treeSpy).not.toHaveBeenCalledWith(expect.stringContaining('Verified GitHub repository: https://github.com/acme/community-plugin'), expect.any(Boolean));
   });
 
   it('warns explicitly when Claude-native install is skipped after deselecting Claude', async () => {
@@ -204,8 +237,9 @@ describe('plugins command', () => {
 
     const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => {});
     vi.spyOn(logger, 'info').mockImplementation(() => {});
-    vi.spyOn(logger, 'title').mockImplementation(() => {});
-    vi.spyOn(logger, 'subtitle').mockImplementation(() => {});
+    vi.spyOn(logger, 'titleBox').mockImplementation(() => {});
+    vi.spyOn(logger, 'section').mockImplementation(() => {});
+    vi.spyOn(logger, 'tree').mockImplementation(() => {});
 
     vi.spyOn(PluginManager.prototype, 'preparePluginInstall').mockResolvedValue({
       plugin: {
@@ -304,8 +338,9 @@ describe('plugins command', () => {
 
     const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => {});
     vi.spyOn(logger, 'info').mockImplementation(() => {});
-    vi.spyOn(logger, 'title').mockImplementation(() => {});
-    vi.spyOn(logger, 'subtitle').mockImplementation(() => {});
+    vi.spyOn(logger, 'titleBox').mockImplementation(() => {});
+    vi.spyOn(logger, 'section').mockImplementation(() => {});
+    vi.spyOn(logger, 'tree').mockImplementation(() => {});
 
     vi.spyOn(PluginManager.prototype, 'preparePluginInstall').mockResolvedValue({
       plugin: {
@@ -390,6 +425,10 @@ describe('plugins command', () => {
         }),
         expect.objectContaining({
           title: expect.stringContaining('~/.openclaw/skills/'),
+          description: expect.stringContaining('Skills will be installed here, but Claude-specific components will not be fully available for these agents.'),
+        }),
+        expect.objectContaining({
+          title: expect.stringContaining('~/.hermes/skills/'),
           description: expect.stringContaining('Skills will be installed here, but Claude-specific components will not be fully available for these agents.'),
         }),
       ]),

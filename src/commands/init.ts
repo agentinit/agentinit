@@ -17,7 +17,7 @@ export async function initCommand(options: InitOptions): Promise<void> {
   const cwd = process.cwd();
   const agentsPath = resolve(cwd, 'agents.md');
   
-  logger.title('🚀 AgentInit - Initialize Project');
+  logger.titleBox('AgentInit  Initialize Project');
   
   // Check if agents.md already exists
   if (!options.force && await fileExists(agentsPath)) {

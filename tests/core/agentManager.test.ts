@@ -4,6 +4,7 @@ import { ClaudeAgent } from '../../src/agents/ClaudeAgent.js';
 import { ClaudeDesktopAgent } from '../../src/agents/ClaudeDesktopAgent.js';
 import { CodexCliAgent } from '../../src/agents/CodexCliAgent.js';
 import { GeminiCliAgent } from '../../src/agents/GeminiCliAgent.js';
+import { HermesAgent } from '../../src/agents/HermesAgent.js';
 import { OpenClawAgent } from '../../src/agents/OpenClawAgent.js';
 import { CursorAgent } from '../../src/agents/CursorAgent.js';
 import { promises as fs } from 'fs';
@@ -27,6 +28,7 @@ describe('AgentManager', () => {
     'zed',
     'droid',
     'openclaw',
+    'hermes',
   ];
 
   beforeEach(() => {
@@ -55,6 +57,7 @@ describe('AgentManager', () => {
       const geminiAgent = manager.getAgentById('gemini');
       const cursorAgent = manager.getAgentById('cursor');
       const openClawAgent = manager.getAgentById('openclaw');
+      const hermesAgent = manager.getAgentById('hermes');
 
       expect(claudeAgent).toBeInstanceOf(ClaudeAgent);
       expect(claudeDesktopAgent).toBeInstanceOf(ClaudeDesktopAgent);
@@ -62,6 +65,7 @@ describe('AgentManager', () => {
       expect(geminiAgent).toBeInstanceOf(GeminiCliAgent);
       expect(cursorAgent).toBeInstanceOf(CursorAgent);
       expect(openClawAgent).toBeInstanceOf(OpenClawAgent);
+      expect(hermesAgent).toBeInstanceOf(HermesAgent);
     });
 
     it('should return undefined for unknown agent ID', () => {
@@ -150,6 +154,33 @@ describe('AgentManager', () => {
 
       expect(detected).toHaveLength(1);
       expect(detected[0]?.agent.id).toBe('openclaw');
+    });
+
+    it('should ignore Hermes by default when only environment signals exist', async () => {
+      accessSpy.mockImplementation((path: string) => {
+        if (path.toString().includes('.hermes')) {
+          return Promise.resolve(undefined);
+        }
+        return Promise.reject(new Error('not found'));
+      });
+
+      const detected = await manager.detectAgents(testProjectPath);
+
+      expect(detected).toHaveLength(0);
+    });
+
+    it('should detect Hermes when environment signals are included explicitly', async () => {
+      accessSpy.mockImplementation((path: string) => {
+        if (path.toString().includes('.hermes')) {
+          return Promise.resolve(undefined);
+        }
+        return Promise.reject(new Error('not found'));
+      });
+
+      const detected = await manager.detectAgents(testProjectPath, { includeEnvironment: true });
+
+      expect(detected).toHaveLength(1);
+      expect(detected[0]?.agent.id).toBe('hermes');
     });
 
     it('should return empty array when no agents detected', async () => {

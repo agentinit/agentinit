@@ -113,7 +113,7 @@ export function registerRulesCommand(program: Command): void {
     .option('-a, --agent <agents...>', 'Target specific agent(s)')
     .option('-g, --global', 'Apply rules globally')
     .action(async (options) => {
-      logger.title('📏 AgentInit - Rules');
+      logger.titleBox('AgentInit  Rules');
 
       const cwd = process.cwd();
       const isGlobal = !!options.global;
@@ -292,7 +292,7 @@ export function registerRulesCommand(program: Command): void {
     .option('-a, --agent <agents...>', 'Filter by specific agent(s)')
     .option('-g, --global', 'List global rules')
     .action(async (options) => {
-      logger.title('📏 AgentInit - Rules');
+      logger.titleBox('AgentInit  Rules');
 
       const cwd = process.cwd();
       const isGlobal = !!options.global;
@@ -351,7 +351,7 @@ export function registerRulesCommand(program: Command): void {
     .option('-a, --agent <agents...>', 'Target specific agent(s)')
     .option('-g, --global', 'Remove from global rules')
     .action(async (names: string[], options) => {
-      logger.title('📏 AgentInit - Rules');
+      logger.titleBox('AgentInit  Rules');
 
       if (!names || names.length === 0) {
         logger.error('Please specify rule section name(s) to remove.');

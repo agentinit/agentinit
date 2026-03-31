@@ -80,7 +80,7 @@ export async function applyProjectCommand(options: ApplyWorkflowOptions): Promis
   const agentManager = new AgentManager();
   let managedState: ManagedStateStore | null = null;
 
-  logger.title('🔧 AgentInit - Apply');
+  logger.titleBox('AgentInit  Apply');
 
   if (options.dryRun) {
     logger.info('Running in dry-run mode - no files will be modified');
@@ -239,7 +239,7 @@ export async function applyProjectCommand(options: ApplyWorkflowOptions): Promis
 export async function applyCommand(args: string[]): Promise<void> {
   const cwd = process.cwd();
   
-  logger.title('🔧 AgentInit - Apply Configuration');
+  logger.titleBox('AgentInit  Apply Configuration');
   
   // Check if any MCP or Rules arguments are present
   const hasMcpArgs = args.some(arg => arg.startsWith('--mcp-'));

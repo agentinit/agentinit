@@ -45,4 +45,27 @@ describe('AgentDetector', () => {
     expect(detected?.detected).toBe(true);
     expect(detected?.configPath).toBe(join(homeDir, '.openclaw'));
   });
+
+  it('ignores Hermes when only project signals should be considered', async () => {
+    const detector = new AgentDetector();
+    await mkdir(join(homeDir, '.hermes'), { recursive: true });
+
+    const detected = await detector.detectAgentByName('/tmp/project', 'hermes');
+
+    expect(detected).not.toBeNull();
+    expect(detected?.detected).toBe(false);
+  });
+
+  it('detects Hermes from ~/.hermes when environment signals are included', async () => {
+    const detector = new AgentDetector();
+    await mkdir(join(homeDir, '.hermes'), { recursive: true });
+
+    const detected = await detector.detectAgentByName('/tmp/project', 'hermes', {
+      includeEnvironment: true,
+    });
+
+    expect(detected).not.toBeNull();
+    expect(detected?.detected).toBe(true);
+    expect(detected?.configPath).toBe(join(homeDir, '.hermes'));
+  });
 });

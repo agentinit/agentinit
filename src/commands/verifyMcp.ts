@@ -15,7 +15,7 @@ interface VerifyMcpOptions {
 export async function verifyMcpCommand(args: string[]): Promise<void> {
   const cwd = process.cwd();
   
-  logger.title('🔍 AgentInit - MCP Verification');
+  logger.titleBox('AgentInit  MCP Verification');
   
   // Parse command line options
   const hasAll = args.includes('--all');

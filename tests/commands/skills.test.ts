@@ -230,6 +230,7 @@ describe('skills command', () => {
     expect(groupsPrompt?.choices.some((choice: Record<string, any>) => choice.title.startsWith('~/.claude/skills/ -> Claude Code, Claude Desktop'))).toBe(true);
     expect(groupsPrompt?.choices.some((choice: Record<string, any>) => choice.title.startsWith('~/.codex/skills/ -> OpenAI Codex CLI'))).toBe(true);
     expect(groupsPrompt?.choices.some((choice: Record<string, any>) => choice.title.startsWith('~/.openclaw/skills/ -> OpenClaw'))).toBe(true);
+    expect(groupsPrompt?.choices.some((choice: Record<string, any>) => choice.title.startsWith('~/.hermes/skills/ -> Hermes'))).toBe(true);
     expect(groupsPrompt?.choices.find((choice: Record<string, any>) => choice.title.startsWith('~/.claude/skills/ -> Claude Code, Claude Desktop'))?.selected).toBe(true);
   });
 

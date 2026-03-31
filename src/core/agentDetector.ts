@@ -22,6 +22,7 @@ export class AgentDetector {
     { name: 'codex', files: ['.codex/config.toml'] },
     { name: 'gemini', files: ['.gemini/settings.json'] },
     { name: 'openclaw', files: ['~/.openclaw'], scope: 'environment' },
+    { name: 'hermes', files: ['~/.hermes'], scope: 'environment' },
     // .mcp.json is also used by other agents, so only use aider-specific config here
     { name: 'aider', files: ['.aider.conf.yml'] },
     { name: 'cline', files: ['.clinerules'] },

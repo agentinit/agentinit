@@ -204,6 +204,14 @@ export class PluginManager {
     return `https://github.com/${source.owner}/${source.repo}`;
   }
 
+  private getGitHubFallbackTrust(source: PluginSource): 'verified' | 'unverified' {
+    if (source.owner === 'openai' && source.repo === 'codex-plugin-cc') {
+      return 'verified';
+    }
+
+    return 'unverified';
+  }
+
   private async resolvePreparedPluginDir(
     pluginDir: string,
     source: PluginSource,
@@ -340,16 +348,17 @@ export class PluginManager {
         }
 
         const fallbackUrl = this.formatGitHubRepoUrl(fallbackSource) || fallbackSource.url.replace(/\.git$/, '');
+        const fallbackTrust = this.getGitHubFallbackTrust(fallbackSource);
         resolutionWarnings.push(error.message);
         resolutionWarnings.push(
-          `Marketplace lookup failed; trying unverified GitHub repository ${fallbackUrl} instead.`
+          `Marketplace lookup failed; trying ${fallbackTrust} GitHub repository ${fallbackUrl} instead.`
         );
 
         try {
           tempDir = await this.skillsManager.cloneRepo(fallbackSource.url);
         } catch (fallbackError) {
           throw new Error(
-            `${error.message} Tried unverified GitHub repository ${fallbackUrl} but failed: ${fallbackError instanceof Error ? fallbackError.message : 'Unknown error'}`
+            `${error.message} Tried ${fallbackTrust} GitHub repository ${fallbackUrl} but failed: ${fallbackError instanceof Error ? fallbackError.message : 'Unknown error'}`
           );
         }
 

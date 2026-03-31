@@ -44,6 +44,13 @@ agentinit mcp add --verify \
   --mcp-stdio everything "npx -y @modelcontextprotocol/server-everything"
 ```
 
+### Output Controls
+
+```bash
+# Disable ANSI colors for CI, logs, or plain-text output
+NO_COLOR=1 agentinit plugins list
+```
+
 ## 📋 Commands
 
 ### `agentinit init`
@@ -188,6 +195,7 @@ agentinit skills add openai/codex-plugin-cc
 # Install selected skills globally for a specific agent
 agentinit skills add owner/repo --global --agent claude --skill openai-docs
 agentinit skills add owner/repo --global --agent openclaw
+agentinit skills add owner/repo --global --agent hermes
 
 # Force copied installs instead of canonical symlink installs
 agentinit skills add ./skills --copy
@@ -203,13 +211,15 @@ Skills are installed into a canonical store by default: project installs use `.a
 
 OpenClaw participates in the shared project skills ecosystem via `.agents/skills/`, and also exposes a dedicated global skills directory at `~/.openclaw/skills/`. AgentInit treats `~/.openclaw` as an availability signal when offering OpenClaw install targets, but does not count that home-directory marker as a project-level agent detection signal.
 
+Hermes follows the same model: project skills come from `.agents/skills/`, global installs go to `~/.hermes/skills/`, and `~/.hermes` is used only as an availability signal for Hermes install targets.
+
 Some agents share the same native skills directory. For example, Claude Code and Claude Desktop both use `~/.claude/skills/`, so `skills remove --agent ...` will skip deleting that shared path while another agent still depends on it.
 
 Bare skill names default to the public skills catalog used by the open agent skills ecosystem: `vercel-labs/agent-skills`. Use `./name` for a local path, `owner/repo` for an explicit GitHub repository, or `--from <marketplace>` / `<marketplace>/<name>` for marketplace-backed sources.
 
 Marketplace-backed `skills add` installs only the discovered skills. If a marketplace source also contains MCP servers or other portable components, AgentInit warns and points you to `agentinit plugins install ...` for the full install.
 
-If a marketplace lookup misses and the source still looks like a GitHub repository, AgentInit warns and tries the matching GitHub repo directly as an unverified fallback. This covers repos like `openai/codex-plugin-cc` that are not part of the curated OpenAI skills catalog.
+If a marketplace lookup misses and the source still looks like a GitHub repository, AgentInit warns and tries the matching GitHub repo directly as a fallback. Allowlisted repos like `openai/codex-plugin-cc` are marked as verified; other fallback repos remain explicitly unverified.
 
 ### `agentinit plugins`
 
@@ -317,7 +327,7 @@ This is a TypeScript project using Next.js...
 
 When `rules_alias: agents` is set in `agents.md` frontmatter, AgentInit writes shared rules to `AGENTS.md` and makes `CLAUDE.md` a symlinked alias when Claude is targeted. If symlink creation fails, AgentInit falls back to writing a copied `CLAUDE.md`.
 
-Supported agents today are Claude Code, Claude Desktop, Cursor, Windsurf, GitHub Copilot, Aider, Cline, OpenAI Codex CLI, Google Gemini CLI, OpenClaw, RooCode, Zed, and Droid. Codeium remains partial/in progress.
+Supported agents today are Claude Code, Claude Desktop, Cursor, Windsurf, GitHub Copilot, Aider, Cline, OpenAI Codex CLI, Google Gemini CLI, OpenClaw, Hermes, RooCode, Zed, and Droid. Codeium remains partial/in progress.
 
 | Agent | Config File | Status |
 |-------|-------------|--------|
@@ -331,6 +341,7 @@ Supported agents today are Claude Code, Claude Desktop, Cursor, Windsurf, GitHub
 | Codex CLI | `.codex/config.toml` | ✅ |
 | Gemini CLI | `.gemini/settings.json` | ✅ |
 | OpenClaw | `~/.openclaw` presence, `~/.openclaw/skills/` | ✅ skills |
+| Hermes | `~/.hermes` presence, `~/.hermes/skills/` | ✅ skills |
 | RooCode | `AGENTS.md`, `.roo/mcp.json` | ✅ |
 | Zed | `AGENTS.md`, `.zed/settings.json` | ✅ |
 | Droid | `AGENTS.md`, `.factory/mcp.json` | ✅ |

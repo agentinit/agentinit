@@ -15,7 +15,7 @@ export async function syncCommand(options: SyncOptions): Promise<void> {
   const cwd = process.cwd();
   const agentManager = new AgentManager();
   
-  logger.title('🔄 AgentInit - Sync Configuration');
+  logger.titleBox('AgentInit  Sync');
   
   if (options.dryRun) {
     logger.info('Running in dry-run mode - no files will be modified');

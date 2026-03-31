@@ -7,6 +7,6 @@ interface ConfigOptions {
 }
 
 export async function configCommand(key?: string, value?: string, options?: ConfigOptions): Promise<void> {
-  logger.title('⚙️ AgentInit - Configuration');
+  logger.titleBox('AgentInit  Configuration');
   logger.info('Configuration management coming soon...');
 }

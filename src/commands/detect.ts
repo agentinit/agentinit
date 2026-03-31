@@ -12,7 +12,7 @@ interface DetectOptions {
 export async function detectCommand(options: DetectOptions): Promise<void> {
   const cwd = process.cwd();
   
-  logger.title('🔍 AgentInit - Project Detection');
+  logger.titleBox('AgentInit  Project Detection');
   
   const spinner = ora('Detecting project configuration...').start();
   

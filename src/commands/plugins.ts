@@ -2,7 +2,7 @@ import { Command } from 'commander';
 import ora from 'ora';
 import prompts from 'prompts';
 import { dirname, relative } from 'path';
-import { green, dim, bold, cyan } from 'kleur/colors';
+import { green, dim, bold, cyan, yellow, orange } from '../utils/colors.js';
 import { logger } from '../utils/logger.js';
 import { PluginManager } from '../core/pluginManager.js';
 import { AgentManager } from '../core/agentManager.js';
@@ -41,7 +41,7 @@ export function registerPluginsCommand(program: Command): void {
     .option('-l, --list', 'Preview plugin contents without installing')
     .option('-y, --yes', 'Skip confirmation prompts, auto-detect project-configured agents')
     .action(async (source: string, options) => {
-      logger.title('🔌 AgentInit - Plugins');
+      logger.titleBox('AgentInit  Plugins');
 
       const agentManager = new AgentManager();
       const pluginManager = new PluginManager(agentManager);
@@ -191,7 +191,7 @@ export function registerPluginsCommand(program: Command): void {
     .option('--from <marketplace>', `Which marketplace to search (available: ${marketplaceHelp})`)
     .option('--category <category>', 'Filter: official, community')
     .action(async (query: string | undefined, options) => {
-      logger.title('🔌 AgentInit - Plugin Search');
+      logger.titleBox('AgentInit  Plugin Search');
 
       const pluginManager = new PluginManager();
       if (!options.from) {
@@ -249,7 +249,7 @@ export function registerPluginsCommand(program: Command): void {
     .option('-a, --agent <agents...>', 'Filter by specific agent(s)')
     .option('-g, --global', 'List global plugins')
     .action(async (options) => {
-      logger.title('🔌 AgentInit - Installed Plugins');
+      logger.titleBox('AgentInit  Installed Plugins');
 
       const pluginManager = new PluginManager();
       const installed = await pluginManager.listPlugins(process.cwd(), {
@@ -300,7 +300,7 @@ export function registerPluginsCommand(program: Command): void {
     .option('-g, --global', 'Remove from global scope')
     .option('-y, --yes', 'Skip confirmation prompts')
     .action(async (name: string, options) => {
-      logger.title('🔌 AgentInit - Remove Plugin');
+      logger.titleBox('AgentInit  Remove Plugin');
 
       const pluginManager = new PluginManager();
       const spinner = ora(`Removing plugin "${name}"...`).start();
@@ -359,36 +359,53 @@ function getPortableComponentSummary(preview: PluginInspectionResult): string {
   return parts.length > 0 ? parts.join(', ') : 'No portable components';
 }
 
-function getSourceWarnings(warnings: string[]): string[] {
-  const lines: string[] = [];
+type SourceWarningItem = {
+  type: 'marketplace-miss' | 'fallback-verified' | 'fallback-unverified' | 'bundle-detected' | 'bundle-using';
+  text: string;
+};
+
+function getSourceWarnings(warnings: string[]): SourceWarningItem[] {
+  const items: SourceWarningItem[] = [];
 
   for (const warning of warnings) {
     const missingMatch = warning.match(/^Plugin "(.+)" not found in (.+) marketplace\.$/);
     if (missingMatch) {
-      lines.push(`${missingMatch[2]} marketplace does not contain "${missingMatch[1]}".`);
+      items.push({
+        type: 'marketplace-miss',
+        text: `${missingMatch[2]} marketplace does not contain "${missingMatch[1]}".`,
+      });
       continue;
     }
 
-    const fallbackMatch = warning.match(/^Marketplace lookup failed; trying unverified GitHub repository (.+) instead\.$/);
+    const fallbackMatch = warning.match(/^Marketplace lookup failed; trying (verified|unverified) GitHub repository (.+) instead\.$/);
     if (fallbackMatch) {
-      lines.push(`Falling back to unverified GitHub repository: ${fallbackMatch[1]}`);
+      items.push({
+        type: fallbackMatch[1] === 'verified' ? 'fallback-verified' : 'fallback-unverified',
+        text: `${fallbackMatch[1] === 'verified' ? 'Verified' : 'Unverified'} GitHub repository: ${fallbackMatch[2]}`,
+      });
       continue;
     }
 
     const bundleMatch = warning.match(/^Source "(.+)" is a Claude Code marketplace bundle; using bundled plugin "(.+)"\.$/);
     if (bundleMatch) {
-      lines.push(`Claude Code marketplace bundle detected: ${bundleMatch[1]}`);
-      lines.push(`Using bundled plugin "${bundleMatch[2]}".`);
+      items.push({
+        type: 'bundle-detected',
+        text: `Claude Code marketplace bundle detected: ${bundleMatch[1]}`,
+      });
+      items.push({
+        type: 'bundle-using',
+        text: `Using bundled plugin "${bundleMatch[2]}".`,
+      });
     }
   }
 
-  return lines;
+  return items;
 }
 
 function getRemainingWarnings(warnings: string[]): string[] {
   return warnings.filter(warning =>
     !/^Plugin "(.+)" not found in (.+) marketplace\.$/.test(warning)
-    && !/^Marketplace lookup failed; trying unverified GitHub repository (.+) instead\.$/.test(warning)
+    && !/^Marketplace lookup failed; trying (verified|unverified) GitHub repository (.+) instead\.$/.test(warning)
     && !/^Source "(.+)" is a Claude Code marketplace bundle; using bundled plugin "(.+)"\.$/.test(warning)
     && !/^Hooks \(hooks\/\) are Claude Code-specific$/.test(warning)
     && !/^Agent definitions \(agents\/\) are Claude Code-specific$/.test(warning)
@@ -448,39 +465,72 @@ function renderPluginWarnings(
     : previewOrResult.warnings;
   const sourceWarnings = getSourceWarnings(previewOrResult.plugin.warnings);
   if (sourceWarnings.length > 0) {
-    console.log('');
-    logger.subtitle('Source');
-    for (const warning of sourceWarnings) {
-      logger.warn(`  ${warning}`);
+    logger.section('Source');
+    const lastIdx = sourceWarnings.length - 1;
+    for (let i = 0; i < sourceWarnings.length; i++) {
+      const item = sourceWarnings[i]!;
+      const isLast = i === lastIdx;
+      if (item.type === 'marketplace-miss') {
+        logger.tree(yellow('⚠') + `  ${item.text}`, isLast);
+      } else if (item.type === 'fallback-verified') {
+        logger.tree(green('✓') + `  ${item.text}`, isLast);
+      } else if (item.type === 'fallback-unverified') {
+        logger.tree(yellow('⚠') + `  ${item.text}`, isLast);
+      } else if (item.type === 'bundle-detected') {
+        logger.tree(orange('✓') + `  ${orange(item.text)}`, isLast);
+      } else if (item.type === 'bundle-using') {
+        logger.tree(green('✓') + `  ${item.text}`, isLast);
+      }
     }
   }
 
   const nativeWarning = getNativeCompatibilityWarning(previewOrResult);
   if (nativeWarning) {
-    console.log('');
-    logger.subtitle('Compatibility');
-    logger.warn(`  Claude Code-only components detected: ${nativeWarning.features.join(', ')}`);
+    logger.section('Compatibility');
+    const lines: { text: string; isLast: boolean }[] = [];
+    lines.push({
+      text: orange('⚠') + `  ${orange('Claude Code')}-only components detected: ${dim(nativeWarning.features.join(', '))}`,
+      isLast: false,
+    });
     if (nativeWarning.installPath) {
-      logger.info(`  Claude native install path: ${formatPathForDisplay(nativeWarning.installPath, projectPath)}`);
+      lines.push({
+        text: orange('ℹ') + `  ${orange('Claude')} native install path: ${dim(formatPathForDisplay(nativeWarning.installPath, projectPath))}`,
+        isLast: false,
+      });
     }
     if (nativeWarning.skipped) {
-      logger.warn('  No Claude Code target selected. Native Claude installation was skipped.');
+      lines.push({
+        text: orange('⚠') + `  No ${orange('Claude Code')} target selected. Native installation was skipped.`,
+        isLast: true,
+      });
     } else {
-      logger.info('  Non-Claude targets install only the portable skills and MCP servers.');
-      logger.info(
-        'nativePreview' in previewOrResult
-          ? '  If you install to Claude Code, reload plugins with /reload-plugins afterward.'
-          : '  Reload plugins in Claude Code with /reload-plugins after install.'
-      );
+      lines.push({
+        text: cyan('ℹ') + '  Non-Claude targets install only the portable skills and MCP servers.',
+        isLast: false,
+      });
+      const reloadMsg = 'nativePreview' in previewOrResult
+        ? `  If you install to ${orange('Claude Code')}, reload plugins with ${bold('/reload-plugins')} afterward.`
+        : `  Reload plugins in ${orange('Claude Code')} with ${bold('/reload-plugins')} after install.`;
+      lines.push({
+        text: orange('ℹ') + reloadMsg,
+        isLast: true,
+      });
+    }
+    // Fix last marker
+    if (lines.length > 0) {
+      lines[lines.length - 1]!.isLast = true;
+    }
+    for (const line of lines) {
+      logger.tree(line.text, line.isLast);
     }
   }
 
   const otherWarnings = getRemainingWarnings(allWarnings);
   if (otherWarnings.length > 0) {
-    console.log('');
-    logger.subtitle('Warnings');
-    for (const warning of otherWarnings) {
-      logger.warn(`  ${warning}`);
+    logger.section('Warnings');
+    const lastIdx = otherWarnings.length - 1;
+    for (let i = 0; i < otherWarnings.length; i++) {
+      logger.tree(yellow('⚠') + `  ${otherWarnings[i]}`, i === lastIdx);
     }
   }
 }
@@ -500,40 +550,69 @@ function renderInstalledComponents(
   }
 
   if (skillGroups.size > 0) {
-    logger.subtitle('Skills');
-    for (const [targetDir, data] of skillGroups) {
-      logger.info(
-        `  ${getAgentLabel([...data.agents], agentManager)}: ${green(String(data.skillNames.size))} skill(s) -> ${formatPathForDisplay(targetDir, projectPath)}`
+    logger.section('Skills');
+    const entries = [...skillGroups.entries()];
+    const copiedFallbacks = result.skills.installed.filter(item => item.symlinkFailed);
+    const totalItems = entries.length + (copiedFallbacks.length > 0 ? 1 : 0);
+    let idx = 0;
+    for (const [targetDir, data] of entries) {
+      idx++;
+      const agentLabel = colorAgentLabel([...data.agents], agentManager);
+      logger.tree(
+        `${agentLabel}: ${green(String(data.skillNames.size))} skill(s) -> ${dim(formatPathForDisplay(targetDir, projectPath))}`,
+        idx === totalItems,
       );
     }
-
-    const copiedFallbacks = result.skills.installed.filter(item => item.symlinkFailed);
     if (copiedFallbacks.length > 0) {
-      logger.warn(`  Symlink creation failed for ${copiedFallbacks.length} skill install(s); copied the files instead.`);
+      logger.tree(yellow('⚠') + `  Symlink creation failed for ${copiedFallbacks.length} skill install(s); copied the files instead.`, true);
     }
   }
 
   if (result.mcpServers.applied.length > 0) {
-    logger.subtitle('MCP');
+    logger.section('MCP Servers');
     const byAgent = new Map<string, string[]>();
     for (const item of result.mcpServers.applied) {
       const list = byAgent.get(item.agent) || [];
       list.push(item.name);
       byAgent.set(item.agent, list);
     }
-    for (const [agent, servers] of byAgent) {
-      logger.info(`  ${agentManager.getAgentById(agent)?.name || agent}: ${cyan(String(servers.length))} server(s) [${servers.join(', ')}]`);
+    const entries = [...byAgent.entries()];
+    for (let i = 0; i < entries.length; i++) {
+      const [agent, servers] = entries[i]!;
+      const agentName = agentManager.getAgentById(agent)?.name || agent;
+      const coloredName = isClaudeAgent(agent) ? orange(agentName) : agentName;
+      logger.tree(
+        `${coloredName}: ${cyan(String(servers.length))} server(s) [${servers.join(', ')}]`,
+        i === entries.length - 1,
+      );
     }
   }
 
   if (result.nativePlugins.installed.length > 0) {
-    logger.subtitle('Native');
-    for (const nativePlugin of result.nativePlugins.installed) {
-      logger.info(
-        `  ${agentManager.getAgentById(nativePlugin.agent)?.name || nativePlugin.agent}: ${formatPathForDisplay(nativePlugin.installPath, projectPath)}`
+    logger.section('Native Install');
+    for (let i = 0; i < result.nativePlugins.installed.length; i++) {
+      const nativePlugin = result.nativePlugins.installed[i]!;
+      const agentName = agentManager.getAgentById(nativePlugin.agent)?.name || nativePlugin.agent;
+      const coloredName = isClaudeAgent(nativePlugin.agent) ? orange(agentName) : agentName;
+      logger.tree(
+        `${coloredName}: ${dim(formatPathForDisplay(nativePlugin.installPath, projectPath))}`,
+        i === result.nativePlugins.installed.length - 1,
       );
     }
   }
+}
+
+function isClaudeAgent(agentId: string): boolean {
+  return agentId === 'claude' || agentId.startsWith('claude-');
+}
+
+function colorAgentLabel(agentIds: string[], agentManager: AgentManager): string {
+  return agentIds
+    .map(agentId => {
+      const name = agentManager.getAgentById(agentId)?.name || agentId;
+      return isClaudeAgent(agentId) ? orange(name) : name;
+    })
+    .join(', ');
 }
 
 function buildGlobalPluginGroups(

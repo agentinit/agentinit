@@ -6,6 +6,7 @@ import { CursorAgent } from '../agents/CursorAgent.js';
 import { DroidAgent } from '../agents/DroidAgent.js';
 import { CopilotAgent } from '../agents/CopilotAgent.js';
 import { OpenClawAgent } from '../agents/OpenClawAgent.js';
+import { HermesAgent } from '../agents/HermesAgent.js';
 import { AiderAgent } from '../agents/AiderAgent.js';
 import { ClineAgent } from '../agents/ClineAgent.js';
 import { WindsurfAgent } from '../agents/WindsurfAgent.js';
@@ -47,6 +48,7 @@ export class AgentManager {
       new ZedAgent(),
       new DroidAgent(),
       new OpenClawAgent(),
+      new HermesAgent(),
     ];
   }
 

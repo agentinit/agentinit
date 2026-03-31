@@ -737,7 +737,7 @@ export class MCPVerifier {
       const { server, status, capabilities, error, connectionTime } = result;
       
       if (status === 'success' && capabilities) {
-        output.push(`✅ MCP Server: ${server.name} (${server.type.toUpperCase()})`);
+        output.push(`✓ MCP Server: ${server.name} (${server.type.toUpperCase()})`);
         output.push(`   Status: Connected successfully (${connectionTime}ms)`);
         
         if (capabilities.serverInfo) {
@@ -811,11 +811,11 @@ export class MCPVerifier {
         }
         
         if (capabilities.tools.length === 0 && capabilities.resources.length === 0 && capabilities.prompts.length === 0) {
-          output.push(`   ⚠️  No tools, resources, or prompts available`);
+          output.push(`   ⚠  No tools, resources, or prompts available`);
         }
         
       } else {
-        const statusIcon = status === 'timeout' ? '⏱️' : '❌';
+        const statusIcon = status === 'timeout' ? '⧗' : '✗';
         output.push(`${statusIcon} MCP Server: ${server.name} (${server.type.toUpperCase()})`);
         output.push(`   Status: ${status === 'timeout' ? 'Connection timeout' : 'Failed'} (${connectionTime || 0}ms)`);
         if (error) {
