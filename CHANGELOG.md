@@ -1,3 +1,10 @@
+## [1.11.1](https://github.com/agentinit/agentinit/compare/v1.11.0...v1.11.1) (2026-03-31)
+
+
+### Bug Fixes
+
+* pin contextcalc to avoid npm peer warning ([ef33526](https://github.com/agentinit/agentinit/commit/ef33526c2b1afa0e130e6b63cd4bdcce40f7e6e0))
+
 # [1.11.0](https://github.com/agentinit/agentinit/compare/v1.10.0...v1.11.0) (2026-03-29)
 
 
