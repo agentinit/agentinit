@@ -1,3 +1,15 @@
+# [1.14.0](https://github.com/agentinit/agentinit/compare/v1.13.4...v1.14.0) (2026-03-31)
+
+
+### Bug Fixes
+
+* scope OpenClaw detection to explicit availability ([8dbf61e](https://github.com/agentinit/agentinit/commit/8dbf61ed12e06f483027857bef68652cd84fef59))
+
+
+### Features
+
+* improve cli output and add Hermes support ([d2a4d4f](https://github.com/agentinit/agentinit/commit/d2a4d4fe61ff5415b800306fe7c558177bc24908))
+
 ## [1.13.4](https://github.com/agentinit/agentinit/compare/v1.13.3...v1.13.4) (2026-03-31)
 
 
