@@ -105,8 +105,9 @@ export function registerPluginsCommand(program: Command): void {
         const p = result.plugin;
         const totalSkills = result.skills.installed.length;
         const totalMcp = result.mcpServers.applied.length;
+        const totalNative = result.nativePlugins.installed.length;
 
-        if (totalSkills === 0 && totalMcp === 0) {
+        if (totalSkills === 0 && totalMcp === 0 && totalNative === 0) {
           spinner.warn(`Plugin "${p.name}" has no portable components to install.`);
           if (result.warnings.length > 0) {
             for (const w of result.warnings) {
@@ -147,14 +148,23 @@ export function registerPluginsCommand(program: Command): void {
           }
         }
 
+        if (totalNative > 0) {
+          for (const nativePlugin of result.nativePlugins.installed) {
+            logger.info(`  ${nativePlugin.agent}: native plugin payload installed at ${nativePlugin.installPath}`);
+          }
+        }
+
         // Skipped
-        if (result.skills.skipped.length > 0 || result.mcpServers.skipped.length > 0) {
+        if (result.skills.skipped.length > 0 || result.mcpServers.skipped.length > 0 || result.nativePlugins.skipped.length > 0) {
           console.log('');
           for (const s of result.skills.skipped) {
             logger.debug(`Skipped skill ${s.name}: ${s.reason}`);
           }
           for (const s of result.mcpServers.skipped) {
             logger.debug(`Skipped MCP ${s.name}: ${s.reason}`);
+          }
+          for (const s of result.nativePlugins.skipped) {
+            logger.warn(`Skipped native plugin payload for ${s.agent}: ${s.reason}`);
           }
         }
 
@@ -265,6 +275,11 @@ export function registerPluginsCommand(program: Command): void {
         if (p.components.mcpServers.length > 0) {
           const agents = [...new Set(p.components.mcpServers.map(m => m.agent))];
           logger.info(`  MCP: ${p.components.mcpServers.length} → ${agents.join(', ')}`);
+        }
+
+        if ((p.components.nativePlugins || []).length > 0) {
+          const agents = [...new Set((p.components.nativePlugins || []).map(nativePlugin => nativePlugin.agent))];
+          logger.info(`  Native Plugins: ${(p.components.nativePlugins || []).length} → ${agents.join(', ')}`);
         }
 
         if (p.warnings.length > 0) {

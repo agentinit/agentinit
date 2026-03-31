@@ -180,6 +180,10 @@ agentinit skills add ./skills
 # Install marketplace-hosted skills explicitly
 agentinit skills add claude/skill-creator
 agentinit skills add skill-creator --from claude
+agentinit skills add openai/gh-address-comments
+
+# Repo-shaped marketplace misses warn and fall back to GitHub
+agentinit skills add openai/codex-plugin-cc
 
 # Install selected skills globally for a specific agent
 agentinit skills add owner/repo --global --agent claude --skill openai-docs
@@ -202,6 +206,8 @@ Bare skill names default to the public skills catalog used by the open agent ski
 
 Marketplace-backed `skills add` installs only the discovered skills. If a marketplace source also contains MCP servers or other portable components, AgentInit warns and points you to `agentinit plugins install ...` for the full install.
 
+If a marketplace lookup misses and the source still looks like a GitHub repository, AgentInit warns and tries the matching GitHub repo directly as an unverified fallback. This covers repos like `openai/codex-plugin-cc` that are not part of the curated OpenAI skills catalog.
+
 ### `agentinit plugins`
 
 Install, inspect, search, and remove portable plugins from explicit marketplace sources, GitHub repositories, or local paths.
@@ -215,6 +221,7 @@ agentinit plugins search code-review --from claude
 # Install from a marketplace explicitly
 agentinit plugins install claude/code-review
 agentinit plugins install code-review --from claude
+agentinit plugins install openai/codex-plugin-cc
 
 # Install from GitHub or a local path
 agentinit plugins install owner/repo
@@ -230,7 +237,10 @@ agentinit plugins remove code-review
 - Marketplace installs are explicit by design. Bare names like `agentinit plugins install code-review` are rejected.
 - Use `<marketplace>/<plugin>` or `--from <marketplace>` when installing from a marketplace.
 - `plugins search` also requires `--from <marketplace>`.
-- Only `claude` is implemented today, mapped to Anthropic's `claude-plugins-official` marketplace.
+- Implemented marketplaces today include `claude` (Anthropic's Claude plugin marketplace) and `openai` (the OpenAI Codex skills catalog).
+- If a marketplace lookup misses but the source still looks like `owner/repo`, AgentInit warns and tries that GitHub repository directly.
+- For Claude-format plugins, `plugins install` still installs portable skills and MCP servers for the selected agents. If Claude Code-native components are also present, AgentInit installs the native plugin payload for `claude` only, warns that those parts are Claude-only, and reminds you to run `/reload-plugins`.
+- Claude-native plugin payloads are user-scoped and stored under `~/.claude/plugins`, even when the AgentInit install itself is project-scoped.
 
 ### `agentinit revert`
 

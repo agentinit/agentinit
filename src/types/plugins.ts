@@ -57,6 +57,12 @@ export interface MarketplacePlugin {
   registry: string;
 }
 
+export interface NativePluginComponent {
+  agent: string;
+  pluginKey: string;
+  installPath: string;
+}
+
 /**
  * Record of a plugin that has been installed
  */
@@ -71,6 +77,7 @@ export interface InstalledPlugin {
   components: {
     skills: Array<{ name: string; agent: string } & SkillInstallResult>;
     mcpServers: Array<{ name: string; agent: string }>;
+    nativePlugins?: NativePluginComponent[];
   };
   warnings: string[];
 }
@@ -107,6 +114,10 @@ export interface PluginInstallResult {
   mcpServers: {
     applied: Array<{ name: string; agent: string }>;
     skipped: Array<{ name: string; reason: string }>;
+  };
+  nativePlugins: {
+    installed: NativePluginComponent[];
+    skipped: Array<{ agent: string; reason: string }>;
   };
   warnings: string[];
 }

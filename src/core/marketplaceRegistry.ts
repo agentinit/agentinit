@@ -15,6 +15,13 @@ export const MARKETPLACES: MarketplaceRegistry[] = [
     pluginDirs: ['plugins', 'external_plugins'],
     cacheTtlMs: 3600000,
   },
+  {
+    id: 'openai',
+    name: 'OpenAI Skills',
+    repoUrl: 'https://github.com/openai/skills.git',
+    pluginDirs: ['skills/.curated', 'skills/.system', 'skills/.experimental'],
+    cacheTtlMs: 3600000,
+  },
 ];
 
 export function getMarketplace(id: string): MarketplaceRegistry | undefined {

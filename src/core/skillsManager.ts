@@ -243,8 +243,8 @@ export class SkillsManager {
    * Clone a GitHub repository to a temp directory
    */
   async cloneRepo(url: string): Promise<string> {
-    const tempDir = join(tmpdir(), `agentinit-skills-${Date.now()}`);
-    await fs.mkdir(tempDir, { recursive: true });
+    const tempDir = await fs.mkdtemp(join(tmpdir(), 'agentinit-skills-'));
+    await fs.rm(tempDir, { recursive: true, force: true });
 
     try {
       await execFileAsync('git', ['clone', '--depth', '1', url, tempDir], {
@@ -308,6 +308,33 @@ export class SkillsManager {
     };
   }
 
+  private async discoverPortablePluginSkills(
+    repoPath: string,
+    sourceLabel: string,
+    source: SkillSource,
+    projectPath: string,
+  ): Promise<{ skills: SkillInfo[]; warnings: string[] } | null> {
+    const { PluginManager } = await import('./pluginManager.js');
+    const pluginManager = new PluginManager(this.agentManager);
+    const plugin = await pluginManager.loadPluginFromDirectory(repoPath, source);
+
+    if (plugin.skills.length === 0 && plugin.mcpServers.length === 0 && plugin.warnings.length === 0) {
+      return null;
+    }
+
+    const warnings = [...plugin.warnings];
+    if (plugin.mcpServers.length > 0) {
+      warnings.push(
+        `Source "${sourceLabel}" also includes ${plugin.mcpServers.length} MCP server(s); use "agentinit plugins install ${sourceLabel}" to install them.`
+      );
+    }
+
+    return {
+      skills: plugin.skills,
+      warnings,
+    };
+  }
+
   async discoverFromSource(
     source: string,
     projectPath: string,
@@ -338,14 +365,26 @@ export class SkillsManager {
       }
 
       let skills = await this.discoverSkills(repoPath);
+      let pluginWarnings: string[] = [];
+      if (skills.length === 0) {
+        const pluginBackedSkills = await this.discoverPortablePluginSkills(repoPath, source, resolved, projectPath);
+        if (pluginBackedSkills) {
+          skills = pluginBackedSkills.skills;
+          pluginWarnings = pluginBackedSkills.warnings;
+        }
+      }
+
       if (request.implicitSkills.length > 0) {
         const names = new Set(request.implicitSkills.map(skill => skill.toLowerCase()));
         skills = skills.filter(skill => names.has(skill.name.toLowerCase()));
       }
 
-      const warnings = request.implicitSkills.length > 0
-        ? [`Resolved "${source}" from the default skills catalog ${DEFAULT_SKILLS_CATALOG.owner}/${DEFAULT_SKILLS_CATALOG.repo}. Use "./${source}" for a local path.`]
-        : [];
+      const warnings = [
+        ...pluginWarnings,
+        ...(request.implicitSkills.length > 0
+          ? [`Resolved "${source}" from the default skills catalog ${DEFAULT_SKILLS_CATALOG.owner}/${DEFAULT_SKILLS_CATALOG.repo}. Use "./${source}" for a local path.`]
+          : []),
+      ];
 
       return { skills, warnings };
     } finally {
@@ -664,13 +703,21 @@ export class SkillsManager {
             ...(options.global !== undefined ? { global: options.global } : {}),
             ...(options.copy !== undefined ? { copy: options.copy } : {}),
           };
-          const installed = await this.installSkillForAgent(
-            skill.path,
-            skill.name,
-            agent,
-            projectPath,
-            installOptions
-          );
+          const installed = skill.generatedContent
+            ? await this.installSkillFromContentForAgent(
+              skill.name,
+              skill.generatedContent,
+              agent,
+              projectPath,
+              installOptions,
+            )
+            : await this.installSkillForAgent(
+              skill.path,
+              skill.name,
+              agent,
+              projectPath,
+              installOptions
+            );
 
           result.installed.push({ skill, agent: agent.id, ...installed });
         } catch (error: any) {

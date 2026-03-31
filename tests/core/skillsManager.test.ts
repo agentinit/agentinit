@@ -5,16 +5,53 @@ import { join } from 'path';
 import { ClaudeAgent } from '../../src/agents/ClaudeAgent.js';
 import { ClaudeDesktopAgent } from '../../src/agents/ClaudeDesktopAgent.js';
 import { CodexCliAgent } from '../../src/agents/CodexCliAgent.js';
-import { PluginManager } from '../../src/core/pluginManager.js';
+import { MarketplacePluginNotFoundError, PluginManager } from '../../src/core/pluginManager.js';
 import { SkillsManager } from '../../src/core/skillsManager.js';
 
 describe('SkillsManager', () => {
   const tempDirs: string[] = [];
 
   afterEach(async () => {
+    vi.restoreAllMocks();
     await Promise.all(tempDirs.map(dir => rm(dir, { recursive: true, force: true })));
     tempDirs.length = 0;
   });
+
+  async function createClaudeMarketplaceBundleDir(bundleName: string, pluginName: string = 'codex'): Promise<string> {
+    const bundleDir = await mkdtemp(join(tmpdir(), `agentinit-skill-bundle-${bundleName}-`));
+    tempDirs.push(bundleDir);
+
+    await mkdir(join(bundleDir, '.claude-plugin'), { recursive: true });
+    await mkdir(join(bundleDir, 'plugins', pluginName, '.claude-plugin'), { recursive: true });
+    await mkdir(join(bundleDir, 'plugins', pluginName, 'commands'), { recursive: true });
+    await mkdir(join(bundleDir, 'plugins', pluginName, 'agents'), { recursive: true });
+    await writeFile(
+      join(bundleDir, '.claude-plugin', 'marketplace.json'),
+      JSON.stringify({
+        name: bundleName,
+        plugins: [
+          {
+            name: pluginName,
+            source: `./plugins/${pluginName}`,
+          },
+        ],
+      }, null, 2),
+    );
+    await writeFile(
+      join(bundleDir, 'plugins', pluginName, '.claude-plugin', 'plugin.json'),
+      JSON.stringify({
+        name: pluginName,
+        version: '1.0.1',
+        description: 'Bundled Codex plugin',
+      }, null, 2),
+    );
+    await writeFile(
+      join(bundleDir, 'plugins', pluginName, 'commands', 'review.md'),
+      '---\nname: codex-review\ndescription: Review code with Codex\n---\nRun a Codex review.\n',
+    );
+
+    return bundleDir;
+  }
 
   it('should reject skill names that escape the target directory', async () => {
     const manager = new SkillsManager();
@@ -328,6 +365,38 @@ describe('SkillsManager', () => {
     expect((await lstat(join(projectDir, '.claude/skills', 'skill-creator'))).isSymbolicLink()).toBe(true);
   });
 
+  it('supports repo fallback for --from openai skill installs', async () => {
+    const manager = new SkillsManager();
+    const projectDir = await mkdtemp(join(tmpdir(), 'agentinit-marketplace-skill-project-'));
+    const bundleDir = await createClaudeMarketplaceBundleDir('openai-codex');
+    tempDirs.push(projectDir);
+
+    vi.spyOn(PluginManager.prototype, 'resolveMarketplacePlugin').mockRejectedValueOnce(
+      new MarketplacePluginNotFoundError('codex-plugin-cc', 'openai', 'OpenAI Skills', []),
+    );
+    const cloneRepoSpy = vi.spyOn(SkillsManager.prototype, 'cloneRepo').mockResolvedValue(bundleDir);
+
+    const result = await manager.addFromSource('codex-plugin-cc', projectDir, {
+      from: 'openai',
+      agents: ['claude'],
+    });
+
+    expect(cloneRepoSpy).toHaveBeenCalledWith('https://github.com/openai/codex-plugin-cc.git');
+    expect(result.warnings).toEqual(expect.arrayContaining([
+      'Plugin "codex-plugin-cc" not found in OpenAI Skills marketplace.',
+      'Marketplace lookup failed; trying unverified GitHub repository https://github.com/openai/codex-plugin-cc instead.',
+      'Source "https://github.com/openai/codex-plugin-cc" is a Claude Code marketplace bundle; using bundled plugin "codex".',
+      'Agent definitions (agents/) are Claude Code-specific',
+    ]));
+    expect(result.installed).toHaveLength(1);
+    expect(result.installed[0]).toMatchObject({
+      agent: 'claude',
+      mode: 'symlink',
+      path: join(projectDir, '.claude/skills', 'codex-review'),
+      canonicalPath: join(projectDir, '.agents/skills', 'codex-review'),
+    });
+  });
+
   it('resolves bare skill names from the default public skills catalog', async () => {
     const manager = new SkillsManager();
     const projectDir = await mkdtemp(join(tmpdir(), 'agentinit-skill-project-'));
@@ -352,6 +421,28 @@ describe('SkillsManager', () => {
     ]);
     expect(result.warnings[0]).toContain('vercel-labs/agent-skills');
     expect(result.warnings[0]).toContain('Use "./skill-creator" for a local path.');
+  });
+
+  it('discovers skills from direct GitHub Claude marketplace bundles', async () => {
+    const manager = new SkillsManager();
+    const projectDir = await mkdtemp(join(tmpdir(), 'agentinit-skill-project-'));
+    const bundleDir = await createClaudeMarketplaceBundleDir('openai-codex');
+    tempDirs.push(projectDir);
+
+    vi.spyOn(manager, 'cloneRepo').mockResolvedValue(bundleDir);
+
+    const result = await manager.discoverFromSource('https://github.com/openai/codex-plugin-cc', projectDir);
+
+    expect(result.skills).toEqual([
+      expect.objectContaining({
+        name: 'codex-review',
+        description: 'Review code with Codex',
+      }),
+    ]);
+    expect(result.warnings).toEqual(expect.arrayContaining([
+      'Source "https://github.com/openai/codex-plugin-cc" is a Claude Code marketplace bundle; using bundled plugin "codex".',
+      'Agent definitions (agents/) are Claude Code-specific',
+    ]));
   });
 
   it('keeps explicit local paths for missing skills', async () => {

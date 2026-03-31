@@ -1,9 +1,10 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { Agent } from '../../src/agents/Agent.js';
-import { PluginManager } from '../../src/core/pluginManager.js';
+import { MarketplacePluginNotFoundError, PluginManager } from '../../src/core/pluginManager.js';
+import { SkillsManager } from '../../src/core/skillsManager.js';
 import type { AgentDefinition } from '../../src/types/index.js';
 import type { AppliedRules, RuleSection } from '../../src/types/rules.js';
 
@@ -94,6 +95,8 @@ describe('PluginManager', () => {
   const originalHome = process.env.HOME;
 
   afterEach(async () => {
+    vi.restoreAllMocks();
+
     if (originalHome === undefined) {
       delete process.env.HOME;
     } else {
@@ -145,6 +148,199 @@ describe('PluginManager', () => {
 
     return pluginDir;
   }
+
+  async function createClaudeMarketplaceBundleDir(bundleName: string, pluginName: string = 'codex'): Promise<string> {
+    const bundleDir = await createTempDir(`agentinit-plugin-bundle-${bundleName}-`);
+    await mkdir(join(bundleDir, '.claude-plugin'), { recursive: true });
+    await mkdir(join(bundleDir, 'plugins', pluginName, '.claude-plugin'), { recursive: true });
+    await mkdir(join(bundleDir, 'plugins', pluginName, 'commands'), { recursive: true });
+    await mkdir(join(bundleDir, 'plugins', pluginName, 'agents'), { recursive: true });
+    await writeFile(
+      join(bundleDir, '.claude-plugin', 'marketplace.json'),
+      JSON.stringify({
+        name: bundleName,
+        plugins: [
+          {
+            name: pluginName,
+            description: 'Bundled Codex plugin',
+            version: '1.0.1',
+            source: `./plugins/${pluginName}`,
+          },
+        ],
+      }, null, 2),
+    );
+    await writeFile(
+      join(bundleDir, 'plugins', pluginName, '.claude-plugin', 'plugin.json'),
+      JSON.stringify({
+        name: pluginName,
+        version: '1.0.1',
+        description: 'Bundled Codex plugin',
+      }, null, 2),
+    );
+    await writeFile(
+      join(bundleDir, 'plugins', pluginName, 'commands', 'review.md'),
+      '---\nname: codex-review\ndescription: Review code with Codex\n---\nRun a Codex review.\n',
+    );
+
+    return bundleDir;
+  }
+
+  it('resolves openai marketplace-prefixed plugin names', () => {
+    const manager = new PluginManager(new StubAgentManager({}) as never);
+
+    expect(manager.resolveSource('openai/playwright')).toEqual({
+      type: 'marketplace',
+      marketplace: 'openai',
+      pluginName: 'playwright',
+    });
+  });
+
+  it('MarketplacePluginNotFoundError carries structured properties', () => {
+    const error = new MarketplacePluginNotFoundError(
+      'nonexistent',
+      'openai',
+      'OpenAI Skills',
+      ['playwright', 'sentry'],
+    );
+
+    expect(error).toBeInstanceOf(Error);
+    expect(error.name).toBe('MarketplacePluginNotFoundError');
+    expect(error.pluginName).toBe('nonexistent');
+    expect(error.marketplaceId).toBe('openai');
+    expect(error.marketplaceName).toBe('OpenAI Skills');
+    expect(error.suggestions).toEqual(['playwright', 'sentry']);
+    expect(error.message).toContain('Plugin "nonexistent" not found in OpenAI Skills marketplace.');
+    expect(error.message).toContain('Did you mean: playwright, sentry?');
+  });
+
+  it('MarketplacePluginNotFoundError omits suggestions when empty', () => {
+    const error = new MarketplacePluginNotFoundError('foo', 'openai', 'OpenAI Skills', []);
+
+    expect(error.message).toBe('Plugin "foo" not found in OpenAI Skills marketplace.');
+    expect(error.suggestions).toEqual([]);
+  });
+
+  it('falls back to GitHub for marketplace misses on repo-shaped sources', async () => {
+    const projectDir = await createTempDir('agentinit-project-');
+    const bundleDir = await createClaudeMarketplaceBundleDir('openai-codex');
+    const manager = new PluginManager(new StubAgentManager({}) as never);
+
+    vi.spyOn(manager, 'resolveMarketplacePlugin').mockRejectedValueOnce(
+      new MarketplacePluginNotFoundError('codex-plugin-cc', 'openai', 'OpenAI Skills', []),
+    );
+    const cloneRepoSpy = vi.spyOn(SkillsManager.prototype, 'cloneRepo').mockResolvedValue(bundleDir);
+
+    const result = await manager.installPlugin('openai/codex-plugin-cc', projectDir, {
+      list: true,
+    });
+
+    expect(cloneRepoSpy).toHaveBeenCalledWith('https://github.com/openai/codex-plugin-cc.git');
+    expect(result.plugin.name).toBe('codex');
+    expect(result.plugin.skills).toEqual([
+      expect.objectContaining({
+        name: 'codex-review',
+        description: 'Review code with Codex',
+      }),
+    ]);
+    expect(result.plugin.warnings).toEqual(expect.arrayContaining([
+      'Plugin "codex-plugin-cc" not found in OpenAI Skills marketplace.',
+      'Marketplace lookup failed; trying unverified GitHub repository https://github.com/openai/codex-plugin-cc instead.',
+      'Source "https://github.com/openai/codex-plugin-cc" is a Claude Code marketplace bundle; using bundled plugin "codex".',
+      'Agent definitions (agents/) are Claude Code-specific',
+    ]));
+  });
+
+  it('parses direct GitHub Claude marketplace repositories as bundled plugins', async () => {
+    const projectDir = await createTempDir('agentinit-project-');
+    const bundleDir = await createClaudeMarketplaceBundleDir('openai-codex');
+    const manager = new PluginManager(new StubAgentManager({}) as never);
+
+    vi.spyOn(SkillsManager.prototype, 'cloneRepo').mockResolvedValue(bundleDir);
+
+    const result = await manager.installPlugin('https://github.com/openai/codex-plugin-cc', projectDir, {
+      list: true,
+    });
+
+    expect(result.plugin.name).toBe('codex');
+    expect(result.plugin.skills).toEqual([
+      expect.objectContaining({
+        name: 'codex-review',
+      }),
+    ]);
+    expect(result.plugin.warnings).toEqual(expect.arrayContaining([
+      'Source "https://github.com/openai/codex-plugin-cc" is a Claude Code marketplace bundle; using bundled plugin "codex".',
+      'Agent definitions (agents/) are Claude Code-specific',
+    ]));
+  });
+
+  it('installs Claude-native plugin payloads only for Claude Code and tracks them in the registry', async () => {
+    const homeDir = await createTempDir('agentinit-home-');
+    process.env.HOME = homeDir;
+
+    const projectDir = await createTempDir('agentinit-project-');
+    const bundleDir = await createClaudeMarketplaceBundleDir('openai-codex');
+    const claude = new StubAgent('claude');
+    const beta = new StubAgent('beta');
+    const manager = new PluginManager(new StubAgentManager({ claude, beta }) as never);
+
+    const result = await manager.installPlugin(bundleDir, projectDir, {
+      agents: ['claude', 'beta'],
+    });
+
+    const expectedInstallPath = join(homeDir, '.claude', 'plugins', 'cache', 'agentinit-openai-codex', 'codex', '1.0.1');
+    expect(result.nativePlugins.installed).toEqual([
+      {
+        agent: 'claude',
+        pluginKey: 'codex@agentinit-openai-codex',
+        installPath: expectedInstallPath,
+      },
+    ]);
+    expect(result.nativePlugins.skipped).toEqual([]);
+    expect(result.warnings).toEqual(expect.arrayContaining([
+      'Claude Code-native plugin components detected (commands, agents); they will only work in Claude Code and install into ~/.claude/plugins.',
+      'Reload plugins in Claude Code with /reload-plugins to activate native plugin components.',
+    ]));
+
+    const installedPlugins = JSON.parse(await readFile(join(homeDir, '.claude', 'plugins', 'installed_plugins.json'), 'utf8'));
+    expect(installedPlugins.plugins['codex@agentinit-openai-codex'][0].installPath).toBe(expectedInstallPath);
+    expect(await readFile(join(expectedInstallPath, '.claude-plugin', 'plugin.json'), 'utf8')).toContain('"name": "codex"');
+
+    const registry = await manager.getRegistry(projectDir, false);
+    expect(registry.plugins).toHaveLength(1);
+    expect(registry.plugins[0]?.components.nativePlugins).toEqual([
+      {
+        agent: 'claude',
+        pluginKey: 'codex@agentinit-openai-codex',
+        installPath: expectedInstallPath,
+      },
+    ]);
+  });
+
+  it('removes Claude-native plugin payloads when removing the plugin', async () => {
+    const homeDir = await createTempDir('agentinit-home-');
+    process.env.HOME = homeDir;
+
+    const projectDir = await createTempDir('agentinit-project-');
+    const bundleDir = await createClaudeMarketplaceBundleDir('openai-codex');
+    const claude = new StubAgent('claude');
+    const manager = new PluginManager(new StubAgentManager({ claude }) as never);
+
+    await manager.installPlugin(bundleDir, projectDir, {
+      agents: ['claude'],
+    });
+
+    const result = await manager.removePlugin('codex', projectDir);
+
+    expect(result.removed).toBe(true);
+    expect(result.details).toEqual(expect.arrayContaining([
+      'Removed native plugin payload: codex@agentinit-openai-codex (claude)',
+      'Removed from plugin registry',
+    ]));
+    await expect(readFile(join(homeDir, '.claude', 'plugins', 'installed_plugins.json'), 'utf8')).resolves.toContain('"plugins": {}');
+
+    const registry = await manager.getRegistry(projectDir, false);
+    expect(registry.plugins).toEqual([]);
+  });
 
   it('resolves marketplace-prefixed plugin names explicitly', () => {
     const manager = new PluginManager(new StubAgentManager({}) as never);

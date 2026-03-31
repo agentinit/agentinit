@@ -68,12 +68,19 @@
 
 ## Unreleased
 
+### Features
+
+* support the `openai` marketplace for skills and plugin installs
+* warn and fall back to unverified GitHub repos for marketplace misses like `openai/codex-plugin-cc`
+* install Claude Code-native plugin payloads during `plugins install` when Claude-only components are detected and Claude Code is targeted
+
 ### Bug Fixes
 
 * fix plugin scope handling for global MCP installs/removals and targeted removals
 * preserve revert semantics for canonical project skills and keep `skills remove` project-scoped by default
 * prevent `skills remove` from deleting shared native skill paths that are still used by another agent
 * update docs and onboarding to the `mcp add|verify`, `rules add`, and `skills add` command model
+* parse Claude Code marketplace bundle repos like `openai/codex-plugin-cc` when installing portable skills or plugins
 
 # [1.7.0](https://github.com/agentinit/agentinit/compare/v1.6.0...v1.7.0) (2025-10-17)
 

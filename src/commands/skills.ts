@@ -9,6 +9,7 @@ import { SkillsManager } from '../core/skillsManager.js';
 import { getMarketplaceIds } from '../core/marketplaceRegistry.js';
 import { AgentManager } from '../core/agentManager.js';
 import type { Agent } from '../agents/Agent.js';
+import type { SkillInfo, SkillsAddResult } from '../types/skills.js';
 
 interface SkillAgentGroup {
   dir: string;
@@ -57,31 +58,8 @@ export function registerSkillsCommand(program: Command): void {
           const result = await skillsManager.discoverFromSource(source, process.cwd(), {
             from: options.from,
           });
-          const discoveredSkills = result.skills;
           spinner.stop();
-
-          if (discoveredSkills.length === 0) {
-            logger.info('No skills found in the source.');
-            for (const warning of result.warnings) {
-              logger.warn(warning);
-            }
-            return;
-          }
-
-          logger.info(`Found ${green(String(discoveredSkills.length))} skill(s):\n`);
-          logger.info('  Name                Description');
-          logger.info('  ──────────────────  ──────────────────────────────────');
-          for (const skill of discoveredSkills) {
-            const name = skill.name.padEnd(18);
-            logger.info(`  ${green(name)}  ${skill.description}`);
-          }
-
-          if (result.warnings.length > 0) {
-            logger.info('');
-            for (const warning of result.warnings) {
-              logger.warn(warning);
-            }
-          }
+          displayDiscoveredSkills(result.skills, result.warnings);
         } catch (error) {
           spinner.fail('Failed to discover skills');
           logger.error(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -114,86 +92,19 @@ export function registerSkillsCommand(program: Command): void {
       }
 
       // Install skills
+      const buildInstallOptions = (fromOverride?: string) => ({
+        ...(fromOverride !== undefined ? { from: fromOverride } : options.from !== undefined ? { from: options.from } : {}),
+        ...(targetGlobal !== undefined ? { global: targetGlobal } : {}),
+        ...(targetAgents !== undefined ? { agents: targetAgents } : {}),
+        ...(options.skill !== undefined ? { skills: options.skill } : {}),
+        ...(options.copy !== undefined ? { copy: options.copy } : {}),
+        ...(options.yes !== undefined ? { yes: options.yes } : {}),
+      });
+
       const spinner = ora('Installing skills...').start();
       try {
-        const installOptions = {
-          ...(options.from !== undefined ? { from: options.from } : {}),
-          ...(targetGlobal !== undefined ? { global: targetGlobal } : {}),
-          ...(targetAgents !== undefined ? { agents: targetAgents } : {}),
-          ...(options.skill !== undefined ? { skills: options.skill } : {}),
-          ...(options.copy !== undefined ? { copy: options.copy } : {}),
-          ...(options.yes !== undefined ? { yes: options.yes } : {}),
-        };
-        const result = await skillsManager.addFromSource(source, process.cwd(), installOptions);
-
-        if (result.installed.length === 0 && result.skipped.length === 0) {
-          spinner.warn('No skills found in the source.');
-          for (const warning of result.warnings) {
-            logger.warn(warning);
-          }
-          return;
-        }
-
-        if (result.installed.length === 0 && result.skipped.length > 0 && result.skipped.every(skip => skip.reason === 'No target agents found')) {
-          spinner.warn('No target agents found.');
-          logNoTargetAgentsGuidance(skillsManager, agentManager, source, {
-            from: options.from,
-          });
-
-          if (result.warnings.length > 0) {
-            logger.info('');
-            for (const warning of result.warnings) {
-              logger.warn(warning);
-            }
-          }
-          return;
-        }
-
-        const uniqueInstallCount = new Set(
-          result.installed.map(item => `${item.path}:${item.skill.name}`)
-        ).size;
-        spinner.succeed(`Installed ${green(String(uniqueInstallCount))} skill(s)`);
-
-        // Show per-path breakdown
-        const byPath = new Map<string, { agents: Set<string>; skills: Set<string> }>();
-        for (const item of result.installed) {
-          const path = item.path;
-          const existing = byPath.get(path) || {
-            agents: new Set<string>(),
-            skills: new Set<string>(),
-          };
-          existing.agents.add(agentManager.getAgentById(item.agent)?.name || item.agent);
-          existing.skills.add(item.skill.name);
-          byPath.set(path, existing);
-        }
-        for (const [path, details] of byPath) {
-          logger.info(`  ${relative(process.cwd(), path) || path}`);
-          logger.info(`    Agents: ${[...details.agents].join(', ')}`);
-          logger.info(`    Skills: ${green(String(details.skills.size))} installed (${[...details.skills].join(', ')})`);
-        }
-
-        const copiedFallbacks = result.installed.filter(item => item.symlinkFailed);
-        if (copiedFallbacks.length > 0) {
-          logger.warn(`Symlink creation failed for ${copiedFallbacks.length} install(s); copied the skill files instead.`);
-        }
-
-        // Show skipped skills
-        if (result.skipped.length > 0) {
-          logger.info('');
-          logger.warn(`Skipped ${result.skipped.length} skill(s):`);
-          for (const skip of result.skipped) {
-            logger.info(`  ${skip.skill.name}: ${skip.reason}`);
-          }
-        }
-
-        if (result.warnings.length > 0) {
-          logger.info('');
-          for (const warning of result.warnings) {
-            logger.warn(warning);
-          }
-        }
-
-        logger.success('Skills installation complete.');
+        const result = await skillsManager.addFromSource(source, process.cwd(), buildInstallOptions());
+        displayInstallResult(result, spinner, agentManager, skillsManager, source, { from: options.from });
       } catch (error) {
         spinner.fail('Failed to install skills');
         logger.error(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -664,4 +575,107 @@ function buildSkillsAddCommand(source: string, from: string | undefined, extraAr
 
   args.push(...extraArgs);
   return args.join(' ');
+}
+
+function displayDiscoveredSkills(skills: SkillInfo[], warnings: string[]): void {
+  if (skills.length === 0) {
+    logger.info('No skills found in the source.');
+    for (const warning of warnings) {
+      logger.warn(warning);
+    }
+    return;
+  }
+
+  logger.info(`Found ${green(String(skills.length))} skill(s):\n`);
+  logger.info('  Name                Description');
+  logger.info('  ──────────────────  ──────────────────────────────────');
+  for (const skill of skills) {
+    const name = skill.name.padEnd(18);
+    logger.info(`  ${green(name)}  ${skill.description}`);
+  }
+
+  if (warnings.length > 0) {
+    logger.info('');
+    for (const warning of warnings) {
+      logger.warn(warning);
+    }
+  }
+}
+
+function displayInstallResult(
+  result: SkillsAddResult,
+  spinner: ReturnType<typeof ora>,
+  agentManager: AgentManager,
+  skillsManager: SkillsManager,
+  source: string,
+  options: { from?: string },
+): void {
+  if (result.installed.length === 0 && result.skipped.length === 0) {
+    spinner.warn('No skills found in the source.');
+    for (const warning of result.warnings) {
+      logger.warn(warning);
+    }
+    return;
+  }
+
+  if (result.installed.length === 0 && result.skipped.length > 0 && result.skipped.every(skip => skip.reason === 'No target agents found')) {
+    spinner.warn('No target agents found.');
+    logNoTargetAgentsGuidance(skillsManager, agentManager, source, {
+      ...(options.from !== undefined ? { from: options.from } : {}),
+    });
+
+    if (result.warnings.length > 0) {
+      logger.info('');
+      for (const warning of result.warnings) {
+        logger.warn(warning);
+      }
+    }
+    return;
+  }
+
+  const uniqueInstallCount = new Set(
+    result.installed.map(item => `${item.path}:${item.skill.name}`)
+  ).size;
+  spinner.succeed(`Installed ${green(String(uniqueInstallCount))} skill(s)`);
+
+  // Show per-path breakdown
+  const byPath = new Map<string, { agents: Set<string>; skills: Set<string> }>();
+  for (const item of result.installed) {
+    const path = item.path;
+    const existing = byPath.get(path) || {
+      agents: new Set<string>(),
+      skills: new Set<string>(),
+    };
+    existing.agents.add(agentManager.getAgentById(item.agent)?.name || item.agent);
+    existing.skills.add(item.skill.name);
+    byPath.set(path, existing);
+  }
+  for (const [path, details] of byPath) {
+    logger.info(`  ${relative(process.cwd(), path) || path}`);
+    logger.info(`    Agents: ${[...details.agents].join(', ')}`);
+    logger.info(`    Skills: ${green(String(details.skills.size))} installed (${[...details.skills].join(', ')})`);
+  }
+
+  const copiedFallbacks = result.installed.filter(item => item.symlinkFailed);
+  if (copiedFallbacks.length > 0) {
+    logger.warn(`Symlink creation failed for ${copiedFallbacks.length} install(s); copied the skill files instead.`);
+  }
+
+  // Show skipped skills
+  if (result.skipped.length > 0) {
+    logger.info('');
+    logger.warn(`Skipped ${result.skipped.length} skill(s):`);
+    for (const skip of result.skipped) {
+      logger.info(`  ${skip.skill.name}: ${skip.reason}`);
+    }
+  }
+
+  if (result.warnings.length > 0) {
+    logger.info('');
+    for (const warning of result.warnings) {
+      logger.warn(warning);
+    }
+  }
+
+  logger.success('Skills installation complete.');
 }
