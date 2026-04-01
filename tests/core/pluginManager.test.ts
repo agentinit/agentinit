@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
-import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'fs/promises';
+import { lstat, mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { Agent } from '../../src/agents/Agent.js';
@@ -131,6 +131,25 @@ describe('PluginManager', () => {
         },
       }, null, 2),
     );
+    return pluginDir;
+  }
+
+  async function createSkillPluginDir(pluginName: string, skillName: string = 'shared-skill'): Promise<string> {
+    const pluginDir = await createTempDir(`agentinit-plugin-${pluginName}-`);
+    const skillDir = join(pluginDir, 'skills', skillName);
+    await mkdir(skillDir, { recursive: true });
+    await writeFile(
+      join(skillDir, 'SKILL.md'),
+      `---
+name: ${skillName}
+description: ${skillName} description
+version: 1.0.0
+---
+
+Use the ${skillName} workflow.
+`,
+    );
+
     return pluginDir;
   }
 
@@ -592,6 +611,49 @@ describe('PluginManager', () => {
     expect(registry.plugins[0]?.scope).toBe('global');
   });
 
+  it('installs global plugin skills through agent paths and keeps them after cloned source cleanup', async () => {
+    const homeDir = await createTempDir('agentinit-home-');
+    process.env.HOME = homeDir;
+
+    const projectDir = await createTempDir('agentinit-project-');
+    const pluginDir = await createSkillPluginDir('global-skill');
+    const agent = new StubAgent('alpha');
+    const manager = new PluginManager(new StubAgentManager({ alpha: agent }) as never);
+
+    vi.spyOn(SkillsManager.prototype, 'cloneRepo').mockResolvedValue(pluginDir);
+
+    const result = await manager.installPlugin('https://github.com/acme/shared-plugin', projectDir, {
+      global: true,
+      agents: ['alpha'],
+    });
+
+    const installedSkill = result.skills.installed[0];
+    const expectedAgentPath = join(homeDir, '.alpha', 'skills', 'shared-skill');
+    const expectedCanonicalPath = join(homeDir, '.agents', 'skills', 'shared-skill');
+
+    expect(installedSkill).toEqual(expect.objectContaining({
+      name: 'shared-skill',
+      agent: 'alpha',
+      path: expectedAgentPath,
+      canonicalPath: expectedCanonicalPath,
+      mode: 'symlink',
+    }));
+    expect(await readFile(join(expectedCanonicalPath, 'SKILL.md'), 'utf8')).toContain('Use the shared-skill workflow.');
+    expect(await readFile(join(expectedAgentPath, 'SKILL.md'), 'utf8')).toContain('Use the shared-skill workflow.');
+    expect((await lstat(expectedAgentPath)).isSymbolicLink()).toBe(true);
+    await expect(lstat(pluginDir)).rejects.toThrow();
+
+    const listed = await manager.listPlugins(projectDir, { global: true, agents: ['alpha'] });
+    expect(listed).toHaveLength(1);
+    expect(listed[0]?.components.skills).toEqual([
+      expect.objectContaining({
+        agent: 'alpha',
+        path: expectedAgentPath,
+        canonicalPath: expectedCanonicalPath,
+      }),
+    ]);
+  });
+
   it('does not persist plugins when nothing installable was applied', async () => {
     const projectDir = await createTempDir('agentinit-project-');
     const pluginDir = await createTempDir('agentinit-empty-plugin-');
@@ -640,6 +702,43 @@ describe('PluginManager', () => {
 
     const registry = await manager.getRegistry(projectDir, true);
     expect(registry.plugins).toHaveLength(0);
+  });
+
+  it('removes only the targeted global plugin skill without touching other canonical skills', async () => {
+    const homeDir = await createTempDir('agentinit-home-');
+    process.env.HOME = homeDir;
+
+    const projectDir = await createTempDir('agentinit-project-');
+    const pluginDir = await createSkillPluginDir('remove-global-skill');
+    const agent = new StubAgent('alpha');
+    const manager = new PluginManager(new StubAgentManager({ alpha: agent }) as never);
+
+    const installResult = await manager.installPlugin(pluginDir, projectDir, {
+      global: true,
+      agents: ['alpha'],
+    });
+
+    const installedSkill = installResult.skills.installed[0]!;
+    const preservedSkillDir = join(homeDir, '.agents', 'skills', 'keep-me');
+    await mkdir(preservedSkillDir, { recursive: true });
+    await writeFile(
+      join(preservedSkillDir, 'SKILL.md'),
+      '---\nname: keep-me\ndescription: Keep me\nversion: 1.0.0\n---\n\nKeep this skill.\n',
+    );
+
+    const result = await manager.removePlugin(installResult.plugin.name, projectDir, { global: true });
+
+    expect(result.removed).toBe(true);
+    expect(result.details).toEqual(expect.arrayContaining([
+      `Removed skill: ${installedSkill.name} (${installedSkill.agent})`,
+      'Removed from plugin registry',
+    ]));
+    await expect(lstat(installedSkill.path)).rejects.toThrow();
+    await expect(lstat(installedSkill.canonicalPath!)).rejects.toThrow();
+    expect(await readFile(join(preservedSkillDir, 'SKILL.md'), 'utf8')).toContain('Keep this skill.');
+
+    const registry = await manager.getRegistry(projectDir, true);
+    expect(registry.plugins).toEqual([]);
   });
 
   it('removes only the targeted agent components from the plugin registry', async () => {
