@@ -1,3 +1,10 @@
+## [1.15.1](https://github.com/agentinit/agentinit/compare/v1.15.0...v1.15.1) (2026-04-01)
+
+
+### Bug Fixes
+
+* **config:** refresh marketplace cache and fail on invalid ops ([9a9ed4f](https://github.com/agentinit/agentinit/commit/9a9ed4fde7d8ee967927a87dcb18ad406a9c16d1))
+
 # [1.15.0](https://github.com/agentinit/agentinit/compare/v1.14.0...v1.15.0) (2026-04-01)
 
 
