@@ -1,3 +1,10 @@
+## [1.16.2](https://github.com/agentinit/agentinit/compare/v1.16.1...v1.16.2) (2026-04-01)
+
+
+### Bug Fixes
+
+* **skills:** harden GitHub subpath resolution ([ca353ad](https://github.com/agentinit/agentinit/commit/ca353ad46c93180b2cc0e86f89a6ea2ee53b9504))
+
 ## [1.16.1](https://github.com/agentinit/agentinit/compare/v1.16.0...v1.16.1) (2026-04-01)
 
 
