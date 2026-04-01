@@ -1,3 +1,10 @@
+# [1.16.0](https://github.com/agentinit/agentinit/compare/v1.15.1...v1.16.0) (2026-04-01)
+
+
+### Features
+
+* restore canonical global plugin target ([fad7b5e](https://github.com/agentinit/agentinit/commit/fad7b5e6a6fe359ed721f388e0991d7774a85bb2))
+
 ## [1.15.1](https://github.com/agentinit/agentinit/compare/v1.15.0...v1.15.1) (2026-04-01)
 
 
