@@ -1,3 +1,10 @@
+# [1.15.0](https://github.com/agentinit/agentinit/compare/v1.14.0...v1.15.0) (2026-04-01)
+
+
+### Features
+
+* **config:** add user marketplaces and verified repos ([d902824](https://github.com/agentinit/agentinit/commit/d902824db3e7bc8c8c3577d31bd73c44e3da767d))
+
 # [1.14.0](https://github.com/agentinit/agentinit/compare/v1.13.4...v1.14.0) (2026-03-31)
 
 
