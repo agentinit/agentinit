@@ -1,7 +1,8 @@
 import { Command } from 'commander';
 import ora from 'ora';
 import prompts from 'prompts';
-import { dirname, relative } from 'path';
+import { homedir } from 'os';
+import { dirname, relative, resolve } from 'path';
 import { green, dim, bold, cyan, yellow, orange } from '../utils/colors.js';
 import { logger } from '../utils/logger.js';
 import { PluginManager } from '../core/pluginManager.js';
@@ -16,6 +17,7 @@ type PluginAgentGroup = {
   agents: Agent[];
   agentNames: string[];
   compatibleAgentNames: string[];
+  kind?: 'native' | 'canonical-shared';
 };
 
 type PluginTargetSelection = {
@@ -637,13 +639,61 @@ function buildGlobalPluginGroups(
     dirToAgents.set(skillsDir, existing);
   }
 
-  return Array.from(dirToAgents.entries()).map(([dir, agents]) => ({
+  const nativeGroups = Array.from(dirToAgents.entries()).map(([dir, agents]) => ({
     dir,
     displayDir: formatPathForDisplay(dir, projectPath),
     agents,
     agentNames: agents.map(agent => agent.name),
     compatibleAgentNames: [],
+    kind: 'native' as const,
   }));
+
+  const canonicalDir = resolve(homedir(), '.agents/skills');
+  const sharedAgents = agentManager.getAllAgents().filter(agent =>
+    agent.supportsSkills() &&
+    agent.getProjectSkillsStandard() === 'agents' &&
+    !!agent.getSkillsDir(projectPath, true),
+  );
+
+  const claudeGroups = nativeGroups.filter(group => group.agents.some(agent => agent.id === 'claude'));
+  const otherGroups = nativeGroups.filter(group => !group.agents.some(agent => agent.id === 'claude'));
+
+  if (sharedAgents.length === 0) {
+    return [...claudeGroups, ...otherGroups];
+  }
+
+  return [
+    {
+      dir: canonicalDir,
+      displayDir: formatPathForDisplay(canonicalDir, projectPath),
+      agents: sharedAgents,
+      agentNames: sharedAgents.map(agent => agent.name),
+      compatibleAgentNames: [],
+      kind: 'canonical-shared',
+    },
+    ...claudeGroups,
+    ...otherGroups,
+  ];
+}
+
+function shouldPreselectPluginGroup(
+  group: PluginAgentGroup,
+  installGlobal: boolean,
+  preview: PluginInspectionResult,
+): boolean {
+  if (!installGlobal) {
+    return true;
+  }
+
+  if (group.kind === 'canonical-shared') {
+    return true;
+  }
+
+  if (preview.nativePreview) {
+    return group.agents.some(agent => agent.id === preview.nativePreview?.agent);
+  }
+
+  return false;
 }
 
 function getPluginGroupDescription(
@@ -743,7 +793,7 @@ async function interactiveAgentSelect(
         title: `${group.displayDir} -> ${getAgentLabel(group.agents.map(agent => agent.id), agentManager)}${compatible}`,
         description: getPluginGroupDescription(group, preview, projectPath),
         value: group.agents.map(agent => agent.id),
-        selected: true,
+        selected: shouldPreselectPluginGroup(group, installGlobal, preview),
       };
     }),
   });

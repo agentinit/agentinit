@@ -457,23 +457,38 @@ describe('plugins command', () => {
     expect(vi.mocked(prompts).mock.calls[0]?.[0]).toMatchObject({
       message: 'Install this plugin globally instead?',
     });
-    expect(vi.mocked(prompts).mock.calls[1]?.[0]).toMatchObject({
+    const globalPrompt = vi.mocked(prompts).mock.calls[1]?.[0] as unknown as {
+      message: string;
+      choices: Array<Record<string, unknown>>;
+    };
+    expect(globalPrompt).toMatchObject({
       message: 'Select which global agents should receive this plugin:',
+    });
+    expect(globalPrompt.choices[0]).toMatchObject({
+      title: expect.stringContaining('~/.agents/skills'),
+      selected: true,
+      description: expect.stringContaining('Skills will be installed here, but Claude-specific components will not be fully available for these agents.'),
+    });
+    expect(globalPrompt.choices[1]).toMatchObject({
+      title: expect.stringContaining('~/.claude/skills'),
+      selected: true,
+      description: expect.stringContaining('Claude Desktop shares this skills directory but only receives the installed skills.'),
+    });
+    expect(globalPrompt).toMatchObject({
       choices: expect.arrayContaining([
         expect.objectContaining({
-          title: expect.stringContaining('~/.claude/skills/'),
-          description: expect.stringContaining('Claude Desktop shares this skills directory but only receives the installed skills.'),
-        }),
-        expect.objectContaining({
-          title: expect.stringContaining('~/.copilot/skills/'),
+          title: expect.stringContaining('~/.copilot/skills'),
+          selected: false,
           description: expect.stringContaining('Skills will be installed here, but Claude-specific components will not be fully available for these agents.'),
         }),
         expect.objectContaining({
-          title: expect.stringContaining('~/.openclaw/skills/'),
+          title: expect.stringContaining('~/.openclaw/skills'),
+          selected: false,
           description: expect.stringContaining('Skills will be installed here, but Claude-specific components will not be fully available for these agents.'),
         }),
         expect.objectContaining({
-          title: expect.stringContaining('~/.hermes/skills/'),
+          title: expect.stringContaining('~/.hermes/skills'),
+          selected: false,
           description: expect.stringContaining('Skills will be installed here, but Claude-specific components will not be fully available for these agents.'),
         }),
       ]),
@@ -483,5 +498,83 @@ describe('plugins command', () => {
       process.cwd(),
       expect.objectContaining({ agents: ['claude'], global: true }),
     );
+  });
+
+  it('maps the canonical global .agents choice to AGENTS-compatible agent ids', async () => {
+    process.env.HOME = '/Users/tester';
+
+    vi.spyOn(logger, 'warn').mockImplementation(() => {});
+    vi.spyOn(logger, 'info').mockImplementation(() => {});
+    vi.spyOn(logger, 'titleBox').mockImplementation(() => {});
+    vi.spyOn(logger, 'section').mockImplementation(() => {});
+    vi.spyOn(logger, 'tree').mockImplementation(() => {});
+
+    vi.spyOn(PluginManager.prototype, 'preparePluginInstall').mockResolvedValue({
+      plugin: {
+        name: 'codex',
+        version: '1.0.1',
+        description: 'Bundled Codex plugin',
+        format: 'claude',
+        source: { type: 'github', url: 'https://github.com/openai/codex-plugin-cc.git' },
+        skills: [
+          { name: 'codex-review', description: 'Review code with Codex', path: '/tmp/review.md' },
+        ],
+        mcpServers: [],
+        warnings: [],
+      },
+      nativePreview: {
+        agent: 'claude',
+        pluginKey: 'codex@agentinit-openai-codex',
+        installPath: '/Users/tester/.claude/plugins/cache/agentinit-openai-codex/codex/1.0.1',
+        features: ['commands', 'hooks', 'agents'],
+      },
+    });
+
+    vi.spyOn(PluginManager.prototype, 'groupAgentsBySkillsDir').mockResolvedValue([]);
+
+    vi.mocked(prompts).mockImplementation(async (config: any) => {
+      if (config.name === 'scope') {
+        return { scope: 'global' } as never;
+      }
+
+      if (config.name === 'groups') {
+        return { groups: [config.choices[0].value] } as never;
+      }
+
+      return {} as never;
+    });
+
+    const installPluginSpy = vi.spyOn(PluginManager.prototype, 'installPlugin').mockResolvedValue({
+      plugin: {
+        name: 'codex',
+        version: '1.0.1',
+        description: 'Bundled Codex plugin',
+        format: 'claude',
+        source: { type: 'github', url: 'https://github.com/openai/codex-plugin-cc.git' },
+        skills: [],
+        mcpServers: [],
+        warnings: [],
+      },
+      skills: { installed: [], skipped: [] },
+      mcpServers: { applied: [], skipped: [] },
+      nativePlugins: { installed: [], skipped: [] },
+      warnings: [],
+    });
+
+    const program = new Command();
+    registerPluginsCommand(program);
+
+    await program.parseAsync(['plugins', 'install', 'openai/codex-plugin-cc'], { from: 'user' });
+
+    expect(installPluginSpy).toHaveBeenCalledWith(
+      'openai/codex-plugin-cc',
+      process.cwd(),
+      expect.objectContaining({
+        global: true,
+        agents: expect.arrayContaining(['copilot', 'codex', 'gemini', 'cursor', 'roo', 'droid', 'openclaw', 'hermes']),
+      }),
+    );
+    const selectedAgents = (installPluginSpy.mock.calls[0]?.[2] as { agents?: string[] })?.agents || [];
+    expect(selectedAgents).not.toContain('claude');
   });
 });
