@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
-import { mkdtemp, mkdir, rm, writeFile, readdir, lstat, readFile, realpath } from 'fs/promises';
+import { mkdtemp, mkdir, rm, writeFile, readdir, lstat, readFile, realpath, symlink } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { ClaudeAgent } from '../../src/agents/ClaudeAgent.js';
@@ -378,6 +378,28 @@ describe('SkillsManager', () => {
     expect((await lstat(join(projectDir, '.claude/skills', 'skill-creator'))).isSymbolicLink()).toBe(true);
   });
 
+  it('treats owner/repo/subpath as a GitHub source even when the owner matches a marketplace id', () => {
+    const manager = new SkillsManager();
+
+    expect(manager.resolveSource('openai/skills/openai-docs')).toEqual({
+      type: 'github',
+      url: 'https://github.com/openai/skills.git',
+      owner: 'openai',
+      repo: 'skills',
+      subpath: 'openai-docs',
+    });
+  });
+
+  it('still resolves two-segment marketplace sources as marketplaces', () => {
+    const manager = new SkillsManager();
+
+    expect(manager.resolveSource('claude/skill-creator')).toEqual({
+      type: 'marketplace',
+      marketplace: 'claude',
+      pluginName: 'skill-creator',
+    });
+  });
+
   it('supports repo fallback for --from openai skill installs', async () => {
     const manager = new SkillsManager();
     const projectDir = await mkdtemp(join(tmpdir(), 'agentinit-marketplace-skill-project-'));
@@ -408,6 +430,56 @@ describe('SkillsManager', () => {
       path: join(projectDir, '.claude/skills', 'codex-review'),
       canonicalPath: join(projectDir, '.agents/skills', 'codex-review'),
     });
+  });
+
+  it('installs direct GitHub skill repositories before cleaning up the clone', async () => {
+    const manager = new SkillsManager();
+    const projectDir = await mkdtemp(join(tmpdir(), 'agentinit-marketplace-skill-project-'));
+    const repoDir = await mkdtemp(join(tmpdir(), 'agentinit-github-skill-repo-'));
+    tempDirs.push(projectDir, repoDir);
+
+    await mkdir(join(repoDir, 'nothing-design'), { recursive: true });
+    await writeFile(join(repoDir, 'nothing-design', 'SKILL.md'), '---\nname: nothing-design\ndescription: test\n---\n');
+
+    vi.spyOn(manager, 'cloneRepo').mockResolvedValue(repoDir);
+
+    const result = await manager.addFromSource('dominikmartn/nothing-design-skill', projectDir, {
+      agents: ['codex'],
+    });
+
+    expect(result.skipped).toEqual([]);
+    expect(result.installed).toHaveLength(1);
+    expect(result.installed[0]).toMatchObject({
+      agent: 'codex',
+      mode: 'symlink',
+      path: join(projectDir, '.agents/skills', 'nothing-design'),
+      canonicalPath: join(projectDir, '.agents/skills', 'nothing-design'),
+    });
+    expect(await readFile(join(projectDir, '.agents/skills', 'nothing-design', 'SKILL.md'), 'utf8')).toContain('name: nothing-design');
+  });
+
+  it('supports GitHub repository subdirectory skill sources', async () => {
+    const manager = new SkillsManager();
+    const projectDir = await mkdtemp(join(tmpdir(), 'agentinit-marketplace-skill-project-'));
+    const repoDir = await mkdtemp(join(tmpdir(), 'agentinit-github-skill-repo-'));
+    tempDirs.push(projectDir, repoDir);
+
+    await mkdir(join(repoDir, 'nothing-design'), { recursive: true });
+    await mkdir(join(repoDir, 'other-skill'), { recursive: true });
+    await writeFile(join(repoDir, 'nothing-design', 'SKILL.md'), '---\nname: nothing-design\ndescription: test\n---\n');
+    await writeFile(join(repoDir, 'other-skill', 'SKILL.md'), '---\nname: other-skill\ndescription: other\n---\n');
+
+    vi.spyOn(manager, 'cloneRepo').mockResolvedValue(repoDir);
+
+    const result = await manager.addFromSource('dominikmartn/nothing-design-skill/nothing-design', projectDir, {
+      agents: ['codex'],
+    });
+
+    expect(result.skipped).toEqual([]);
+    expect(result.installed).toHaveLength(1);
+    expect(result.installed[0]?.skill.name).toBe('nothing-design');
+    await expect(readFile(join(projectDir, '.agents/skills', 'other-skill', 'SKILL.md'), 'utf8')).rejects.toThrow();
+    expect(await readFile(join(projectDir, '.agents/skills', 'nothing-design', 'SKILL.md'), 'utf8')).toContain('name: nothing-design');
   });
 
   it('resolves bare skill names from the configured default marketplace before the public catalog', async () => {
@@ -525,6 +597,87 @@ describe('SkillsManager', () => {
       'Source "https://github.com/openai/codex-plugin-cc" is a Claude Code marketplace bundle; using bundled plugin "codex".',
       'Agent definitions (agents/) are Claude Code-specific',
     ]));
+  });
+
+  it('discovers skills from GitHub blob SKILL.md sources', async () => {
+    const manager = new SkillsManager();
+    const projectDir = await mkdtemp(join(tmpdir(), 'agentinit-skill-project-'));
+    const repoDir = await mkdtemp(join(tmpdir(), 'agentinit-github-skill-repo-'));
+    tempDirs.push(projectDir, repoDir);
+
+    await mkdir(join(repoDir, 'nothing-design'), { recursive: true });
+    await mkdir(join(repoDir, 'other-skill'), { recursive: true });
+    await writeFile(join(repoDir, 'nothing-design', 'SKILL.md'), '---\nname: nothing-design\ndescription: test\n---\n');
+    await writeFile(join(repoDir, 'other-skill', 'SKILL.md'), '---\nname: other-skill\ndescription: other\n---\n');
+
+    vi.spyOn(manager, 'cloneRepo').mockResolvedValue(repoDir);
+
+    const result = await manager.discoverFromSource(
+      'https://github.com/dominikmartn/nothing-design-skill/blob/main/nothing-design/SKILL.md',
+      projectDir,
+    );
+    expect(result.skills).toHaveLength(1);
+    expect(result.skills[0]).toMatchObject({
+      name: 'nothing-design',
+      description: 'test',
+    });
+    expect(result.skills[0]?.path.endsWith('/nothing-design')).toBe(true);
+  });
+
+  it('discovers skills from GitHub repository subdirectory sources', async () => {
+    const manager = new SkillsManager();
+    const projectDir = await mkdtemp(join(tmpdir(), 'agentinit-skill-project-'));
+    const repoDir = await mkdtemp(join(tmpdir(), 'agentinit-github-skill-repo-'));
+    tempDirs.push(projectDir, repoDir);
+
+    await mkdir(join(repoDir, 'nothing-design'), { recursive: true });
+    await mkdir(join(repoDir, 'other-skill'), { recursive: true });
+    await writeFile(join(repoDir, 'nothing-design', 'SKILL.md'), '---\nname: nothing-design\ndescription: test\n---\n');
+    await writeFile(join(repoDir, 'other-skill', 'SKILL.md'), '---\nname: other-skill\ndescription: other\n---\n');
+
+    vi.spyOn(manager, 'cloneRepo').mockResolvedValue(repoDir);
+
+    const result = await manager.discoverFromSource('dominikmartn/nothing-design-skill/nothing-design', projectDir);
+    expect(result.skills).toHaveLength(1);
+    expect(result.skills[0]).toMatchObject({
+      name: 'nothing-design',
+      description: 'test',
+    });
+    expect(result.skills[0]?.path.endsWith('/nothing-design')).toBe(true);
+  });
+
+  it('rejects GitHub blob sources that do not point to SKILL.md', async () => {
+    const manager = new SkillsManager();
+    const projectDir = await mkdtemp(join(tmpdir(), 'agentinit-skill-project-'));
+    const repoDir = await mkdtemp(join(tmpdir(), 'agentinit-github-skill-repo-'));
+    tempDirs.push(projectDir, repoDir);
+
+    await mkdir(join(repoDir, 'docs'), { recursive: true });
+    await writeFile(join(repoDir, 'docs', 'README.md'), '# not a skill\n');
+
+    vi.spyOn(manager, 'cloneRepo').mockResolvedValue(repoDir);
+
+    await expect(
+      manager.discoverFromSource('https://github.com/openai/skills/blob/main/docs/README.md', projectDir),
+    ).rejects.toThrow('GitHub source must reference a skill directory or SKILL.md');
+  });
+
+  it('rejects GitHub repository subdirectory symlinks that escape the clone root', async () => {
+    const manager = new SkillsManager();
+    const projectDir = await mkdtemp(join(tmpdir(), 'agentinit-skill-project-'));
+    const repoDir = await mkdtemp(join(tmpdir(), 'agentinit-github-skill-repo-'));
+    const outsideDir = await mkdtemp(join(tmpdir(), 'agentinit-github-skill-outside-'));
+    tempDirs.push(projectDir, repoDir, outsideDir);
+
+    await mkdir(join(outsideDir, 'nothing-design'), { recursive: true });
+    await writeFile(join(outsideDir, 'nothing-design', 'SKILL.md'), '---\nname: nothing-design\ndescription: test\n---\n');
+    await symlink(join(outsideDir, 'nothing-design'), join(repoDir, 'linked-skill'), 'dir');
+
+    vi.spyOn(manager, 'cloneRepo').mockResolvedValue(repoDir);
+
+    await expect(
+      manager.discoverFromSource('dominikmartn/nothing-design-skill/linked-skill', projectDir),
+    ).rejects.toThrow('Invalid GitHub source path "linked-skill"');
   });
 
   it('keeps explicit local paths for missing skills', async () => {

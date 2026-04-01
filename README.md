@@ -186,6 +186,9 @@ agentinit skills add vercel-react-best-practices
 # Install all discovered skills for detected agents using canonical storage
 agentinit skills add ./skills
 
+# Install a skill stored in a repository subdirectory
+agentinit skills add owner/repo/path/to/skill
+
 # Install marketplace-hosted skills explicitly
 agentinit skills add claude/skill-creator
 agentinit skills add skill-creator --from claude
@@ -217,7 +220,7 @@ Hermes follows the same model: project skills come from `.agents/skills/`, globa
 
 Some agents share the same native skills directory. For example, Claude Code and Claude Desktop both use `~/.claude/skills/`, so `skills remove --agent ...` will skip deleting that shared path while another agent still depends on it.
 
-Bare skill names resolve from your configured default marketplace when one is set. Without a configured default, AgentInit falls back to the public skills catalog used by the open agent skills ecosystem: `vercel-labs/agent-skills`. Use `./name` for a local path, `owner/repo` for an explicit GitHub repository, or `--from <marketplace>` / `<marketplace>/<name>` for marketplace-backed sources.
+Bare skill names resolve from your configured default marketplace when one is set. Without a configured default, AgentInit falls back to the public skills catalog used by the open agent skills ecosystem: `vercel-labs/agent-skills`. Use `./name` for a local path, `owner/repo` for an explicit GitHub repository root, `owner/repo/path/to/skill` for a repository subdirectory, or `--from <marketplace>` / `<marketplace>/<name>` for marketplace-backed sources. Three-or-more slash segments are treated as a GitHub repository plus subpath, even when the owner matches a marketplace id. GitHub `tree/...` URLs and `blob/.../SKILL.md` URLs resolve to the referenced skill directory.
 
 Marketplace-backed `skills add` installs only the discovered skills. If a marketplace source also contains MCP servers or other portable components, AgentInit warns and points you to `agentinit plugins install ...` for the full install.
 

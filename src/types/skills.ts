@@ -66,4 +66,5 @@ export interface SkillSource {
   path?: string | undefined;
   owner?: string | undefined;
   repo?: string | undefined;
+  subpath?: string | undefined;
 }
