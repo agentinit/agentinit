@@ -6,7 +6,7 @@ import { green, dim, bold, cyan, yellow, orange } from '../utils/colors.js';
 import { logger } from '../utils/logger.js';
 import { PluginManager } from '../core/pluginManager.js';
 import { AgentManager } from '../core/agentManager.js';
-import { getConfiguredDefaultMarketplaceId } from '../core/marketplaceRegistry.js';
+import { getConfiguredDefaultMarketplaceId, getMarketplaceCategories } from '../core/marketplaceRegistry.js';
 import type { Agent } from '../agents/Agent.js';
 import type { PluginInspectionResult, PluginInstallResult } from '../types/plugins.js';
 
@@ -26,6 +26,7 @@ type PluginTargetSelection = {
 
 export function registerPluginsCommand(program: Command): void {
   const marketplaceHelp = new PluginManager().getMarketplaceIds().join(', ');
+  const marketplaceCategoryHelp = getMarketplaceCategories().join(', ');
 
   const plugins = program
     .command('plugins')
@@ -190,7 +191,7 @@ export function registerPluginsCommand(program: Command): void {
     .command('search [query]')
     .description('Search marketplace plugins')
     .option('--from <marketplace>', `Which marketplace to search (available: ${marketplaceHelp})`)
-    .option('--category <category>', 'Filter: official, community')
+    .option('--category <category>', `Filter by marketplace category (examples: ${marketplaceCategoryHelp})`)
     .action(async (query: string | undefined, options) => {
       logger.titleBox('AgentInit  Plugin Search');
 

@@ -478,6 +478,41 @@ describe('PluginManager', () => {
     });
   });
 
+  it('refreshes a custom marketplace cache when the repo URL changes under the same identifier', async () => {
+    const manager = new PluginManager(new StubAgentManager({}) as never);
+    const cacheDir = join(process.env.HOME!, '.agentinit', 'marketplace-cache', 'acme');
+    const cacheMetaPath = join(cacheDir, '.agentinit-cache-meta.json');
+
+    await writeUserConfig({
+      customMarketplaces: [
+        {
+          identifier: 'acme',
+          name: 'Acme Marketplace',
+          repoUrl: 'https://github.com/acme/new-marketplace.git',
+        },
+      ],
+      verifiedGithubRepos: [],
+    });
+
+    await mkdir(join(cacheDir, '.git'), { recursive: true });
+    await writeFile(cacheMetaPath, JSON.stringify({
+      fetchedAt: Date.now(),
+      repoUrl: 'https://github.com/acme/old-marketplace.git',
+    }));
+
+    const cloneMarketplaceSpy = vi.spyOn(manager as any, 'cloneMarketplace').mockResolvedValue(undefined);
+
+    await manager.ensureMarketplaceCache('acme');
+
+    expect(cloneMarketplaceSpy).toHaveBeenCalledWith(
+      'https://github.com/acme/new-marketplace.git',
+      cacheDir,
+    );
+    expect(JSON.parse(await readFile(cacheMetaPath, 'utf8'))).toMatchObject({
+      repoUrl: 'https://github.com/acme/new-marketplace.git',
+    });
+  });
+
   it('resolves bare plugin names against the default marketplace', () => {
     const manager = new PluginManager(new StubAgentManager({}) as never);
 

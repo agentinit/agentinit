@@ -45,12 +45,38 @@ function getAllMarketplaces(): MarketplaceRegistry[] {
   return [...MARKETPLACES, ...getCustomMarketplaces()];
 }
 
+export function getMarketplaceCategoryForDir(dir: string): string {
+  if (dir === 'plugins') {
+    return 'official';
+  }
+
+  if (dir === 'external_plugins') {
+    return 'community';
+  }
+
+  if (dir.startsWith('skills/.')) {
+    return dir.slice('skills/.'.length);
+  }
+
+  return dir;
+}
+
 export function getMarketplace(id: string): MarketplaceRegistry | undefined {
   return getAllMarketplaces().find(marketplace => marketplace.id === id);
 }
 
 export function getMarketplaceIds(): string[] {
   return getAllMarketplaces().map(marketplace => marketplace.id);
+}
+
+export function getMarketplaceCategories(id?: string): string[] {
+  const marketplaces = id
+    ? [getMarketplace(id)].filter((marketplace): marketplace is MarketplaceRegistry => !!marketplace)
+    : getAllMarketplaces();
+
+  return [...new Set(
+    marketplaces.flatMap(marketplace => marketplace.pluginDirs.map(getMarketplaceCategoryForDir)),
+  )];
 }
 
 export function getConfiguredDefaultMarketplaceId(): string | undefined {

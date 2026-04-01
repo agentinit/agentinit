@@ -10,6 +10,7 @@ import { logger } from '../../src/utils/logger.js';
 describe('config command', () => {
   const tempDirs: string[] = [];
   const originalHome = process.env.HOME;
+  const originalExitCode = process.exitCode;
 
   beforeEach(async () => {
     const homeDir = await mkdtemp(join(tmpdir(), 'agentinit-config-home-'));
@@ -19,6 +20,7 @@ describe('config command', () => {
 
   afterEach(async () => {
     vi.restoreAllMocks();
+    process.exitCode = originalExitCode;
 
     if (originalHome === undefined) {
       delete process.env.HOME;
@@ -117,5 +119,25 @@ describe('config command', () => {
 
     await runConfig(['config', 'verified-repos', 'remove', 'acme/private-plugin']);
     expect((await readUserConfig()).verifiedGithubRepos).toEqual([]);
+  });
+
+  it('sets a non-zero exit code for invalid marketplace operations', async () => {
+    silenceLogger();
+
+    await runConfig(['config', 'marketplaces', 'add', 'Invalid Name', 'https://github.com/acme/marketplace.git']);
+    expect(process.exitCode).toBe(1);
+
+    process.exitCode = undefined;
+
+    await runConfig(['config', 'marketplaces', 'remove', 'claude']);
+    expect(process.exitCode).toBe(1);
+  });
+
+  it('sets a non-zero exit code for invalid verified repo operations', async () => {
+    silenceLogger();
+
+    await runConfig(['config', 'verified-repos', 'remove', 'openai/codex-plugin-cc']);
+
+    expect(process.exitCode).toBe(1);
   });
 });

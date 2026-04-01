@@ -6,6 +6,7 @@ import { readFileIfExists, fileExists, isDirectory, listFiles, writeFile } from 
 import { AgentManager } from './agentManager.js';
 import { MCPFilter } from './mcpFilter.js';
 import {
+  getMarketplaceCategoryForDir,
   getConfiguredDefaultMarketplaceId,
   getMarketplace as lookupMarketplace,
   getMarketplaceIds as lookupMarketplaceIds,
@@ -108,6 +109,11 @@ type ClaudeInstalledPluginsState = {
 type ClaudeSettingsState = {
   enabledPlugins?: Record<string, boolean>;
   [key: string]: unknown;
+};
+
+type MarketplaceCacheMeta = {
+  fetchedAt: number;
+  repoUrl?: string;
 };
 
 export class PluginManager {
@@ -766,32 +772,34 @@ export class PluginManager {
 
     const cacheDir = getMarketplaceCacheDir(registryId);
     const cacheMetaPath = join(cacheDir, '.agentinit-cache-meta.json');
+    const cacheMeta = await this.readMarketplaceCacheMeta(cacheMetaPath);
 
     // Check if cache exists and is fresh
-    if (await fileExists(cacheMetaPath)) {
-      try {
-        const meta = JSON.parse(await fs.readFile(cacheMetaPath, 'utf8'));
-        const age = Date.now() - (meta.fetchedAt || 0);
-        if (age < registry.cacheTtlMs) {
-          return cacheDir;
-        }
-      } catch {
-        // Corrupt meta, re-fetch
+    if (cacheMeta?.repoUrl === registry.repoUrl) {
+      const age = Date.now() - cacheMeta.fetchedAt;
+      if (age < registry.cacheTtlMs) {
+        return cacheDir;
       }
     }
 
     // Clone or update
     if (await fileExists(join(cacheDir, '.git'))) {
-      // Pull latest
-      const { execFile } = await import('child_process');
-      const { promisify } = await import('util');
-      const exec = promisify(execFile);
-      try {
-        await exec('git', ['pull', '--ff-only'], { cwd: cacheDir, timeout: 30000 });
-      } catch {
-        // Pull failed, re-clone
+      const originUrl = await this.getMarketplaceCacheOriginUrl(cacheDir);
+      if (originUrl !== registry.repoUrl) {
         await fs.rm(cacheDir, { recursive: true, force: true });
         await this.cloneMarketplace(registry.repoUrl, cacheDir);
+      } else {
+        // Pull latest
+        const { execFile } = await import('child_process');
+        const { promisify } = await import('util');
+        const exec = promisify(execFile);
+        try {
+          await exec('git', ['pull', '--ff-only'], { cwd: cacheDir, timeout: 30000 });
+        } catch {
+          // Pull failed, re-clone
+          await fs.rm(cacheDir, { recursive: true, force: true });
+          await this.cloneMarketplace(registry.repoUrl, cacheDir);
+        }
       }
     } else {
       await this.cloneMarketplace(registry.repoUrl, cacheDir);
@@ -799,8 +807,48 @@ export class PluginManager {
 
     // Write cache meta
     await fs.mkdir(cacheDir, { recursive: true });
-    await fs.writeFile(cacheMetaPath, JSON.stringify({ fetchedAt: Date.now() }));
+    await fs.writeFile(cacheMetaPath, JSON.stringify({
+      fetchedAt: Date.now(),
+      repoUrl: registry.repoUrl,
+    }));
     return cacheDir;
+  }
+
+  private async readMarketplaceCacheMeta(cacheMetaPath: string): Promise<MarketplaceCacheMeta | null> {
+    if (!(await fileExists(cacheMetaPath))) {
+      return null;
+    }
+
+    try {
+      const meta = JSON.parse(await fs.readFile(cacheMetaPath, 'utf8')) as Partial<MarketplaceCacheMeta>;
+      if (typeof meta.fetchedAt !== 'number') {
+        return null;
+      }
+
+      return {
+        fetchedAt: meta.fetchedAt,
+        ...(typeof meta.repoUrl === 'string' ? { repoUrl: meta.repoUrl } : {}),
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  private async getMarketplaceCacheOriginUrl(cacheDir: string): Promise<string | null> {
+    const { execFile } = await import('child_process');
+    const { promisify } = await import('util');
+    const exec = promisify(execFile);
+
+    try {
+      const { stdout } = await exec('git', ['config', '--get', 'remote.origin.url'], {
+        cwd: cacheDir,
+        timeout: 30000,
+      });
+      const originUrl = stdout.trim();
+      return originUrl || null;
+    } catch {
+      return null;
+    }
   }
 
   private async cloneMarketplace(repoUrl: string, dest: string): Promise<void> {
@@ -854,13 +902,7 @@ export class PluginManager {
       const fullDir = join(cacheDir, dir);
       if (!(await isDirectory(fullDir))) continue;
 
-      const cat = dir === 'plugins'
-        ? 'official'
-        : dir === 'external_plugins'
-          ? 'community'
-          : dir.startsWith('skills/.')
-            ? dir.slice('skills/.'.length)
-            : dir;
+      const cat = getMarketplaceCategoryForDir(dir);
       if (category && cat !== category) continue;
 
       const entries = await listFiles(fullDir);

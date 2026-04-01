@@ -259,6 +259,7 @@ agentinit plugins remove code-review
 - Use `<marketplace>/<plugin>` or `--from <marketplace>` when installing from a marketplace.
 - Bare plugin installs like `agentinit plugins install code-review` resolve through your configured default marketplace when one is set. Without a configured default, AgentInit falls back to the first available marketplace (`agentinit` by default).
 - `plugins search` uses your configured default marketplace when one is set. Without a configured default, it still requires `--from <marketplace>`.
+- `plugins search --category <category>` uses marketplace-specific categories. Examples: Claude uses `official` and `community`, AgentInit/custom marketplaces use `skills`, `mcps`, and `rules`, and OpenAI uses `curated`, `system`, and `experimental`.
 - Implemented marketplaces today include `claude` (Anthropic's Claude plugin marketplace) and `openai` (the OpenAI Codex skills catalog).
 - You can add your own marketplaces with `agentinit config marketplaces add <identifier> <repo-url>`.
 - If a marketplace lookup misses but the source still looks like `owner/repo`, AgentInit warns and tries that GitHub repository directly. Exact repos added with `agentinit config verified-repos add <owner/repo>` are labeled as verified during that fallback.

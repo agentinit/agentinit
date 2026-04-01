@@ -21,6 +21,11 @@ function sortConfig(config: Awaited<ReturnType<typeof readUserConfig>>) {
   return config;
 }
 
+function failConfigCommand(error: unknown): void {
+  logger.error(error instanceof Error ? error.message : 'Configuration update failed.');
+  process.exitCode = 1;
+}
+
 export function registerConfigCommand(program: Command): void {
   const config = program
     .command('config')
@@ -100,7 +105,7 @@ export function registerConfigCommand(program: Command): void {
           logger.info('  Set as the configured default marketplace.');
         }
       } catch (error) {
-        logger.error(error instanceof Error ? error.message : 'Failed to add marketplace.');
+        failConfigCommand(error);
       }
     });
 
@@ -135,7 +140,7 @@ export function registerConfigCommand(program: Command): void {
           logger.info('  Cleared the configured default marketplace.');
         }
       } catch (error) {
-        logger.error(error instanceof Error ? error.message : 'Failed to remove marketplace.');
+        failConfigCommand(error);
       }
     });
 
@@ -157,7 +162,7 @@ export function registerConfigCommand(program: Command): void {
 
         logger.success(`Set ${green(identifier)} as the configured default marketplace.`);
       } catch (error) {
-        logger.error(error instanceof Error ? error.message : 'Failed to set default marketplace.');
+        failConfigCommand(error);
       }
     });
 
@@ -229,7 +234,7 @@ export function registerConfigCommand(program: Command): void {
         await writeUserConfig(sortConfig(configState));
         logger.success(`Added verified GitHub repo ${green(repo)}.`);
       } catch (error) {
-        logger.error(error instanceof Error ? error.message : 'Failed to add verified repo.');
+        failConfigCommand(error);
       }
     });
 
@@ -255,7 +260,7 @@ export function registerConfigCommand(program: Command): void {
         await writeUserConfig(sortConfig(configState));
         logger.success(`Removed verified GitHub repo ${green(repo)}.`);
       } catch (error) {
-        logger.error(error instanceof Error ? error.message : 'Failed to remove verified repo.');
+        failConfigCommand(error);
       }
     });
 }

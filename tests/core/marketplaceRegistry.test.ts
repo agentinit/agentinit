@@ -3,6 +3,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
+  getMarketplaceCategories,
   getConfiguredDefaultMarketplaceId,
   getMarketplace,
   getMarketplaceIds,
@@ -52,6 +53,31 @@ describe('marketplaceRegistry', () => {
       cacheTtlMs: 3600000,
     });
     expect(getConfiguredDefaultMarketplaceId()).toBe('acme');
+  });
+
+  it('derives the supported marketplace categories from built-in and custom registries', async () => {
+    await writeUserConfig({
+      customMarketplaces: [
+        {
+          identifier: 'acme',
+          name: 'Acme Marketplace',
+          repoUrl: 'https://github.com/acme/marketplace.git',
+        },
+      ],
+      verifiedGithubRepos: [],
+    });
+
+    expect(getMarketplaceCategories()).toEqual(expect.arrayContaining([
+      'official',
+      'community',
+      'curated',
+      'system',
+      'experimental',
+      'skills',
+      'mcps',
+      'rules',
+    ]));
+    expect(getMarketplaceCategories('acme')).toEqual(['skills', 'mcps', 'rules']);
   });
 
   it('ignores configured defaults that do not resolve to a known marketplace', async () => {
