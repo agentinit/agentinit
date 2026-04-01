@@ -5,6 +5,9 @@ export interface SkillInfo {
   generatedContent?: string;
 }
 
+export const SHARED_SKILLS_TARGET_ID = 'agents';
+export const SHARED_SKILLS_TARGET_NAME = 'AGENTS.md ecosystem';
+
 export type SkillInstallMode = 'copy' | 'symlink';
 
 export interface SkillInstallResult {

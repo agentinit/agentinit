@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { registerSkillsCommand } from '../../src/commands/skills.js';
 import { SkillsManager } from '../../src/core/skillsManager.js';
 import { AgentManager } from '../../src/core/agentManager.js';
+import { SHARED_SKILLS_TARGET_ID, SHARED_SKILLS_TARGET_NAME } from '../../src/types/skills.js';
 import { logger } from '../../src/utils/logger.js';
 
 const { promptsMock, oraMock, spinner } = vi.hoisted(() => {
@@ -31,6 +32,9 @@ vi.mock('prompts', () => ({
 vi.mock('ora', () => ({
   default: oraMock,
 }));
+
+const TEST_GITHUB_SKILL_REPO = 'agentinit-labs/test-skills-repo';
+const TEST_GITHUB_SKILL_SOURCE = `${TEST_GITHUB_SKILL_REPO}/nothing-design`;
 
 describe('skills command', () => {
   function formatPromptPath(path: string): string {
@@ -62,6 +66,10 @@ describe('skills command', () => {
 
   it('prompts for a global target when no project agents are detected', async () => {
     vi.spyOn(AgentManager.prototype, 'detectAgents').mockResolvedValue([]);
+    vi.spyOn(SkillsManager.prototype, 'prepareSource').mockResolvedValue({
+      skills: [],
+      warnings: [],
+    });
     const addFromSourceSpy = vi.spyOn(SkillsManager.prototype, 'addFromSource').mockResolvedValue({
       installed: [
         {
@@ -105,6 +113,10 @@ describe('skills command', () => {
         configPath: '/tmp/project/CLAUDE.md',
       },
     ]);
+    vi.spyOn(SkillsManager.prototype, 'prepareSource').mockResolvedValue({
+      skills: [],
+      warnings: [],
+    });
     const addFromSourceSpy = vi.spyOn(SkillsManager.prototype, 'addFromSource').mockResolvedValue({
       installed: [
         {
@@ -148,6 +160,10 @@ describe('skills command', () => {
         configPath: '/tmp/project/CLAUDE.md',
       },
     ]);
+    vi.spyOn(SkillsManager.prototype, 'prepareSource').mockResolvedValue({
+      skills: [],
+      warnings: [],
+    });
     vi.spyOn(SkillsManager.prototype, 'addFromSource').mockResolvedValue({
       installed: [
         {
@@ -193,6 +209,10 @@ describe('skills command', () => {
   });
 
   it('shows the canonical global skills store first and preselected in the global selection prompt', async () => {
+    vi.spyOn(SkillsManager.prototype, 'prepareSource').mockResolvedValue({
+      skills: [],
+      warnings: [],
+    });
     vi.spyOn(SkillsManager.prototype, 'addFromSource').mockResolvedValue({
       installed: [
         {
@@ -201,8 +221,8 @@ describe('skills command', () => {
             description: 'Build distinctive interfaces',
             path: '/tmp/frontend-design',
           },
-          agent: 'claude',
-          path: '/tmp/.claude/skills/frontend-design',
+          agent: SHARED_SKILLS_TARGET_ID,
+          path: '/tmp/.agents/skills/frontend-design',
           canonicalPath: '/tmp/.agents/skills/frontend-design',
           mode: 'symlink',
         },
@@ -216,7 +236,7 @@ describe('skills command', () => {
       .mockResolvedValueOnce({ scope: 'global' })
       .mockImplementationOnce(async prompt => {
         groupsPrompt = prompt as Record<string, any>;
-        return { groups: [['claude']] };
+        return { groups: [[SHARED_SKILLS_TARGET_ID]] };
       });
 
     const program = new Command();
@@ -224,8 +244,8 @@ describe('skills command', () => {
 
     await program.parseAsync(['skills', 'add', 'claude/frontend-design'], { from: 'user' });
 
-    expect(groupsPrompt?.choices[0]?.title).toContain('~/.agents/skills/ ->');
-    expect(groupsPrompt?.choices[0]?.description).toContain('AGENTS.md ecosystem');
+    expect(groupsPrompt?.choices[0]?.title).toBe(`~/.agents/skills/ -> ${SHARED_SKILLS_TARGET_NAME}`);
+    expect(groupsPrompt?.choices[0]?.description).toContain('shared AGENTS.md store');
     expect(groupsPrompt?.choices[0]?.selected).toBe(true);
     expect(groupsPrompt?.choices.some((choice: Record<string, any>) => choice.title.startsWith('~/.claude/skills/ -> Claude Code, Claude Desktop'))).toBe(true);
     expect(groupsPrompt?.choices.some((choice: Record<string, any>) => choice.title.startsWith('~/.codex/skills/ -> OpenAI Codex CLI'))).toBe(true);
@@ -234,8 +254,54 @@ describe('skills command', () => {
     expect(groupsPrompt?.choices.find((choice: Record<string, any>) => choice.title.startsWith('~/.claude/skills/ -> Claude Code, Claude Desktop'))?.selected).toBe(true);
   });
 
+  it('passes the shared AGENTS target without expanding it into compatible agents', async () => {
+    vi.spyOn(SkillsManager.prototype, 'prepareSource').mockResolvedValue({
+      skills: [],
+      warnings: [],
+    });
+    const addFromSourceSpy = vi.spyOn(SkillsManager.prototype, 'addFromSource').mockResolvedValue({
+      installed: [
+        {
+          skill: {
+            name: 'nothing-design',
+            description: 'Nothing style',
+            path: '/tmp/nothing-design',
+          },
+          agent: SHARED_SKILLS_TARGET_ID,
+          path: '/tmp/.agents/skills/nothing-design',
+          canonicalPath: '/tmp/.agents/skills/nothing-design',
+          mode: 'symlink',
+        },
+      ],
+      skipped: [],
+      warnings: [],
+    });
+
+    promptsMock
+      .mockResolvedValueOnce({ scope: 'global' })
+      .mockResolvedValueOnce({ groups: [[SHARED_SKILLS_TARGET_ID]] });
+
+    const program = new Command();
+    registerSkillsCommand(program);
+
+    await program.parseAsync(['skills', 'add', TEST_GITHUB_SKILL_SOURCE], { from: 'user' });
+
+    expect(addFromSourceSpy).toHaveBeenCalledWith(
+      TEST_GITHUB_SKILL_SOURCE,
+      process.cwd(),
+      expect.objectContaining({
+        global: true,
+        agents: [SHARED_SKILLS_TARGET_ID],
+      }),
+    );
+  });
+
   it('shows actionable guidance when --yes leaves skills add with no target agents', async () => {
     const infoSpy = vi.spyOn(logger, 'info').mockImplementation(() => {});
+    vi.spyOn(SkillsManager.prototype, 'prepareSource').mockResolvedValue({
+      skills: [],
+      warnings: [],
+    });
     vi.spyOn(SkillsManager.prototype, 'addFromSource').mockResolvedValue({
       installed: [],
       skipped: [
@@ -261,5 +327,19 @@ describe('skills command', () => {
     expect(infoSpy).toHaveBeenCalledWith('  agentinit skills add claude/skill-creator --agent claude');
     expect(infoSpy).toHaveBeenCalledWith('  agentinit skills add claude/skill-creator --global --agent claude');
     expect(infoSpy).toHaveBeenCalledWith('  agentinit init');
+  });
+
+  it('fails before prompting when source verification fails', async () => {
+    const errorSpy = vi.spyOn(logger, 'error').mockImplementation(() => {});
+    vi.spyOn(SkillsManager.prototype, 'prepareSource').mockRejectedValue(new Error('Repository not found'));
+
+    const program = new Command();
+    registerSkillsCommand(program);
+
+    await program.parseAsync(['skills', 'add', TEST_GITHUB_SKILL_SOURCE], { from: 'user' });
+
+    expect(promptsMock).not.toHaveBeenCalled();
+    expect(spinner.fail).toHaveBeenCalledWith('Failed to verify skill source');
+    expect(errorSpy).toHaveBeenCalledWith('Error: Repository not found');
   });
 });

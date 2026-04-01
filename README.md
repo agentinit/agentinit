@@ -202,23 +202,29 @@ agentinit skills add owner/repo --global --agent claude --skill openai-docs
 agentinit skills add owner/repo --global --agent openclaw
 agentinit skills add owner/repo --global --agent hermes
 
+# Install directly into the shared AGENTS.md canonical store
+agentinit skills add owner/repo --global --agent agents
+
 # Force copied installs instead of canonical symlink installs
 agentinit skills add ./skills --copy
 
 # Review and clean up installed skills
 agentinit skills list
+agentinit skills list --agent agents
 agentinit skills remove openai-docs
 ```
 
 If you run `skills add` without `--agent` or `--yes`, AgentInit prompts for install scope first (`project` or `global`), then prompts for the agent skill directories to target. If no project agent files are detected, it still lets you choose project agent directories manually and points you to `agentinit init` for future auto-detection.
 
-Skills are installed into a canonical store by default: project installs use `.agents/skills/`, and global installs use `~/.agents/skills/`. Agent-specific paths are symlinked to that store when they differ. Use `--copy` or `--copy-skills` to force independent copies instead.
+Skills are installed into a canonical store by default: project installs use `.agents/skills/`, and global installs use `~/.agents/skills/`. Agent-specific paths are symlinked to that store when they differ. Use `--agent agents` to target that shared store directly, or `--copy` / `--copy-skills` to force independent copies instead.
 
 OpenClaw participates in the shared project skills ecosystem via `.agents/skills/`, and also exposes a dedicated global skills directory at `~/.openclaw/skills/`. AgentInit treats `~/.openclaw` as an availability signal when offering OpenClaw install targets, but does not count that home-directory marker as a project-level agent detection signal.
 
 Hermes follows the same model: project skills come from `.agents/skills/`, global installs go to `~/.hermes/skills/`, and `~/.hermes` is used only as an availability signal for Hermes install targets.
 
 Some agents share the same native skills directory. For example, Claude Code and Claude Desktop both use `~/.claude/skills/`, so `skills remove --agent ...` will skip deleting that shared path while another agent still depends on it.
+
+The shared `agents` target follows the same safety rule. `skills list --agent agents` shows everything present in the canonical store, and `skills remove --agent agents ...` skips deletion when another concrete agent target still references that canonical skill path.
 
 Bare skill names resolve from your configured default marketplace when one is set. Without a configured default, AgentInit falls back to the public skills catalog used by the open agent skills ecosystem: `vercel-labs/agent-skills`. Use `./name` for a local path, `owner/repo` for an explicit GitHub repository root, `owner/repo/path/to/skill` for a repository subdirectory, or `--from <marketplace>` / `<marketplace>/<name>` for marketplace-backed sources. Three-or-more slash segments are treated as a GitHub repository plus subpath, even when the owner matches a marketplace id. GitHub `tree/...` URLs and `blob/.../SKILL.md` URLs resolve to the referenced skill directory.
 

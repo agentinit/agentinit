@@ -6,8 +6,13 @@ import { ClaudeAgent } from '../../src/agents/ClaudeAgent.js';
 import { ClaudeDesktopAgent } from '../../src/agents/ClaudeDesktopAgent.js';
 import { CodexCliAgent } from '../../src/agents/CodexCliAgent.js';
 import { MarketplacePluginNotFoundError, PluginManager } from '../../src/core/pluginManager.js';
+import { AgentManager } from '../../src/core/agentManager.js';
 import { SkillsManager } from '../../src/core/skillsManager.js';
+import { SHARED_SKILLS_TARGET_ID } from '../../src/types/skills.js';
 import { writeUserConfig } from '../../src/core/userConfig.js';
+
+const TEST_GITHUB_SKILL_REPO = 'agentinit-labs/test-skills-repo';
+const TEST_GITHUB_SKILL_SOURCE = `${TEST_GITHUB_SKILL_REPO}/nothing-design`;
 
 describe('SkillsManager', () => {
   const tempDirs: string[] = [];
@@ -443,7 +448,7 @@ describe('SkillsManager', () => {
 
     vi.spyOn(manager, 'cloneRepo').mockResolvedValue(repoDir);
 
-    const result = await manager.addFromSource('dominikmartn/nothing-design-skill', projectDir, {
+    const result = await manager.addFromSource(TEST_GITHUB_SKILL_REPO, projectDir, {
       agents: ['codex'],
     });
 
@@ -471,7 +476,7 @@ describe('SkillsManager', () => {
 
     vi.spyOn(manager, 'cloneRepo').mockResolvedValue(repoDir);
 
-    const result = await manager.addFromSource('dominikmartn/nothing-design-skill/nothing-design', projectDir, {
+    const result = await manager.addFromSource(TEST_GITHUB_SKILL_SOURCE, projectDir, {
       agents: ['codex'],
     });
 
@@ -480,6 +485,132 @@ describe('SkillsManager', () => {
     expect(result.installed[0]?.skill.name).toBe('nothing-design');
     await expect(readFile(join(projectDir, '.agents/skills', 'other-skill', 'SKILL.md'), 'utf8')).rejects.toThrow();
     expect(await readFile(join(projectDir, '.agents/skills', 'nothing-design', 'SKILL.md'), 'utf8')).toContain('name: nothing-design');
+  });
+
+  it('installs to the shared canonical store without expanding to compatible agents', async () => {
+    const manager = new SkillsManager();
+    const projectDir = await mkdtemp(join(tmpdir(), 'agentinit-marketplace-skill-project-'));
+    const repoDir = await mkdtemp(join(tmpdir(), 'agentinit-github-skill-repo-'));
+    tempDirs.push(projectDir, repoDir);
+
+    await mkdir(join(repoDir, 'nothing-design'), { recursive: true });
+    await writeFile(join(repoDir, 'nothing-design', 'SKILL.md'), '---\nname: nothing-design\ndescription: test\n---\n');
+
+    vi.spyOn(manager, 'cloneRepo').mockResolvedValue(repoDir);
+
+    const result = await manager.addFromSource(TEST_GITHUB_SKILL_SOURCE, projectDir, {
+      global: true,
+      agents: [SHARED_SKILLS_TARGET_ID],
+    });
+
+    expect(result.skipped).toEqual([]);
+    expect(result.installed).toHaveLength(1);
+    expect(result.installed[0]).toMatchObject({
+      agent: SHARED_SKILLS_TARGET_ID,
+      path: join(process.env.HOME!, '.agents/skills', 'nothing-design'),
+      canonicalPath: join(process.env.HOME!, '.agents/skills', 'nothing-design'),
+      mode: 'symlink',
+    });
+    expect(await readFile(join(process.env.HOME!, '.agents/skills', 'nothing-design', 'SKILL.md'), 'utf8')).toContain('name: nothing-design');
+    await expect(readFile(join(process.env.HOME!, '.codex/skills', 'nothing-design', 'SKILL.md'), 'utf8')).rejects.toThrow();
+  });
+
+  it('reuses a prepared remote source during install after verification', async () => {
+    const manager = new SkillsManager();
+    const projectDir = await mkdtemp(join(tmpdir(), 'agentinit-marketplace-skill-project-'));
+    const repoDir = await mkdtemp(join(tmpdir(), 'agentinit-github-skill-repo-'));
+    tempDirs.push(projectDir, repoDir);
+
+    await mkdir(join(repoDir, 'nothing-design'), { recursive: true });
+    await writeFile(join(repoDir, 'nothing-design', 'SKILL.md'), '---\nname: nothing-design\ndescription: test\n---\n');
+
+    const cloneRepoSpy = vi.spyOn(manager, 'cloneRepo').mockResolvedValue(repoDir);
+
+    await manager.prepareSource(TEST_GITHUB_SKILL_SOURCE, projectDir);
+    const result = await manager.addFromSource(TEST_GITHUB_SKILL_SOURCE, projectDir, {
+      agents: ['codex'],
+    });
+
+    expect(cloneRepoSpy).toHaveBeenCalledTimes(1);
+    expect(result.installed).toHaveLength(1);
+    expect(result.installed[0]?.skill.name).toBe('nothing-design');
+  });
+
+  it('lists and removes standalone shared-store installs', async () => {
+    const manager = new SkillsManager();
+    const projectDir = await mkdtemp(join(tmpdir(), 'agentinit-skill-project-'));
+    const skillDir = await mkdtemp(join(tmpdir(), 'agentinit-skill-src-'));
+    tempDirs.push(projectDir, skillDir);
+
+    await writeFile(join(skillDir, 'SKILL.md'), '---\nname: standalone-shared\ndescription: test\n---\n');
+    await manager.installSkillToCanonicalStore(skillDir, 'standalone-shared', projectDir, { global: true });
+
+    const installed = await manager.listInstalled(projectDir, {
+      global: true,
+      agents: [SHARED_SKILLS_TARGET_ID],
+    });
+
+    expect(installed).toEqual([
+      expect.objectContaining({
+        name: 'standalone-shared',
+        agent: SHARED_SKILLS_TARGET_ID,
+        path: join(process.env.HOME!, '.agents/skills', 'standalone-shared'),
+        canonicalPath: join(process.env.HOME!, '.agents/skills', 'standalone-shared'),
+        scope: 'global',
+      }),
+    ]);
+
+    const removed = await manager.remove(['standalone-shared'], projectDir, {
+      global: true,
+      agents: [SHARED_SKILLS_TARGET_ID],
+    });
+
+    expect(removed).toEqual({
+      removed: [`${SHARED_SKILLS_TARGET_ID}:standalone-shared`],
+      notFound: [],
+      skipped: [],
+    });
+    await expect(lstat(join(process.env.HOME!, '.agents/skills', 'standalone-shared'))).rejects.toThrow();
+  });
+
+  it('shows shared-store installs in the AGENTS target and skips removing them while concrete agents still reference them', async () => {
+    const manager = new SkillsManager();
+    const srcDir = await mkdtemp(join(tmpdir(), 'agentinit-skill-src-'));
+    const projectDir = await mkdtemp(join(tmpdir(), 'agentinit-skill-project-'));
+    tempDirs.push(srcDir, projectDir);
+
+    await mkdir(srcDir, { recursive: true });
+    await writeFile(join(srcDir, 'SKILL.md'), '---\nname: shared-skill\ndescription: test\n---\n');
+
+    await manager.installSkillForAgent(srcDir, 'shared-skill', new CodexCliAgent(), projectDir);
+
+    const sharedInstalled = await manager.listInstalled(projectDir, {
+      agents: [SHARED_SKILLS_TARGET_ID],
+    });
+
+    expect(sharedInstalled).toEqual([
+      expect.objectContaining({
+        name: 'shared-skill',
+        agent: SHARED_SKILLS_TARGET_ID,
+        path: join(projectDir, '.agents/skills', 'shared-skill'),
+        canonicalPath: join(projectDir, '.agents/skills', 'shared-skill'),
+        scope: 'project',
+      }),
+    ]);
+
+    const removed = await manager.remove(['shared-skill'], projectDir, {
+      agents: [SHARED_SKILLS_TARGET_ID],
+    });
+
+    expect(removed.removed).toEqual([]);
+    expect(removed.notFound).toEqual([]);
+    expect(removed.skipped).toEqual([
+      expect.objectContaining({
+        name: 'shared-skill',
+        reason: expect.stringContaining(join(projectDir, '.agents/skills', 'shared-skill')),
+      }),
+    ]);
+    expect(await readFile(join(projectDir, '.agents/skills', 'shared-skill', 'SKILL.md'), 'utf8')).toContain('name: shared-skill');
   });
 
   it('resolves bare skill names from the configured default marketplace before the public catalog', async () => {
@@ -551,6 +682,24 @@ describe('SkillsManager', () => {
     }
   });
 
+  it('falls back to detected agents when an empty agent list is provided', async () => {
+    const agentManager = new AgentManager();
+    const manager = new SkillsManager(agentManager);
+    const projectDir = await mkdtemp(join(tmpdir(), 'agentinit-skill-project-'));
+    tempDirs.push(projectDir);
+
+    vi.spyOn(agentManager, 'detectAgents').mockResolvedValue([
+      {
+        agent: agentManager.getAgentById('claude')!,
+        configPath: join(projectDir, 'CLAUDE.md'),
+      },
+    ]);
+
+    const targets = await manager.getTargetAgents(projectDir, { agents: [] });
+
+    expect(targets.map(agent => agent.id)).toEqual(['claude']);
+  });
+
   it('resolves bare skill names from the default public skills catalog', async () => {
     const manager = new SkillsManager();
     const projectDir = await mkdtemp(join(tmpdir(), 'agentinit-skill-project-'));
@@ -613,7 +762,7 @@ describe('SkillsManager', () => {
     vi.spyOn(manager, 'cloneRepo').mockResolvedValue(repoDir);
 
     const result = await manager.discoverFromSource(
-      'https://github.com/dominikmartn/nothing-design-skill/blob/main/nothing-design/SKILL.md',
+      'https://github.com/agentinit-labs/test-skills-repo/blob/main/nothing-design/SKILL.md',
       projectDir,
     );
     expect(result.skills).toHaveLength(1);
@@ -637,7 +786,7 @@ describe('SkillsManager', () => {
 
     vi.spyOn(manager, 'cloneRepo').mockResolvedValue(repoDir);
 
-    const result = await manager.discoverFromSource('dominikmartn/nothing-design-skill/nothing-design', projectDir);
+    const result = await manager.discoverFromSource(TEST_GITHUB_SKILL_SOURCE, projectDir);
     expect(result.skills).toHaveLength(1);
     expect(result.skills[0]).toMatchObject({
       name: 'nothing-design',
@@ -676,7 +825,7 @@ describe('SkillsManager', () => {
     vi.spyOn(manager, 'cloneRepo').mockResolvedValue(repoDir);
 
     await expect(
-      manager.discoverFromSource('dominikmartn/nothing-design-skill/linked-skill', projectDir),
+      manager.discoverFromSource(`${TEST_GITHUB_SKILL_REPO}/linked-skill`, projectDir),
     ).rejects.toThrow('Invalid GitHub source path "linked-skill"');
   });
 

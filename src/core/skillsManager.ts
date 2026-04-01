@@ -26,6 +26,7 @@ import type {
   SkillsRemoveResult,
   SkillSource
 } from '../types/skills.js';
+import { SHARED_SKILLS_TARGET_ID } from '../types/skills.js';
 
 const execFileAsync = promisify(execFile);
 const DEFAULT_SKILLS_CATALOG = {
@@ -48,8 +49,15 @@ const SKILL_SEARCH_DIRS = [
   '.factory/skills',
 ];
 
+type LoadedSkillsContext = {
+  skills: SkillInfo[];
+  warnings: string[];
+  cleanup: () => Promise<void>;
+};
+
 export class SkillsManager {
   private agentManager: AgentManager;
+  private preparedSourceContexts = new Map<string, LoadedSkillsContext>();
 
   constructor(agentManager?: AgentManager) {
     this.agentManager = agentManager || new AgentManager();
@@ -444,7 +452,7 @@ export class SkillsManager {
     source: string,
     projectPath: string,
     options: { from?: string } = {},
-  ): Promise<{ skills: SkillInfo[]; warnings: string[]; cleanup: () => Promise<void> }> {
+  ): Promise<LoadedSkillsContext> {
     const request = this.resolveSourceRequest(source, options);
     const resolved = request.source;
     let tempDir: string | null = null;
@@ -521,6 +529,55 @@ export class SkillsManager {
     } finally {
       await context.cleanup();
     }
+  }
+
+  private getPreparedSourceKey(source: string, projectPath: string, from?: string): string {
+    return `${projectPath}\n${from || ''}\n${source}`;
+  }
+
+  private async storePreparedSourceContext(
+    source: string,
+    projectPath: string,
+    from: string | undefined,
+    context: LoadedSkillsContext,
+  ): Promise<void> {
+    const key = this.getPreparedSourceKey(source, projectPath, from);
+    const existing = this.preparedSourceContexts.get(key);
+    this.preparedSourceContexts.set(key, context);
+    if (existing && existing !== context) {
+      await existing.cleanup();
+    }
+  }
+
+  private takePreparedSourceContext(source: string, projectPath: string, from?: string): LoadedSkillsContext | null {
+    const key = this.getPreparedSourceKey(source, projectPath, from);
+    const existing = this.preparedSourceContexts.get(key) || null;
+    if (existing) {
+      this.preparedSourceContexts.delete(key);
+    }
+    return existing;
+  }
+
+  async prepareSource(
+    source: string,
+    projectPath: string,
+    options: { from?: string } = {},
+  ): Promise<{ skills: SkillInfo[]; warnings: string[] }> {
+    const context = await this.loadDiscoveredSkillsContext(source, projectPath, options);
+    await this.storePreparedSourceContext(source, projectPath, options.from, context);
+    return {
+      skills: context.skills,
+      warnings: context.warnings,
+    };
+  }
+
+  async discardPreparedSource(
+    source: string,
+    projectPath: string,
+    options: { from?: string } = {},
+  ): Promise<void> {
+    const context = this.takePreparedSourceContext(source, projectPath, options.from);
+    await context?.cleanup();
   }
 
   /**
@@ -721,6 +778,48 @@ export class SkillsManager {
     return plan;
   }
 
+  async installSkillToCanonicalStore(
+    skillPath: string,
+    skillName: string,
+    projectPath: string,
+    options: { global?: boolean } = {},
+  ): Promise<SkillInstallResult> {
+    const plan = this.getCanonicalInstallPlan(skillName, projectPath, options);
+    await this.cleanAndCreateDirectory(plan.path);
+    await this.copyDir(skillPath, plan.path);
+    return plan;
+  }
+
+  async installSkillFromContentToCanonicalStore(
+    skillName: string,
+    skillContent: string,
+    projectPath: string,
+    options: { global?: boolean } = {},
+  ): Promise<SkillInstallResult> {
+    const plan = this.getCanonicalInstallPlan(skillName, projectPath, options);
+    await this.cleanAndCreateDirectory(plan.path);
+    await fs.writeFile(join(plan.path, 'SKILL.md'), skillContent, 'utf8');
+    return plan;
+  }
+
+  private getCanonicalInstallPlan(
+    skillName: string,
+    projectPath: string,
+    options: { global?: boolean } = {},
+  ): SkillInstallResult {
+    const normalizedSkillName = this.normalizeSkillName(skillName);
+    const canonicalPath = this.resolveInstallPath(
+      this.getCanonicalSkillsDir(projectPath, options.global ?? false),
+      normalizedSkillName,
+    );
+
+    return {
+      path: canonicalPath,
+      canonicalPath,
+      mode: 'symlink',
+    };
+  }
+
   private normalizeSkillName(skillName: string): string {
     const normalized = skillName.trim();
 
@@ -780,9 +879,10 @@ export class SkillsManager {
     projectPath: string,
     options: SkillsAddOptions = {}
   ): Promise<SkillsAddResult> {
-    const context = await this.loadDiscoveredSkillsContext(source, projectPath, {
-      ...(options.from !== undefined ? { from: options.from } : {}),
-    });
+    const context = this.takePreparedSourceContext(source, projectPath, options.from)
+      || await this.loadDiscoveredSkillsContext(source, projectPath, {
+        ...(options.from !== undefined ? { from: options.from } : {}),
+      });
     try {
       let skills = context.skills;
 
@@ -795,8 +895,9 @@ export class SkillsManager {
         skills = skills.filter(skill => names.has(skill.name.toLowerCase()));
       }
 
+      const installToSharedStore = options.agents?.includes(SHARED_SKILLS_TARGET_ID) ?? false;
       const agents = await this.getTargetAgents(projectPath, options);
-      if (agents.length === 0) {
+      if (agents.length === 0 && !installToSharedStore) {
         return {
           installed: [],
           skipped: skills.map(skill => ({ skill, reason: 'No target agents found' })),
@@ -806,6 +907,33 @@ export class SkillsManager {
 
       const result: SkillsAddResult = { installed: [], skipped: [], warnings: context.warnings };
       const installableAgents: Agent[] = [];
+
+      if (installToSharedStore) {
+        for (const skill of skills) {
+          try {
+            const installOptions = {
+              ...(options.global !== undefined ? { global: options.global } : {}),
+            };
+            const installed = skill.generatedContent
+              ? await this.installSkillFromContentToCanonicalStore(
+                skill.name,
+                skill.generatedContent,
+                projectPath,
+                installOptions,
+              )
+              : await this.installSkillToCanonicalStore(
+                skill.path,
+                skill.name,
+                projectPath,
+                installOptions
+              );
+
+            result.installed.push({ skill, agent: SHARED_SKILLS_TARGET_ID, ...installed });
+          } catch (error: any) {
+            result.skipped.push({ skill, reason: error.message });
+          }
+        }
+      }
 
       for (const agent of agents) {
         if (!agent.supportsSkills()) {
@@ -940,6 +1068,53 @@ export class SkillsManager {
       }
     }
 
+    const includeSharedTarget = !options.agents || options.agents.includes(SHARED_SKILLS_TARGET_ID);
+    if (includeSharedTarget) {
+      const scopes: Array<'project' | 'global'> = options.global ? ['global'] : ['project', 'global'];
+      const referencedCanonicalPaths = new Set(
+        installed
+          .map(entry => entry.canonicalPath)
+          .filter((value): value is string => !!value)
+          .map(value => resolve(value))
+      );
+
+      for (const scope of scopes) {
+        const canonicalDir = this.getCanonicalSkillsDir(projectPath, scope === 'global');
+        if (!(await fileExists(canonicalDir))) continue;
+
+        const entries = await listFiles(canonicalDir);
+        for (const entry of entries) {
+          const entryPath = join(canonicalDir, entry);
+          if (!(await isDirectory(entryPath))) continue;
+
+          const resolvedEntryPath = resolve(entryPath);
+          if (referencedCanonicalPaths.has(resolvedEntryPath)) continue;
+
+          const skillMdPath = join(entryPath, 'SKILL.md');
+          const skillMdPathLower = join(entryPath, 'skill.md');
+          const skillFile = (await fileExists(skillMdPath)) ? skillMdPath
+            : (await fileExists(skillMdPathLower)) ? skillMdPathLower
+            : null;
+
+          if (!skillFile) continue;
+
+          const parsed = await this.parseSkillMd(skillFile);
+          if (!parsed) continue;
+
+          installed.push({
+            name: parsed.name,
+            description: parsed.description,
+            path: entryPath,
+            canonicalPath: resolvedEntryPath,
+            agent: SHARED_SKILLS_TARGET_ID,
+            scope,
+            isSymlink: false,
+            mode: 'symlink',
+          });
+        }
+      }
+    }
+
     return installed;
   }
 
@@ -958,8 +1133,20 @@ export class SkillsManager {
     const skipped: Array<{ name: string; reason: string }> = [];
     const namesLower = new Set(skillNames.map(n => n.toLowerCase()));
     const targetAgentIds = new Set(agents.map(agent => agent.id));
+    if (options.agents?.includes(SHARED_SKILLS_TARGET_ID) || options.agents === undefined) {
+      targetAgentIds.add(SHARED_SKILLS_TARGET_ID);
+    }
     const installed = await this.listInstalledForAgents(projectPath, allAgents, options);
-    const scopedInstalled = installed.filter(entry =>
+    const sharedTargetInstalled = options.agents?.includes(SHARED_SKILLS_TARGET_ID)
+      ? await this.listInstalledForAgents(projectPath, [], options)
+      : [];
+    const installedEntries = Array.from(new Map(
+      [...installed, ...sharedTargetInstalled].map(entry => [
+        `${entry.agent}:${entry.scope}:${entry.path}:${entry.name}`,
+        entry,
+      ])
+    ).values());
+    const scopedInstalled = installedEntries.filter(entry =>
       options.global ? entry.scope === 'global' : entry.scope === 'project'
     );
     const targetedEntries = scopedInstalled.filter(entry =>
@@ -969,7 +1156,7 @@ export class SkillsManager {
     const targetedKeys = new Set(
       targetedEntries.map(entry => `${entry.agent}:${entry.scope}:${entry.path}:${entry.name}`)
     );
-    const remainingEntries = installed.filter(
+    const remainingEntries = installedEntries.filter(
       entry => !targetedKeys.has(`${entry.agent}:${entry.scope}:${entry.path}:${entry.name}`)
     );
     const removedPaths = new Set<string>();

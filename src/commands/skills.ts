@@ -9,7 +9,12 @@ import { SkillsManager } from '../core/skillsManager.js';
 import { getMarketplaceIds } from '../core/marketplaceRegistry.js';
 import { AgentManager } from '../core/agentManager.js';
 import type { Agent } from '../agents/Agent.js';
-import type { SkillInfo, SkillsAddResult } from '../types/skills.js';
+import {
+  SHARED_SKILLS_TARGET_ID,
+  SHARED_SKILLS_TARGET_NAME,
+  type SkillInfo,
+  type SkillsAddResult
+} from '../types/skills.js';
 
 interface SkillAgentGroup {
   dir: string;
@@ -67,6 +72,18 @@ export function registerSkillsCommand(program: Command): void {
         return;
       }
 
+      const verifySpinner = ora('Verifying skill source...').start();
+      try {
+        await skillsManager.prepareSource(source, process.cwd(), {
+          from: options.from,
+        });
+        verifySpinner.stop();
+      } catch (error) {
+        verifySpinner.fail('Failed to verify skill source');
+        logger.error(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        return;
+      }
+
       let targetAgents = options.agent as string[] | undefined;
       let targetGlobal = options.global as boolean | undefined;
       if (!targetAgents && !options.yes) {
@@ -82,6 +99,9 @@ export function registerSkillsCommand(program: Command): void {
         );
 
         if (selection?.aborted) {
+          await skillsManager.discardPreparedSource(source, process.cwd(), {
+            from: options.from,
+          });
           return;
         }
 
@@ -161,7 +181,7 @@ export function registerSkillsCommand(program: Command): void {
         if (skill.mode === 'symlink') {
           existing.mode = 'symlink';
         }
-        existing.agents.add(agentManager.getAgentById(skill.agent)?.name || skill.agent);
+        existing.agents.add(formatSkillTargetName(agentManager, skill.agent));
         bySkill.set(key, existing);
       }
 
@@ -295,9 +315,11 @@ async function resolveInteractiveSkillTargets(
     instructions: false,
     min: 1,
     choices: availableGroups.map(group => ({
-      title: `${group.displayDir} -> ${group.agentNames.join(', ')}${formatCompatibleAgents(group)}`,
+      title: formatSkillGroupTitle(group),
       ...(group.description ? { description: group.description } : {}),
-      value: group.agents.map(agent => agent.id),
+      value: group.kind === 'canonical-shared'
+        ? [SHARED_SKILLS_TARGET_ID]
+        : group.agents.map(agent => agent.id),
       selected: shouldPreselectSkillGroup(
         group,
         installGlobal,
@@ -378,15 +400,27 @@ function buildSkillGroups(
     dirToAgents.set(skillsDir, existing);
   }
 
-  return Array.from(dirToAgents.entries()).map(([dir, groupedAgents]) => ({
-    dir,
-    displayDir: formatSkillsDir(projectPath, dir),
-    agents: groupedAgents,
-    agentNames: groupedAgents.map(agent => agent.name),
-    compatibleAgents: [],
-    compatibleAgentNames: [],
-    kind: 'native',
-  }));
+  return Array.from(dirToAgents.entries()).map(([dir, groupedAgents]) => {
+    const canonicalShared = resolve(dir) === getCanonicalSkillsDirForScope(projectPath, !!global)
+      && groupedAgents.every(agent => agent.getProjectSkillsStandard() === 'agents');
+
+    return {
+      dir,
+      displayDir: formatSkillsDir(projectPath, dir),
+      agents: groupedAgents,
+      agentNames: groupedAgents.map(agent => agent.name),
+      compatibleAgents: [],
+      compatibleAgentNames: [],
+      ...(canonicalShared
+        ? {
+          description: `Install only into the shared AGENTS.md store. Compatible tools: ${groupedAgents.map(agent => agent.name).join(', ')}.`,
+          kind: 'canonical-shared' as const,
+        }
+        : {
+          kind: 'native' as const,
+        }),
+    };
+  });
 }
 
 function prependCanonicalGlobalGroup(
@@ -413,7 +447,7 @@ function prependCanonicalGlobalGroup(
     return [
       {
         ...existingCanonical,
-        description: existingCanonical.description || 'Canonical shared skills store for the open AGENTS.md ecosystem.',
+        description: existingCanonical.description || `Install only into the shared AGENTS.md store. Compatible tools: ${existingCanonical.agentNames.join(', ')}.`,
         kind: 'canonical-shared',
       },
       ...remaining,
@@ -428,7 +462,7 @@ function prependCanonicalGlobalGroup(
       agentNames: sharedAgents.map(agent => agent.name),
       compatibleAgents: [],
       compatibleAgentNames: [],
-      description: 'Canonical shared skills store for the open AGENTS.md ecosystem.',
+      description: `Install only into the shared AGENTS.md store. Compatible tools: ${sharedAgents.map(agent => agent.name).join(', ')}.`,
       kind: 'canonical-shared',
     },
     ...groups.map(group => {
@@ -476,13 +510,19 @@ function getCanonicalGlobalSkillsDir(): string {
   return resolve(homedir(), '.agents/skills');
 }
 
+function getCanonicalSkillsDirForScope(projectPath: string, global: boolean): string {
+  return global
+    ? getCanonicalGlobalSkillsDir()
+    : resolve(projectPath, '.agents/skills');
+}
+
 function getCanonicalGlobalSkillsDisplayPath(): string {
   return formatPromptPath(getCanonicalGlobalSkillsDir());
 }
 
 function describeGlobalSkillGroup(group: SkillAgentGroup): string | undefined {
   if (group.kind === 'canonical-shared') {
-    return group.description;
+    return group.description || `Install only into the shared AGENTS.md store. Compatible tools: ${group.agentNames.join(', ')}.`;
   }
 
   if (group.agents.every(agent => agent.getProjectSkillsStandard() === 'agents')) {
@@ -494,6 +534,22 @@ function describeGlobalSkillGroup(group: SkillAgentGroup): string | undefined {
   }
 
   return undefined;
+}
+
+function formatSkillGroupTitle(group: SkillAgentGroup): string {
+  if (group.kind === 'canonical-shared') {
+    return `${group.displayDir} -> ${SHARED_SKILLS_TARGET_NAME}`;
+  }
+
+  return `${group.displayDir} -> ${group.agentNames.join(', ')}${formatCompatibleAgents(group)}`;
+}
+
+function formatSkillTargetName(agentManager: AgentManager, agentId: string): string {
+  if (agentId === SHARED_SKILLS_TARGET_ID) {
+    return SHARED_SKILLS_TARGET_NAME;
+  }
+
+  return agentManager.getAgentById(agentId)?.name || agentId;
 }
 
 function shouldPreselectSkillGroup(
@@ -646,7 +702,7 @@ function displayInstallResult(
       agents: new Set<string>(),
       skills: new Set<string>(),
     };
-    existing.agents.add(agentManager.getAgentById(item.agent)?.name || item.agent);
+    existing.agents.add(formatSkillTargetName(agentManager, item.agent));
     existing.skills.add(item.skill.name);
     byPath.set(path, existing);
   }
