@@ -263,7 +263,7 @@ agentinit plugins remove code-review
 - Implemented marketplaces today include `claude` (Anthropic's Claude plugin marketplace) and `openai` (the OpenAI Codex skills catalog).
 - You can add your own marketplaces with `agentinit config marketplaces add <identifier> <repo-url>`.
 - If a marketplace lookup misses but the source still looks like `owner/repo`, AgentInit warns and tries that GitHub repository directly. Exact repos added with `agentinit config verified-repos add <owner/repo>` are labeled as verified during that fallback.
-- For Claude-format plugins, `plugins install` still installs portable skills and MCP servers for the selected agents. If Claude Code-native components are also present, AgentInit previews that compatibility before target selection. The native plugin payload installs only when `claude` is one of the selected targets; otherwise AgentInit warns that the Claude-only parts were skipped. When the native payload is installed, AgentInit reminds you to run `/reload-plugins`.
+- For Claude-format plugins, `plugins install` installs portable skills and MCP servers for compatible selected agents. If a native Claude Code plugin bundle is also present, AgentInit installs that bundle into `~/.claude/plugins` when `claude` is selected, registers the corresponding Claude marketplace metadata, and skips portable skill fallback for any selected agents that share Claude Code's skills directory. Portable MCP installs still apply to other compatible agents.
 - Claude-native plugin payloads are user-scoped and stored under `~/.claude/plugins`, even when the AgentInit install itself is project-scoped.
 
 ### `agentinit config`

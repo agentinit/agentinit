@@ -73,6 +73,14 @@ function getClaudeInstalledPluginsPath(): string {
   return join(homedir(), '.claude', 'plugins', 'installed_plugins.json');
 }
 
+function getClaudeKnownMarketplacesPath(): string {
+  return join(homedir(), '.claude', 'plugins', 'known_marketplaces.json');
+}
+
+function getClaudeMarketplaceInstallPath(namespace: string): string {
+  return join(homedir(), '.claude', 'plugins', 'marketplaces', namespace);
+}
+
 function getClaudeSettingsPath(): string {
   return join(homedir(), '.claude', 'settings.json');
 }
@@ -86,6 +94,7 @@ type NativeClaudeInstallTarget = {
   namespace: string;
   pluginKey: string;
   installPath: string;
+  marketplacePath: string;
   features: string[];
 };
 
@@ -108,6 +117,33 @@ type ClaudeInstalledPluginsState = {
 
 type ClaudeSettingsState = {
   enabledPlugins?: Record<string, boolean>;
+  extraKnownMarketplaces?: Record<string, {
+    source: Record<string, unknown>;
+    installLocation?: string;
+    autoUpdate?: boolean;
+  }>;
+  [key: string]: unknown;
+};
+
+type ClaudeKnownMarketplacesState = Record<string, {
+  source: Record<string, unknown>;
+  installLocation: string;
+  lastUpdated: string;
+  autoUpdate?: boolean;
+}>;
+
+type ClaudeMarketplacePluginEntry = {
+  name?: string;
+  source?: string;
+  description?: string;
+  version?: string;
+  author?: unknown;
+  [key: string]: unknown;
+};
+
+type ClaudeMarketplaceManifestState = {
+  name?: string;
+  plugins?: ClaudeMarketplacePluginEntry[];
   [key: string]: unknown;
 };
 
@@ -451,6 +487,8 @@ export class PluginManager {
       (async () => !!manifest.commands || await isDirectory(join(pluginDir, 'commands')))(),
       (async () => !!manifest.hooks || await isDirectory(join(pluginDir, 'hooks')))(),
       (async () => !!manifest.agents || await isDirectory(join(pluginDir, 'agents')))(),
+      isDirectory(join(pluginDir, 'skills')),
+      (async () => !!manifest.mcpServers || await fileExists(join(pluginDir, '.mcp.json')))(),
       isDirectory(join(pluginDir, 'prompts')),
       isDirectory(join(pluginDir, 'schemas')),
       isDirectory(join(pluginDir, 'scripts')),
@@ -461,10 +499,12 @@ export class PluginManager {
       ...(featureChecks[0] ? ['commands'] : []),
       ...(featureChecks[1] ? ['hooks'] : []),
       ...(featureChecks[2] ? ['agents'] : []),
-      ...(featureChecks[3] ? ['prompts'] : []),
-      ...(featureChecks[4] ? ['schemas'] : []),
-      ...(featureChecks[5] ? ['scripts'] : []),
-      ...(featureChecks[6] ? ['templates'] : []),
+      ...(featureChecks[3] ? ['skills'] : []),
+      ...(featureChecks[4] ? ['mcp servers'] : []),
+      ...(featureChecks[5] ? ['prompts'] : []),
+      ...(featureChecks[6] ? ['schemas'] : []),
+      ...(featureChecks[7] ? ['scripts'] : []),
+      ...(featureChecks[8] ? ['templates'] : []),
     ];
   }
 
@@ -496,13 +536,14 @@ export class PluginManager {
     const baseNamespace = plugin.nativeClaudeBundle?.bundleName
       || plugin.source.marketplace
       || (plugin.source.owner && plugin.source.repo ? `${plugin.source.owner}-${plugin.source.repo}` : plugin.name);
-    const namespace = `agentinit-${this.slugifyPluginNamespace(baseNamespace)}`;
+    const namespace = this.slugifyPluginNamespace(baseNamespace);
     const versionDir = this.slugifyPluginNamespace(plugin.version || '0.0.0');
 
     return {
       namespace,
       pluginKey: `${plugin.name}@${namespace}`,
       installPath: join(homedir(), '.claude', 'plugins', 'cache', namespace, plugin.name, versionDir),
+      marketplacePath: getClaudeMarketplaceInstallPath(namespace),
       features,
     };
   }
@@ -529,6 +570,27 @@ export class PluginManager {
     await writeFile(getClaudeInstalledPluginsPath(), JSON.stringify(state, null, 2));
   }
 
+  private async readClaudeKnownMarketplaces(): Promise<ClaudeKnownMarketplacesState> {
+    const content = await readFileIfExists(getClaudeKnownMarketplacesPath());
+    if (!content) {
+      return {};
+    }
+
+    try {
+      const parsed = JSON.parse(content) as ClaudeKnownMarketplacesState;
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        return {};
+      }
+      return parsed;
+    } catch {
+      return {};
+    }
+  }
+
+  private async saveClaudeKnownMarketplaces(state: ClaudeKnownMarketplacesState): Promise<void> {
+    await writeFile(getClaudeKnownMarketplacesPath(), JSON.stringify(state, null, 2));
+  }
+
   private async readClaudeSettings(): Promise<ClaudeSettingsState> {
     const content = await readFileIfExists(getClaudeSettingsPath());
     if (!content) {
@@ -553,6 +615,200 @@ export class PluginManager {
 
   private async saveClaudeSettings(state: ClaudeSettingsState): Promise<void> {
     await writeFile(getClaudeSettingsPath(), JSON.stringify(state, null, 2));
+  }
+
+  private async findClaudeMarketplaceRoot(pluginDir: string): Promise<string | null> {
+    let currentDir = resolve(pluginDir);
+
+    while (true) {
+      if (await fileExists(join(currentDir, '.claude-plugin', 'marketplace.json'))) {
+        return currentDir;
+      }
+
+      const parentDir = dirname(currentDir);
+      if (parentDir === currentDir) {
+        return null;
+      }
+      currentDir = parentDir;
+    }
+  }
+
+  private async readClaudeMarketplaceManifest(marketplaceDir: string): Promise<ClaudeMarketplaceManifestState | null> {
+    const manifestContent = await readFileIfExists(join(marketplaceDir, '.claude-plugin', 'marketplace.json'));
+    if (!manifestContent) {
+      return null;
+    }
+
+    try {
+      const parsed = JSON.parse(manifestContent) as ClaudeMarketplaceManifestState;
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        return null;
+      }
+      const plugins = Array.isArray(parsed.plugins)
+        ? parsed.plugins.filter((entry): entry is ClaudeMarketplacePluginEntry =>
+          !!entry && typeof entry === 'object' && !Array.isArray(entry)
+        )
+        : [];
+
+      return {
+        ...parsed,
+        plugins,
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  private async saveClaudeMarketplaceManifest(
+    marketplaceDir: string,
+    manifest: ClaudeMarketplaceManifestState,
+  ): Promise<void> {
+    await fs.mkdir(join(marketplaceDir, '.claude-plugin'), { recursive: true });
+    await writeFile(
+      join(marketplaceDir, '.claude-plugin', 'marketplace.json'),
+      JSON.stringify(manifest, null, 2),
+    );
+  }
+
+  private resolveMarketplaceSourcePath(baseDir: string, relativePath: string): string {
+    const resolvedPath = resolve(baseDir, relativePath);
+    const relativePathFromBase = relative(resolve(baseDir), resolvedPath);
+    if (
+      relativePathFromBase.startsWith('..')
+      || relativePathFromBase.includes('/../')
+      || relativePathFromBase.includes('\\..\\')
+    ) {
+      throw new Error(`Invalid marketplace source path "${relativePath}" in ${baseDir}`);
+    }
+    return resolvedPath;
+  }
+
+  private async readClaudePluginMetadata(pluginDir: string): Promise<Pick<ClaudeMarketplacePluginEntry, 'description' | 'version' | 'author'>> {
+    const manifestContent = await readFileIfExists(join(pluginDir, '.claude-plugin', 'plugin.json'));
+    if (!manifestContent) {
+      return {};
+    }
+
+    try {
+      const manifest = JSON.parse(manifestContent) as ClaudePluginManifest & { author?: unknown };
+      return {
+        ...(typeof manifest.description === 'string' ? { description: manifest.description } : {}),
+        ...(typeof manifest.version === 'string' ? { version: manifest.version } : {}),
+        ...(manifest.author ? { author: manifest.author } : {}),
+      };
+    } catch {
+      return {};
+    }
+  }
+
+  private async copyClaudeMarketplacePlugin(
+    sourcePluginDir: string,
+    marketplacePath: string,
+    pluginName: string,
+  ): Promise<string> {
+    const marketplacePluginPath = join(marketplacePath, 'plugins', pluginName);
+    await fs.mkdir(dirname(marketplacePluginPath), { recursive: true });
+    await fs.rm(marketplacePluginPath, { recursive: true, force: true }).catch(() => {});
+    await fs.cp(sourcePluginDir, marketplacePluginPath, { recursive: true, dereference: true });
+    return marketplacePluginPath;
+  }
+
+  private getClaudeMarketplaceSource(
+    plugin: NormalizedPlugin,
+    marketplaceRoot: string | null,
+    marketplacePath: string,
+  ): Record<string, unknown> {
+    if (plugin.source.type === 'github') {
+      if (plugin.source.owner && plugin.source.repo) {
+        return {
+          source: 'github',
+          repo: `${plugin.source.owner}/${plugin.source.repo}`,
+        };
+      }
+
+      if (plugin.source.url) {
+        return {
+          source: 'git',
+          url: plugin.source.url,
+        };
+      }
+    }
+
+    if (plugin.source.type === 'local') {
+      return {
+        source: 'directory',
+        path: resolve(marketplaceRoot || plugin.source.path || marketplacePath),
+      };
+    }
+
+    return {
+      source: 'directory',
+      path: marketplacePath,
+    };
+  }
+
+  private async materializeClaudeMarketplace(
+    plugin: NormalizedPlugin,
+    pluginDir: string,
+    target: NativeClaudeInstallTarget,
+  ): Promise<{ source: Record<string, unknown> }> {
+    const marketplaceRoot = await this.findClaudeMarketplaceRoot(pluginDir);
+    const marketplaceSource = this.getClaudeMarketplaceSource(
+      plugin,
+      marketplaceRoot,
+      target.marketplacePath,
+    );
+
+    await fs.mkdir(target.marketplacePath, { recursive: true });
+
+    const existingManifest = await this.readClaudeMarketplaceManifest(target.marketplacePath);
+    const sourceManifest = marketplaceRoot
+      ? await this.readClaudeMarketplaceManifest(marketplaceRoot)
+      : null;
+    const mergedManifest: ClaudeMarketplaceManifestState = {
+      ...(sourceManifest || {}),
+      ...(existingManifest || {}),
+      name: target.namespace,
+    };
+    const mergedEntries = new Map<string, ClaudeMarketplacePluginEntry>();
+
+    for (const entry of existingManifest?.plugins || []) {
+      if (typeof entry.name === 'string' && entry.name) {
+        mergedEntries.set(entry.name, entry);
+      }
+    }
+
+    if (marketplaceRoot && sourceManifest) {
+      for (const entry of sourceManifest.plugins || []) {
+        if (typeof entry.name !== 'string' || !entry.name || typeof entry.source !== 'string' || !entry.source) {
+          continue;
+        }
+
+        const sourcePluginDir = this.resolveMarketplaceSourcePath(marketplaceRoot, entry.source);
+        await this.copyClaudeMarketplacePlugin(sourcePluginDir, target.marketplacePath, entry.name);
+        mergedEntries.set(entry.name, {
+          ...entry,
+          source: `./plugins/${entry.name}`,
+        });
+      }
+    } else {
+      await this.copyClaudeMarketplacePlugin(pluginDir, target.marketplacePath, plugin.name);
+      const pluginMetadata = await this.readClaudePluginMetadata(pluginDir);
+      mergedEntries.set(plugin.name, {
+        ...(mergedEntries.get(plugin.name) || {}),
+        name: plugin.name,
+        source: `./plugins/${plugin.name}`,
+        ...(plugin.description ? { description: plugin.description } : {}),
+        ...(plugin.version ? { version: plugin.version } : {}),
+        ...pluginMetadata,
+      });
+    }
+
+    mergedManifest.plugins = [...mergedEntries.values()]
+      .sort((left, right) => (left.name || '').localeCompare(right.name || ''));
+    await this.saveClaudeMarketplaceManifest(target.marketplacePath, mergedManifest);
+
+    return { source: marketplaceSource };
   }
 
   private async installNativeClaudePlugin(
@@ -587,8 +843,13 @@ export class PluginManager {
     );
 
     const claudeInstalled = await this.readClaudeInstalledPlugins();
+    const legacyKeys = Object.keys(claudeInstalled.plugins).filter(key =>
+      key !== nativeTarget.pluginKey && key.startsWith(`${plugin.name}@agentinit-`)
+    );
     const conflictingKey = Object.keys(claudeInstalled.plugins).find(key =>
-      key !== nativeTarget.pluginKey && key.startsWith(`${plugin.name}@`)
+      key !== nativeTarget.pluginKey
+      && !legacyKeys.includes(key)
+      && key.startsWith(`${plugin.name}@`)
     );
     if (conflictingKey) {
       skipped.push({
@@ -604,6 +865,7 @@ export class PluginManager {
     await fs.rm(nativeTarget.installPath, { recursive: true, force: true }).catch(() => {});
     await fs.mkdir(dirname(nativeTarget.installPath), { recursive: true });
     await fs.cp(pluginDir, nativeTarget.installPath, { recursive: true, dereference: true });
+    const marketplace = await this.materializeClaudeMarketplace(plugin, pluginDir, nativeTarget);
 
     const now = new Date().toISOString();
     claudeInstalled.plugins[nativeTarget.pluginKey] = [{
@@ -613,6 +875,10 @@ export class PluginManager {
       installedAt: now,
       lastUpdated: now,
     }];
+    const legacyEntries = legacyKeys.flatMap(key => claudeInstalled.plugins[key] || []);
+    for (const legacyKey of legacyKeys) {
+      delete claudeInstalled.plugins[legacyKey];
+    }
     await this.saveClaudeInstalledPlugins(claudeInstalled);
 
     const claudeSettings = await this.readClaudeSettings();
@@ -620,7 +886,33 @@ export class PluginManager {
       ...(claudeSettings.enabledPlugins || {}),
       [nativeTarget.pluginKey]: true,
     };
+    claudeSettings.extraKnownMarketplaces = {
+      ...(claudeSettings.extraKnownMarketplaces || {}),
+      [nativeTarget.namespace]: {
+        source: marketplace.source,
+      },
+    };
+    for (const legacyKey of legacyKeys) {
+      if (claudeSettings.enabledPlugins && legacyKey in claudeSettings.enabledPlugins) {
+        delete claudeSettings.enabledPlugins[legacyKey];
+      }
+    }
     await this.saveClaudeSettings(claudeSettings);
+
+    const knownMarketplaces = await this.readClaudeKnownMarketplaces();
+    knownMarketplaces[nativeTarget.namespace] = {
+      source: marketplace.source,
+      installLocation: nativeTarget.marketplacePath,
+      lastUpdated: now,
+    };
+    await this.saveClaudeKnownMarketplaces(knownMarketplaces);
+
+    for (const entry of legacyEntries) {
+      await fs.rm(entry.installPath, { recursive: true, force: true }).catch(() => {});
+    }
+    for (const legacyKey of legacyKeys) {
+      warnings.push(`Replaced legacy AgentInit Claude plugin install ${legacyKey} with ${nativeTarget.pluginKey}.`);
+    }
 
     installed.push({
       agent: 'claude',
@@ -645,6 +937,9 @@ export class PluginManager {
     const claudeInstalled = await this.readClaudeInstalledPlugins();
     const entries = claudeInstalled.plugins[component.pluginKey] || [];
     const remainingEntries = entries.filter(entry => entry.installPath !== component.installPath);
+    const marketplaceNamespace = component.pluginKey.includes('@')
+      ? component.pluginKey.split('@').slice(1).join('@')
+      : '';
 
     if (remainingEntries.length > 0) {
       claudeInstalled.plugins[component.pluginKey] = remainingEntries;
@@ -657,8 +952,35 @@ export class PluginManager {
     if (claudeSettings.enabledPlugins && component.pluginKey in claudeSettings.enabledPlugins) {
       const { [component.pluginKey]: _removed, ...remainingEnabledPlugins } = claudeSettings.enabledPlugins;
       claudeSettings.enabledPlugins = remainingEnabledPlugins;
-      await this.saveClaudeSettings(claudeSettings);
     }
+    const namespaceStillInstalled = marketplaceNamespace
+      ? Object.keys(claudeInstalled.plugins).some(pluginKey => pluginKey.endsWith(`@${marketplaceNamespace}`))
+      : false;
+    if (!namespaceStillInstalled && marketplaceNamespace) {
+      if (claudeSettings.extraKnownMarketplaces && marketplaceNamespace in claudeSettings.extraKnownMarketplaces) {
+        delete claudeSettings.extraKnownMarketplaces[marketplaceNamespace];
+      }
+
+      const knownMarketplaces = await this.readClaudeKnownMarketplaces();
+      if (marketplaceNamespace in knownMarketplaces) {
+        delete knownMarketplaces[marketplaceNamespace];
+        await this.saveClaudeKnownMarketplaces(knownMarketplaces);
+      }
+
+      await fs.rm(getClaudeMarketplaceInstallPath(marketplaceNamespace), { recursive: true, force: true }).catch(() => {});
+    } else if (marketplaceNamespace) {
+      const pluginName = component.pluginKey.split('@')[0] || '';
+      const marketplacePath = getClaudeMarketplaceInstallPath(marketplaceNamespace);
+      const manifest = await this.readClaudeMarketplaceManifest(marketplacePath);
+      if (pluginName && manifest) {
+        manifest.plugins = (manifest.plugins || [])
+          .filter(entry => entry.name !== pluginName);
+        const marketplacePluginPath = join(marketplacePath, 'plugins', pluginName);
+        await fs.rm(marketplacePluginPath, { recursive: true, force: true }).catch(() => {});
+        await this.saveClaudeMarketplaceManifest(marketplacePath, manifest);
+      }
+    }
+    await this.saveClaudeSettings(claudeSettings);
     await fs.rm(component.installPath, { recursive: true, force: true }).catch(() => {});
     return true;
   }
@@ -1259,11 +1581,19 @@ ${body.trim()}
         };
       }
 
+      const nativeClaudeTarget = await this.getClaudeNativeInstallTarget(plugin, plugin.resolvedPluginDir);
+      const portableSkillAgents = nativeClaudeTarget
+        ? this.getPortableSkillAgents(agents, projectPath, options.global)
+        : agents;
+      const portableMcpAgents = nativeClaudeTarget
+        ? agents.filter(agent => agent.id !== 'claude')
+        : agents;
+
       // 5. Install skills (deduplicated by shared directory)
-      const skillResult = await this.installPluginSkills(plugin, projectPath, agents, options);
+      const skillResult = await this.installPluginSkills(plugin, projectPath, portableSkillAgents, options);
 
       // 6. Apply MCP servers per agent
-      const mcpResult = await this.applyPluginMcpServers(plugin, projectPath, agents, options.global);
+      const mcpResult = await this.applyPluginMcpServers(plugin, projectPath, portableMcpAgents, options.global);
 
       // 7. Install agent-native plugin payloads when supported.
       const nativePluginResult = await this.installNativeClaudePlugin(plugin, plugin.resolvedPluginDir, agents);
@@ -1374,6 +1704,34 @@ ${body.trim()}
     }
 
     return { installed, skipped };
+  }
+
+  private getPortableSkillAgents(
+    agents: Agent[],
+    projectPath: string,
+    global?: boolean,
+  ): Agent[] {
+    const claudeAgent = agents.find(agent => agent.id === 'claude');
+    if (!claudeAgent || !claudeAgent.supportsSkills()) {
+      return agents;
+    }
+
+    const claudeSkillsDir = claudeAgent.getSkillsDir(projectPath, global);
+    if (!claudeSkillsDir) {
+      return agents.filter(agent => agent.id !== 'claude');
+    }
+
+    return agents.filter(agent => {
+      if (agent.id === 'claude') {
+        return false;
+      }
+
+      if (!agent.supportsSkills()) {
+        return true;
+      }
+
+      return agent.getSkillsDir(projectPath, global) !== claudeSkillsDir;
+    });
   }
 
   /**

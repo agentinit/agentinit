@@ -142,7 +142,7 @@
 * add OpenClaw as a skills target with shared project installs via `.agents/skills/` and dedicated global installs via `~/.openclaw/skills/`
 * add Hermes as a skills target with shared project installs via `.agents/skills/` and dedicated global installs via `~/.hermes/skills/`
 * warn and fall back to GitHub repos for marketplace misses, marking allowlisted repos like `openai/codex-plugin-cc` as verified
-* install Claude Code-native plugin payloads during `plugins install` when Claude-only components are detected and Claude Code is targeted
+* install Claude Code-native plugin payloads during `plugins install` when Claude-only components are detected and Claude Code is targeted, registering native marketplace metadata under `~/.claude/plugins`
 
 ### Bug Fixes
 
@@ -152,7 +152,7 @@
 * update docs and onboarding to the `mcp add|verify`, `rules add`, and `skills add` command model
 * parse Claude Code marketplace bundle repos like `openai/codex-plugin-cc` when installing portable skills or plugins
 * keep interactive plugin target defaults on all detected agents, warn clearly when Claude-native payloads are skipped, and reuse the previewed remote source during install
-* enable Claude-native plugin payloads in `~/.claude/settings.json` so installed Claude plugins actually activate
+* enable Claude-native plugin payloads in `~/.claude/settings.json`, register them in `known_marketplaces.json`, and migrate legacy `agentinit-*` Claude namespaces to native marketplace ids
 
 # [1.7.0](https://github.com/agentinit/agentinit/compare/v1.6.0...v1.7.0) (2025-10-17)
 

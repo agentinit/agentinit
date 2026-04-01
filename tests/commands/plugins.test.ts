@@ -136,8 +136,8 @@ describe('plugins command', () => {
       },
       nativePreview: {
         agent: 'claude',
-        pluginKey: 'codex@agentinit-openai-codex',
-        installPath: '/Users/tester/.claude/plugins/cache/agentinit-openai-codex/codex/1.0.1',
+        pluginKey: 'codex@openai-codex',
+        installPath: '/Users/tester/.claude/plugins/cache/openai-codex/codex/1.0.1',
         features: ['commands', 'hooks', 'agents'],
       },
     });
@@ -181,15 +181,7 @@ describe('plugins command', () => {
         ],
       },
       skills: {
-        installed: [
-          {
-            name: 'codex-review',
-            agent: 'claude',
-            path: `${process.cwd()}/.claude/skills/codex-review`,
-            canonicalPath: `${process.cwd()}/.agents/skills/codex-review`,
-            mode: 'symlink',
-          },
-        ],
+        installed: [],
         skipped: [],
       },
       mcpServers: { applied: [], skipped: [] },
@@ -197,8 +189,8 @@ describe('plugins command', () => {
         installed: [
           {
             agent: 'claude',
-            pluginKey: 'codex@agentinit-openai-codex',
-            installPath: '/Users/tester/.claude/plugins/cache/agentinit-openai-codex/codex/1.0.1',
+            pluginKey: 'codex@openai-codex',
+            installPath: '/Users/tester/.claude/plugins/cache/openai-codex/codex/1.0.1',
           },
         ],
         skipped: [],
@@ -226,7 +218,7 @@ describe('plugins command', () => {
       choices: [
         expect.objectContaining({
           selected: true,
-          description: expect.stringContaining('Full plugin support is available in Claude Code; the native plugin installs at ~/.claude/plugins/cache/agentinit-openai-codex/codex/1.0.1.'),
+          description: expect.stringContaining('Full plugin support is available in Claude Code; the native plugin installs at ~/.claude/plugins/cache/openai-codex/codex/1.0.1.'),
         }),
         expect.objectContaining({
           selected: true,
@@ -243,8 +235,7 @@ describe('plugins command', () => {
       expect.objectContaining({ agents: ['claude'] }),
     );
     // Installed components now rendered via logger.tree() and logger.section()
-    expect(sectionSpy).toHaveBeenCalledWith('Skills');
-    expect(treeSpy).toHaveBeenCalledWith(expect.stringContaining('.claude/skills'), expect.any(Boolean));
+    expect(sectionSpy).toHaveBeenCalledWith('Native Install');
   });
 
   it('keeps non-allowlisted GitHub fallback repos explicitly unverified', async () => {
@@ -301,8 +292,8 @@ describe('plugins command', () => {
       },
       nativePreview: {
         agent: 'claude',
-        pluginKey: 'codex@agentinit-openai-codex',
-        installPath: '/Users/tester/.claude/plugins/cache/agentinit-openai-codex/codex/1.0.1',
+        pluginKey: 'codex@openai-codex',
+        installPath: '/Users/tester/.claude/plugins/cache/openai-codex/codex/1.0.1',
         features: ['commands', 'hooks', 'agents'],
       },
     });
@@ -402,8 +393,8 @@ describe('plugins command', () => {
       },
       nativePreview: {
         agent: 'claude',
-        pluginKey: 'codex@agentinit-openai-codex',
-        installPath: '/Users/tester/.claude/plugins/cache/agentinit-openai-codex/codex/1.0.1',
+        pluginKey: 'codex@openai-codex',
+        installPath: '/Users/tester/.claude/plugins/cache/openai-codex/codex/1.0.1',
         features: ['commands', 'hooks', 'agents'],
       },
     });
@@ -524,8 +515,8 @@ describe('plugins command', () => {
       },
       nativePreview: {
         agent: 'claude',
-        pluginKey: 'codex@agentinit-openai-codex',
-        installPath: '/Users/tester/.claude/plugins/cache/agentinit-openai-codex/codex/1.0.1',
+        pluginKey: 'codex@openai-codex',
+        installPath: '/Users/tester/.claude/plugins/cache/openai-codex/codex/1.0.1',
         features: ['commands', 'hooks', 'agents'],
       },
     });
