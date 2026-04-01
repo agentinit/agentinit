@@ -1,3 +1,10 @@
+## [1.16.1](https://github.com/agentinit/agentinit/compare/v1.16.0...v1.16.1) (2026-04-01)
+
+
+### Bug Fixes
+
+* align Claude native plugin installs with marketplace behavior ([bdfa280](https://github.com/agentinit/agentinit/commit/bdfa2801a9ad933727fd72327cd9b121dfe0a543))
+
 # [1.16.0](https://github.com/agentinit/agentinit/compare/v1.15.1...v1.16.0) (2026-04-01)
 
 
