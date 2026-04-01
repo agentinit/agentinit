@@ -13,7 +13,7 @@ import {
   resolveRealPathOrSelf,
 } from '../utils/fs.js';
 import { AgentManager } from './agentManager.js';
-import { getMarketplace, getMarketplaceIds } from './marketplaceRegistry.js';
+import { getConfiguredDefaultMarketplaceId, getMarketplace, getMarketplaceIds } from './marketplaceRegistry.js';
 import type { Agent } from '../agents/Agent.js';
 import type {
   SkillInfo,
@@ -145,6 +145,18 @@ export class SkillsManager {
     options?: { from?: string },
   ): { source: SkillSource; implicitSkills: string[] } {
     if (this.isImplicitCatalogSkillSource(source, options)) {
+      const configuredDefaultMarketplace = getConfiguredDefaultMarketplaceId();
+      if (configuredDefaultMarketplace) {
+        return {
+          source: {
+            type: 'marketplace',
+            marketplace: configuredDefaultMarketplace,
+            pluginName: source.trim(),
+          },
+          implicitSkills: [],
+        };
+      }
+
       return {
         source: {
           type: 'github',

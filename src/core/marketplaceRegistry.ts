@@ -1,4 +1,5 @@
 import type { MarketplaceRegistry } from '../types/plugins.js';
+import { readUserConfigSync } from './userConfig.js';
 
 export const MARKETPLACES: MarketplaceRegistry[] = [
   {
@@ -24,10 +25,39 @@ export const MARKETPLACES: MarketplaceRegistry[] = [
   },
 ];
 
+const CUSTOM_MARKETPLACE_PLUGIN_DIRS = ['skills', 'mcps', 'rules'];
+const CUSTOM_MARKETPLACE_CACHE_TTL_MS = 3600000;
+
+function getCustomMarketplaces(): MarketplaceRegistry[] {
+  const builtInIds = new Set(MARKETPLACES.map(marketplace => marketplace.id));
+  return readUserConfigSync().customMarketplaces
+    .filter(marketplace => !builtInIds.has(marketplace.identifier))
+    .map(marketplace => ({
+      id: marketplace.identifier,
+      name: marketplace.name,
+      repoUrl: marketplace.repoUrl,
+      pluginDirs: [...CUSTOM_MARKETPLACE_PLUGIN_DIRS],
+      cacheTtlMs: CUSTOM_MARKETPLACE_CACHE_TTL_MS,
+    }));
+}
+
+function getAllMarketplaces(): MarketplaceRegistry[] {
+  return [...MARKETPLACES, ...getCustomMarketplaces()];
+}
+
 export function getMarketplace(id: string): MarketplaceRegistry | undefined {
-  return MARKETPLACES.find(marketplace => marketplace.id === id);
+  return getAllMarketplaces().find(marketplace => marketplace.id === id);
 }
 
 export function getMarketplaceIds(): string[] {
-  return MARKETPLACES.map(marketplace => marketplace.id);
+  return getAllMarketplaces().map(marketplace => marketplace.id);
+}
+
+export function getConfiguredDefaultMarketplaceId(): string | undefined {
+  const defaultMarketplace = readUserConfigSync().defaultMarketplace;
+  if (!defaultMarketplace) {
+    return undefined;
+  }
+
+  return getMarketplace(defaultMarketplace)?.id;
 }

@@ -7,6 +7,7 @@ import { syncCommand } from './commands/sync.js';
 import { applyCommand, applyProjectCommand, hasLegacyApplyArgs } from './commands/apply.js';
 import { verifyMcpCommand } from './commands/verifyMcp.js';
 import { revertCommand } from './commands/revert.js';
+import { registerConfigCommand } from './commands/config.js';
 import { registerSkillsCommand } from './commands/skills.js';
 import { registerMcpCommand } from './commands/mcp.js';
 import { registerRulesCommand } from './commands/rules.js';
@@ -25,6 +26,7 @@ registerSkillsCommand(program);
 registerMcpCommand(program);
 registerRulesCommand(program);
 registerPluginsCommand(program);
+registerConfigCommand(program);
 
 // Core commands (unchanged)
 program

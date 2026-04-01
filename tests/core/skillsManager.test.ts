@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach, vi } from 'vitest';
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { mkdtemp, mkdir, rm, writeFile, readdir, lstat, readFile, realpath } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -7,12 +7,25 @@ import { ClaudeDesktopAgent } from '../../src/agents/ClaudeDesktopAgent.js';
 import { CodexCliAgent } from '../../src/agents/CodexCliAgent.js';
 import { MarketplacePluginNotFoundError, PluginManager } from '../../src/core/pluginManager.js';
 import { SkillsManager } from '../../src/core/skillsManager.js';
+import { writeUserConfig } from '../../src/core/userConfig.js';
 
 describe('SkillsManager', () => {
   const tempDirs: string[] = [];
+  const originalHome = process.env.HOME;
+
+  beforeEach(async () => {
+    const homeDir = await mkdtemp(join(tmpdir(), 'agentinit-skill-home-'));
+    process.env.HOME = homeDir;
+    tempDirs.push(homeDir);
+  });
 
   afterEach(async () => {
     vi.restoreAllMocks();
+    if (originalHome === undefined) {
+      delete process.env.HOME;
+    } else {
+      process.env.HOME = originalHome;
+    }
     await Promise.all(tempDirs.map(dir => rm(dir, { recursive: true, force: true })));
     tempDirs.length = 0;
   });
@@ -395,6 +408,51 @@ describe('SkillsManager', () => {
       path: join(projectDir, '.claude/skills', 'codex-review'),
       canonicalPath: join(projectDir, '.agents/skills', 'codex-review'),
     });
+  });
+
+  it('resolves bare skill names from the configured default marketplace before the public catalog', async () => {
+    const manager = new SkillsManager();
+    const projectDir = await mkdtemp(join(tmpdir(), 'agentinit-marketplace-skill-project-'));
+    tempDirs.push(projectDir);
+
+    await writeUserConfig({
+      defaultMarketplace: 'claude',
+      customMarketplaces: [],
+      verifiedGithubRepos: [],
+    });
+
+    const installPluginSpy = vi.spyOn(PluginManager.prototype, 'installPlugin').mockResolvedValue({
+      plugin: {
+        name: 'skill-creator',
+        version: '1.0.0',
+        description: 'Skill creator',
+        source: { type: 'marketplace', marketplace: 'claude', pluginName: 'skill-creator' },
+        format: 'claude',
+        skills: [{ name: 'skill-creator', description: 'test', path: '/tmp/skill-creator' }],
+        mcpServers: [],
+        warnings: [],
+      },
+      skills: { installed: [], skipped: [] },
+      mcpServers: { applied: [], skipped: [] },
+      warnings: [],
+    } as never);
+    const cloneRepoSpy = vi.spyOn(manager, 'cloneRepo');
+
+    const result = await manager.discoverFromSource('skill-creator', projectDir);
+
+    expect(installPluginSpy).toHaveBeenCalledWith('skill-creator', projectDir, {
+      from: 'claude',
+      list: true,
+    });
+    expect(cloneRepoSpy).not.toHaveBeenCalled();
+    expect(result.skills).toEqual([
+      {
+        name: 'skill-creator',
+        description: 'test',
+        path: '/tmp/skill-creator',
+      },
+    ]);
+    expect(result.warnings).toEqual([]);
   });
 
   it('does not auto-target OpenClaw from a home-directory marker alone', async () => {

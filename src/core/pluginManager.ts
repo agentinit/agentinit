@@ -5,8 +5,13 @@ import matter from 'gray-matter';
 import { readFileIfExists, fileExists, isDirectory, listFiles, writeFile } from '../utils/fs.js';
 import { AgentManager } from './agentManager.js';
 import { MCPFilter } from './mcpFilter.js';
-import { MARKETPLACES, getMarketplace as lookupMarketplace, getMarketplaceIds as lookupMarketplaceIds } from './marketplaceRegistry.js';
+import {
+  getConfiguredDefaultMarketplaceId,
+  getMarketplace as lookupMarketplace,
+  getMarketplaceIds as lookupMarketplaceIds,
+} from './marketplaceRegistry.js';
 import { SkillsManager } from './skillsManager.js';
+import { isVerifiedGitHubRepoSync } from './userConfig.js';
 import type { Agent } from '../agents/Agent.js';
 import type { MCPServerConfig, MCPServerType } from '../types/index.js';
 import type { SkillInfo } from '../types/skills.js';
@@ -205,7 +210,7 @@ export class PluginManager {
   }
 
   private getGitHubFallbackTrust(source: PluginSource): 'verified' | 'unverified' {
-    if (source.owner === 'openai' && source.repo === 'codex-plugin-cc') {
+    if (source.owner && source.repo && isVerifiedGitHubRepoSync(source.owner, source.repo)) {
       return 'verified';
     }
 
@@ -722,8 +727,8 @@ export class PluginManager {
       };
     }
 
-    // Bare name: resolve against the default (first) marketplace
-    const defaultMarketplace = this.getMarketplaceIds()[0];
+    // Bare name: resolve against the configured default or the first available marketplace
+    const defaultMarketplace = getConfiguredDefaultMarketplaceId() || this.getMarketplaceIds()[0];
     if (defaultMarketplace) {
       return {
         type: 'marketplace',
@@ -756,7 +761,7 @@ export class PluginManager {
   async ensureMarketplaceCache(registryId: string): Promise<string> {
     const registry = this.getMarketplace(registryId);
     if (!registry) {
-      throw new Error(`Unknown marketplace: ${registryId}. Available: ${MARKETPLACES.map(m => m.id).join(', ')}`);
+      throw new Error(`Unknown marketplace: ${registryId}. Available: ${this.getMarketplaceIds().join(', ')}`);
     }
 
     const cacheDir = getMarketplaceCacheDir(registryId);

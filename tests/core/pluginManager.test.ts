@@ -1,10 +1,11 @@
-import { describe, it, expect, afterEach, vi } from 'vitest';
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { Agent } from '../../src/agents/Agent.js';
 import { MarketplacePluginNotFoundError, PluginManager } from '../../src/core/pluginManager.js';
 import { SkillsManager } from '../../src/core/skillsManager.js';
+import { writeUserConfig } from '../../src/core/userConfig.js';
 import type { AgentDefinition } from '../../src/types/index.js';
 import type { AppliedRules, RuleSection } from '../../src/types/rules.js';
 
@@ -93,6 +94,10 @@ class StubAgentManager {
 describe('PluginManager', () => {
   const tempDirs: string[] = [];
   const originalHome = process.env.HOME;
+
+  beforeEach(async () => {
+    process.env.HOME = await createTempDir('agentinit-home-');
+  });
 
   afterEach(async () => {
     vi.restoreAllMocks();
@@ -272,6 +277,39 @@ describe('PluginManager', () => {
     ]));
   });
 
+  it('marks configured exact GitHub fallback repositories as verified', async () => {
+    const projectDir = await createTempDir('agentinit-project-');
+    const pluginDir = await createPluginDir('community-plugin');
+    const manager = new PluginManager(new StubAgentManager({}) as never);
+
+    await writeUserConfig({
+      customMarketplaces: [
+        {
+          identifier: 'acme',
+          name: 'Acme Marketplace',
+          repoUrl: 'https://github.com/acme/marketplace.git',
+        },
+      ],
+      verifiedGithubRepos: ['acme/community-plugin'],
+    });
+
+    vi.spyOn(manager, 'resolveMarketplacePlugin').mockRejectedValueOnce(
+      new MarketplacePluginNotFoundError('community-plugin', 'acme', 'Acme Marketplace', []),
+    );
+    const cloneRepoSpy = vi.spyOn(SkillsManager.prototype, 'cloneRepo').mockResolvedValue(pluginDir);
+
+    const result = await manager.installPlugin('community-plugin', projectDir, {
+      from: 'acme',
+      list: true,
+    });
+
+    expect(cloneRepoSpy).toHaveBeenCalledWith('https://github.com/acme/community-plugin.git');
+    expect(result.plugin.warnings).toEqual(expect.arrayContaining([
+      'Plugin "community-plugin" not found in Acme Marketplace marketplace.',
+      'Marketplace lookup failed; trying verified GitHub repository https://github.com/acme/community-plugin instead.',
+    ]));
+  });
+
   it('parses direct GitHub Claude marketplace repositories as bundled plugins', async () => {
     const projectDir = await createTempDir('agentinit-project-');
     const bundleDir = await createClaudeMarketplaceBundleDir('openai-codex');
@@ -446,6 +484,22 @@ describe('PluginManager', () => {
     expect(manager.resolveSource('code-review')).toEqual({
       type: 'marketplace',
       marketplace: 'agentinit',
+      pluginName: 'code-review',
+    });
+  });
+
+  it('resolves bare plugin names against the configured default marketplace', async () => {
+    await writeUserConfig({
+      defaultMarketplace: 'claude',
+      customMarketplaces: [],
+      verifiedGithubRepos: [],
+    });
+
+    const manager = new PluginManager(new StubAgentManager({}) as never);
+
+    expect(manager.resolveSource('code-review')).toEqual({
+      type: 'marketplace',
+      marketplace: 'claude',
       pluginName: 'code-review',
     });
   });

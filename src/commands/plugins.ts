@@ -6,6 +6,7 @@ import { green, dim, bold, cyan, yellow, orange } from '../utils/colors.js';
 import { logger } from '../utils/logger.js';
 import { PluginManager } from '../core/pluginManager.js';
 import { AgentManager } from '../core/agentManager.js';
+import { getConfiguredDefaultMarketplaceId } from '../core/marketplaceRegistry.js';
 import type { Agent } from '../agents/Agent.js';
 import type { PluginInspectionResult, PluginInstallResult } from '../types/plugins.js';
 
@@ -194,15 +195,14 @@ export function registerPluginsCommand(program: Command): void {
       logger.titleBox('AgentInit  Plugin Search');
 
       const pluginManager = new PluginManager();
-      if (!options.from) {
+      const registryId = options.from || getConfiguredDefaultMarketplaceId();
+      if (!registryId) {
         logger.info(`Please specify a marketplace with --from <marketplace>. Available: ${marketplaceHelp}`);
         logger.info('Examples:');
         logger.info('  agentinit plugins search --from claude');
         logger.info('  agentinit plugins search code-review --from claude');
         return;
       }
-
-      const registryId = options.from;
 
       const spinner = ora(`Fetching ${registryId} marketplace...`).start();
       try {

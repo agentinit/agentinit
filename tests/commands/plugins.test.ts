@@ -1,8 +1,12 @@
 import { Command } from 'commander';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { mkdtemp, rm } from 'fs/promises';
+import { tmpdir } from 'os';
+import { join } from 'path';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import prompts from 'prompts';
 import { registerPluginsCommand } from '../../src/commands/plugins.js';
 import { PluginManager } from '../../src/core/pluginManager.js';
+import { writeUserConfig } from '../../src/core/userConfig.js';
 import { logger } from '../../src/utils/logger.js';
 
 vi.mock('prompts', () => ({
@@ -10,9 +14,16 @@ vi.mock('prompts', () => ({
 }));
 
 describe('plugins command', () => {
+  const tempDirs: string[] = [];
   const originalHome = process.env.HOME;
 
-  afterEach(() => {
+  beforeEach(async () => {
+    const homeDir = await mkdtemp(join(tmpdir(), 'agentinit-plugins-home-'));
+    tempDirs.push(homeDir);
+    process.env.HOME = homeDir;
+  });
+
+  afterEach(async () => {
     vi.restoreAllMocks();
     vi.mocked(prompts).mockReset();
     if (originalHome === undefined) {
@@ -20,6 +31,9 @@ describe('plugins command', () => {
     } else {
       process.env.HOME = originalHome;
     }
+
+    await Promise.all(tempDirs.map(dir => rm(dir, { recursive: true, force: true })));
+    tempDirs.length = 0;
   });
 
   it('requires an explicit marketplace for plugins search', async () => {
@@ -34,6 +48,37 @@ describe('plugins command', () => {
     expect(titleBoxSpy).toHaveBeenCalledWith('AgentInit  Plugin Search');
     expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('Please specify a marketplace with --from <marketplace>.'));
     expect(infoSpy).toHaveBeenCalledWith('  agentinit plugins search --from claude');
+  });
+
+  it('uses the configured default marketplace for plugins search', async () => {
+    const titleBoxSpy = vi.spyOn(logger, 'titleBox').mockImplementation(() => {});
+    const infoSpy = vi.spyOn(logger, 'info').mockImplementation(() => {});
+
+    await writeUserConfig({
+      defaultMarketplace: 'claude',
+      customMarketplaces: [],
+      verifiedGithubRepos: [],
+    });
+
+    vi.spyOn(PluginManager.prototype, 'listMarketplacePlugins').mockResolvedValue([
+      {
+        name: 'code-review',
+        description: 'Review plugin',
+        version: '1.0.0',
+        path: 'plugins/code-review',
+        category: 'official',
+        registry: 'claude',
+      },
+    ]);
+
+    const program = new Command();
+    registerPluginsCommand(program);
+
+    await program.parseAsync(['plugins', 'search', 'code'], { from: 'user' });
+
+    expect(titleBoxSpy).toHaveBeenCalledWith('AgentInit  Plugin Search');
+    expect(PluginManager.prototype.listMarketplacePlugins).toHaveBeenCalledWith('claude', 'code', undefined);
+    expect(infoSpy).not.toHaveBeenCalledWith(expect.stringContaining('Please specify a marketplace with --from <marketplace>.'));
   });
 
   it('searches the requested marketplace explicitly', async () => {

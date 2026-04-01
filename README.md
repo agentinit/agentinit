@@ -11,7 +11,7 @@ AgentInit transforms AI agent configuration from a fragmented, manual process in
 - **🔄 Bidirectional Sync**: Keep agent configurations in sync across Claude, Cursor, Windsurf, and more
 - **📦 MCP Management**: Configure, inspect, and verify Model Context Protocol servers
 - **📋 Rules Templates**: Apply coding best practices with predefined rule templates (Git, testing, docs, linting)
-- **🔌 Plugin Marketplace**: Install portable skills and MCP bundles from explicit marketplace sources
+- **🔌 Plugin Marketplace**: Install portable skills and MCP bundles from built-in or custom marketplaces
 - **⚙️ Project Templates**: Pre-built templates for web apps, CLI tools, libraries, and more
 - **🎯 Stack-Aware Guidance**: Customized instructions based on your technology stack
 
@@ -178,7 +178,9 @@ Install, list, and remove reusable agent skills from marketplaces, local paths, 
 # Inspect a source before installing
 agentinit skills add owner/repo --list
 
-# Install a public skill from the default catalog (`vercel-labs/agent-skills`)
+# Install a bare skill name
+# Uses your configured default marketplace when one is set,
+# otherwise falls back to the public catalog (`vercel-labs/agent-skills`)
 agentinit skills add vercel-react-best-practices
 
 # Install all discovered skills for detected agents using canonical storage
@@ -215,11 +217,11 @@ Hermes follows the same model: project skills come from `.agents/skills/`, globa
 
 Some agents share the same native skills directory. For example, Claude Code and Claude Desktop both use `~/.claude/skills/`, so `skills remove --agent ...` will skip deleting that shared path while another agent still depends on it.
 
-Bare skill names default to the public skills catalog used by the open agent skills ecosystem: `vercel-labs/agent-skills`. Use `./name` for a local path, `owner/repo` for an explicit GitHub repository, or `--from <marketplace>` / `<marketplace>/<name>` for marketplace-backed sources.
+Bare skill names resolve from your configured default marketplace when one is set. Without a configured default, AgentInit falls back to the public skills catalog used by the open agent skills ecosystem: `vercel-labs/agent-skills`. Use `./name` for a local path, `owner/repo` for an explicit GitHub repository, or `--from <marketplace>` / `<marketplace>/<name>` for marketplace-backed sources.
 
 Marketplace-backed `skills add` installs only the discovered skills. If a marketplace source also contains MCP servers or other portable components, AgentInit warns and points you to `agentinit plugins install ...` for the full install.
 
-If a marketplace lookup misses and the source still looks like a GitHub repository, AgentInit warns and tries the matching GitHub repo directly as a fallback. Allowlisted repos like `openai/codex-plugin-cc` are marked as verified; other fallback repos remain explicitly unverified.
+If a marketplace lookup misses and the source still looks like a GitHub repository, AgentInit warns and tries the matching GitHub repo directly as a fallback. Built-in verified repos like `openai/codex-plugin-cc` are marked as verified, and you can add your own exact `owner/repo` entries with `agentinit config verified-repos add ...`. Other fallback repos remain explicitly unverified.
 
 ### `agentinit plugins`
 
@@ -231,9 +233,16 @@ Install, inspect, search, and remove portable plugins from explicit marketplace 
 agentinit plugins search --from claude
 agentinit plugins search code-review --from claude
 
+# Search through your configured default marketplace
+agentinit plugins search code-review
+
 # Install from a marketplace explicitly
 agentinit plugins install claude/code-review
 agentinit plugins install code-review --from claude
+
+# Bare plugin names resolve through your configured default marketplace
+# when one is set, otherwise through the first available marketplace
+agentinit plugins install code-review
 agentinit plugins install openai/codex-plugin-cc
 
 # Install from GitHub or a local path
@@ -247,13 +256,40 @@ agentinit plugins remove code-review
 ```
 
 **Marketplace Rules:**
-- Marketplace installs are explicit by design. Bare names like `agentinit plugins install code-review` are rejected.
 - Use `<marketplace>/<plugin>` or `--from <marketplace>` when installing from a marketplace.
-- `plugins search` also requires `--from <marketplace>`.
+- Bare plugin installs like `agentinit plugins install code-review` resolve through your configured default marketplace when one is set. Without a configured default, AgentInit falls back to the first available marketplace (`agentinit` by default).
+- `plugins search` uses your configured default marketplace when one is set. Without a configured default, it still requires `--from <marketplace>`.
 - Implemented marketplaces today include `claude` (Anthropic's Claude plugin marketplace) and `openai` (the OpenAI Codex skills catalog).
-- If a marketplace lookup misses but the source still looks like `owner/repo`, AgentInit warns and tries that GitHub repository directly.
+- You can add your own marketplaces with `agentinit config marketplaces add <identifier> <repo-url>`.
+- If a marketplace lookup misses but the source still looks like `owner/repo`, AgentInit warns and tries that GitHub repository directly. Exact repos added with `agentinit config verified-repos add <owner/repo>` are labeled as verified during that fallback.
 - For Claude-format plugins, `plugins install` still installs portable skills and MCP servers for the selected agents. If Claude Code-native components are also present, AgentInit previews that compatibility before target selection. The native plugin payload installs only when `claude` is one of the selected targets; otherwise AgentInit warns that the Claude-only parts were skipped. When the native payload is installed, AgentInit reminds you to run `/reload-plugins`.
 - Claude-native plugin payloads are user-scoped and stored under `~/.claude/plugins`, even when the AgentInit install itself is project-scoped.
+
+### `agentinit config`
+
+Manage user-level marketplace and trust settings in `~/.agentinit/config.json`.
+
+**Examples:**
+```bash
+# Review built-in and custom marketplaces
+agentinit config marketplaces list
+
+# Add a custom marketplace and make it the default
+agentinit config marketplaces add acme https://github.com/acme/marketplace.git --name "Acme Marketplace" --default
+
+# Switch the default marketplace to a built-in registry
+agentinit config marketplaces default claude
+agentinit config marketplaces clear-default
+
+# Manage exact verified GitHub fallback repos
+agentinit config verified-repos list
+agentinit config verified-repos add acme/private-plugin
+agentinit config verified-repos remove acme/private-plugin
+```
+
+Custom marketplaces use the standard AgentInit repository layout: `skills`, `mcps`, and `rules`.
+
+Verified GitHub repos must be exact `owner/repo` entries. They only affect how AgentInit labels marketplace-to-GitHub fallback sources; they do not bypass install parsing or other safety checks.
 
 ### `agentinit revert`
 
