@@ -5,7 +5,7 @@ import { homedir } from 'os';
 import { dirname, relative, resolve } from 'path';
 import { green, dim, bold, cyan, yellow, orange } from '../utils/colors.js';
 import { logger } from '../utils/logger.js';
-import { PluginManager } from '../core/pluginManager.js';
+import { MultipleBundlePluginsError, PluginManager } from '../core/pluginManager.js';
 import { AgentManager } from '../core/agentManager.js';
 import { getConfiguredDefaultMarketplaceId, getMarketplaceCategories } from '../core/marketplaceRegistry.js';
 import type { Agent } from '../agents/Agent.js';
@@ -86,8 +86,53 @@ export function registerPluginsCommand(program: Command): void {
 
           renderPluginWarnings(preview, process.cwd());
         } catch (error) {
-          spinner.fail('Failed to fetch plugin');
-          logger.error(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+          if (error instanceof MultipleBundlePluginsError) {
+            spinner.stop();
+            const selected = await selectBundlePlugin(error, 'preview');
+            if (!selected) {
+              return;
+            }
+            const retrySpinner = ora('Fetching plugin...').start();
+            try {
+              const preview = await pluginManager.inspectPlugin(source, {
+                from: options.from,
+                pluginName: selected,
+              });
+              retrySpinner.stop();
+              const p = preview.plugin;
+
+              console.log('');
+              logger.info(`${bold(p.name)} ${dim(`v${p.version}`)} ${dim(`[${p.format} format]`)}`);
+              if (p.description) logger.info(`  ${p.description}`);
+              console.log('');
+
+              if (p.skills.length > 0) {
+                logger.info(`  ${green('Skills')} (${p.skills.length}):`);
+                for (const skill of p.skills) {
+                  logger.info(`    ${green(skill.name)} - ${skill.description}`);
+                }
+              }
+
+              if (p.mcpServers.length > 0) {
+                logger.info(`  ${cyan('MCP Servers')} (${p.mcpServers.length}):`);
+                for (const mcp of p.mcpServers) {
+                  logger.info(`    ${cyan(mcp.name)} [${mcp.type}]`);
+                }
+              }
+
+              if (p.skills.length === 0 && p.mcpServers.length === 0) {
+                logger.info('  No portable components found (no skills or MCP servers).');
+              }
+
+              renderPluginWarnings(preview, process.cwd());
+            } catch (retryError) {
+              retrySpinner.fail('Failed to fetch plugin');
+              logger.error(`Error: ${retryError instanceof Error ? retryError.message : 'Unknown error'}`);
+            }
+          } else {
+            spinner.fail('Failed to fetch plugin');
+            logger.error(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+          }
         }
         return;
       }
@@ -97,6 +142,7 @@ export function registerPluginsCommand(program: Command): void {
       let targetGlobal = options.global as boolean | undefined;
       let preview: PluginInspectionResult | null = null;
       let previewRendered = false;
+      let selectedPluginName: string | undefined;
       if (!agentIds && !options.yes) {
         const previewSpinner = ora('Inspecting plugin...').start();
         try {
@@ -107,9 +153,32 @@ export function registerPluginsCommand(program: Command): void {
           renderPluginWarnings(preview, process.cwd());
           previewRendered = true;
         } catch (error) {
-          previewSpinner.fail('Failed to inspect plugin');
-          logger.error(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
-          return;
+          if (error instanceof MultipleBundlePluginsError) {
+            previewSpinner.stop();
+            const selected = await selectBundlePlugin(error, 'install');
+            if (!selected) {
+              return;
+            }
+            selectedPluginName = selected;
+            const retrySpinner = ora('Inspecting plugin...').start();
+            try {
+              preview = await pluginManager.preparePluginInstall(source, {
+                from: options.from,
+                pluginName: selectedPluginName,
+              });
+              retrySpinner.stop();
+              renderPluginWarnings(preview, process.cwd());
+              previewRendered = true;
+            } catch (retryError) {
+              retrySpinner.fail('Failed to inspect plugin');
+              logger.error(`Error: ${retryError instanceof Error ? retryError.message : 'Unknown error'}`);
+              return;
+            }
+          } else {
+            previewSpinner.fail('Failed to inspect plugin');
+            logger.error(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            return;
+          }
         }
 
         try {
@@ -145,6 +214,7 @@ export function registerPluginsCommand(program: Command): void {
           global: targetGlobal,
           copySkills: options.copySkills,
           yes: options.yes,
+          ...(selectedPluginName ? { pluginName: selectedPluginName } : {}),
         });
 
         const p = result.plugin;
@@ -183,8 +253,46 @@ export function registerPluginsCommand(program: Command): void {
 
         logger.success('Plugin installation complete.');
       } catch (error) {
-        spinner.fail('Failed to install plugin');
-        logger.error(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        if (error instanceof MultipleBundlePluginsError && !options.yes) {
+          spinner.stop();
+          const selected = await selectBundlePlugin(error, 'install');
+          if (!selected) {
+            return;
+          }
+          const retrySpinner = ora('Installing plugin...').start();
+          try {
+            const result = await pluginManager.installPlugin(source, process.cwd(), {
+              from: options.from,
+              agents: agentIds,
+              global: targetGlobal,
+              copySkills: options.copySkills,
+              yes: options.yes,
+              pluginName: selected,
+            });
+
+            const p = result.plugin;
+            const totalSkills = result.skills.installed.length;
+            const totalMcp = result.mcpServers.applied.length;
+            const totalNative = result.nativePlugins.installed.length;
+
+            if (totalSkills === 0 && totalMcp === 0 && totalNative === 0) {
+              retrySpinner.warn(`Plugin "${p.name}" has no portable components to install.`);
+              renderPluginWarnings(result, process.cwd());
+              return;
+            }
+
+            retrySpinner.succeed(`Installed plugin ${green(bold(p.name))} ${dim(`v${p.version}`)}`);
+            renderInstalledComponents(result, agentManager, process.cwd());
+            renderPluginWarnings(result, process.cwd());
+            logger.success('Plugin installation complete.');
+          } catch (retryError) {
+            retrySpinner.fail('Failed to install plugin');
+            logger.error(`Error: ${retryError instanceof Error ? retryError.message : 'Unknown error'}`);
+          }
+        } else {
+          spinner.fail('Failed to install plugin');
+          logger.error(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
       }
     });
 
@@ -332,6 +440,28 @@ export function registerPluginsCommand(program: Command): void {
         logger.error(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
       }
     });
+}
+
+async function selectBundlePlugin(
+  error: MultipleBundlePluginsError,
+  actionLabel: string,
+): Promise<string | null> {
+  const response = await prompts({
+    type: 'select',
+    name: 'plugin',
+    message: `This repository contains multiple plugins. Select one to ${actionLabel}:`,
+    choices: error.entries.map(entry => ({
+      title: entry.name,
+      value: entry.name,
+    })),
+  });
+
+  if (!response.plugin) {
+    logger.info('Cancelled.');
+    return null;
+  }
+
+  return response.plugin;
 }
 
 function formatPathForDisplay(pathValue: string, projectPath: string): string {

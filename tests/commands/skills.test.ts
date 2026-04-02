@@ -3,6 +3,7 @@ import { homedir } from 'os';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { registerSkillsCommand } from '../../src/commands/skills.js';
 import { SkillsManager } from '../../src/core/skillsManager.js';
+import { MultipleBundlePluginsError } from '../../src/core/pluginManager.js';
 import { AgentManager } from '../../src/core/agentManager.js';
 import { SHARED_SKILLS_TARGET_ID, SHARED_SKILLS_TARGET_NAME } from '../../src/types/skills.js';
 import { logger } from '../../src/utils/logger.js';
@@ -329,6 +330,27 @@ describe('skills command', () => {
     expect(infoSpy).toHaveBeenCalledWith('  agentinit init');
   });
 
+  it('fails without prompting when --yes hits a multi-plugin bundle source', async () => {
+    const errorSpy = vi.spyOn(logger, 'error').mockImplementation(() => {});
+    const bundleError = new MultipleBundlePluginsError('/tmp/test', [
+      { name: 'alpha', source: './plugins/alpha' },
+      { name: 'beta', source: './plugins/beta' },
+    ]);
+
+    vi.spyOn(SkillsManager.prototype, 'prepareSource').mockRejectedValue(bundleError);
+    const addSpy = vi.spyOn(SkillsManager.prototype, 'addFromSource');
+
+    const program = new Command();
+    registerSkillsCommand(program);
+
+    await program.parseAsync(['skills', 'add', TEST_GITHUB_SKILL_SOURCE, '--yes'], { from: 'user' });
+
+    expect(promptsMock).not.toHaveBeenCalled();
+    expect(spinner.fail).toHaveBeenCalledWith('Failed to verify skill source');
+    expect(errorSpy).toHaveBeenCalledWith(`Error: ${bundleError.message}`);
+    expect(addSpy).not.toHaveBeenCalled();
+  });
+
   it('fails before prompting when source verification fails', async () => {
     const errorSpy = vi.spyOn(logger, 'error').mockImplementation(() => {});
     vi.spyOn(SkillsManager.prototype, 'prepareSource').mockRejectedValue(new Error('Repository not found'));
@@ -341,5 +363,75 @@ describe('skills command', () => {
     expect(promptsMock).not.toHaveBeenCalled();
     expect(spinner.fail).toHaveBeenCalledWith('Failed to verify skill source');
     expect(errorSpy).toHaveBeenCalledWith('Error: Repository not found');
+  });
+
+  it('prompts for plugin selection when MultipleBundlePluginsError is thrown', async () => {
+    const entries = [
+      { name: 'alpha', source: './plugins/alpha' },
+      { name: 'beta', source: './plugins/beta' },
+    ];
+    const bundleError = new MultipleBundlePluginsError('/tmp/test', entries);
+
+    vi.spyOn(AgentManager.prototype, 'detectAgents').mockResolvedValue([]);
+
+    const prepareSourceSpy = vi.spyOn(SkillsManager.prototype, 'prepareSource');
+    prepareSourceSpy.mockRejectedValueOnce(bundleError);
+    prepareSourceSpy.mockResolvedValueOnce({ skills: [], warnings: [] });
+
+    // Prompts: 1) bundle plugin selection, 2) scope, 3) agent groups
+    promptsMock
+      .mockResolvedValueOnce({ plugin: 'beta' })
+      .mockResolvedValueOnce({ scope: 'global' })
+      .mockResolvedValueOnce({ groups: [['claude']] });
+
+    const addFromSourceSpy = vi.spyOn(SkillsManager.prototype, 'addFromSource').mockResolvedValue({
+      installed: [],
+      skipped: [],
+      warnings: [],
+    });
+
+    const program = new Command();
+    registerSkillsCommand(program);
+
+    await program.parseAsync(['skills', 'add', TEST_GITHUB_SKILL_SOURCE], { from: 'user' });
+
+    expect(promptsMock).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'select',
+      name: 'plugin',
+      message: expect.stringContaining('multiple plugins'),
+    }));
+    expect(prepareSourceSpy).toHaveBeenCalledTimes(2);
+    expect(prepareSourceSpy).toHaveBeenLastCalledWith(
+      TEST_GITHUB_SKILL_SOURCE,
+      expect.any(String),
+      expect.objectContaining({ pluginName: 'beta' }),
+    );
+    expect(addFromSourceSpy).toHaveBeenCalledWith(
+      TEST_GITHUB_SKILL_SOURCE,
+      expect.any(String),
+      expect.objectContaining({ pluginName: 'beta' }),
+    );
+  });
+
+  it('cancels when user dismisses bundle plugin selection', async () => {
+    const entries = [
+      { name: 'alpha', source: './plugins/alpha' },
+      { name: 'beta', source: './plugins/beta' },
+    ];
+    const bundleError = new MultipleBundlePluginsError('/tmp/test', entries);
+
+    vi.spyOn(SkillsManager.prototype, 'prepareSource').mockRejectedValue(bundleError);
+    promptsMock.mockResolvedValueOnce({});
+
+    const addSpy = vi.spyOn(SkillsManager.prototype, 'addFromSource');
+    const infoSpy = vi.spyOn(logger, 'info').mockImplementation(() => {});
+
+    const program = new Command();
+    registerSkillsCommand(program);
+
+    await program.parseAsync(['skills', 'add', TEST_GITHUB_SKILL_SOURCE], { from: 'user' });
+
+    expect(infoSpy).toHaveBeenCalledWith('Cancelled.');
+    expect(addSpy).not.toHaveBeenCalled();
   });
 });

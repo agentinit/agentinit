@@ -33,6 +33,22 @@ import type {
   CursorPluginManifest,
 } from '../types/plugins.js';
 
+export class MultipleBundlePluginsError extends Error {
+  public readonly entries: Array<{ name: string; source: string }>;
+
+  constructor(
+    pluginDir: string,
+    entries: Array<{ name: string; source: string }>,
+  ) {
+    const names = entries.map(e => e.name).join(', ');
+    super(
+      `Repository "${pluginDir}" is a Claude marketplace bundle with multiple plugins. Select one of: ${names}.`
+    );
+    this.name = 'MultipleBundlePluginsError';
+    this.entries = entries;
+  }
+}
+
 export class MarketplacePluginNotFoundError extends Error {
   public readonly pluginName: string;
   public readonly marketplaceId: string;
@@ -318,9 +334,7 @@ export class PluginManager {
       );
 
       if (!matched) {
-        throw new Error(
-          `Repository "${pluginDir}" is a Claude marketplace bundle with multiple plugins. Select one of: ${entries.map(entry => entry.name).join(', ')}.`
-        );
+        throw new MultipleBundlePluginsError(pluginDir, entries);
       }
       selectedEntry = matched;
     }
@@ -370,7 +384,7 @@ export class PluginManager {
 
   private async loadPluginContext(
     source: string,
-    options: Pick<PluginInstallOptions, 'from'> = {},
+    options: Pick<PluginInstallOptions, 'from'> & { pluginName?: string } = {},
   ): Promise<LoadedPluginContext> {
     const resolved = this.resolveSource(source, { from: options.from });
     let effectiveSource = resolved;
@@ -426,6 +440,10 @@ export class PluginManager {
       }
     }
 
+    if (options.pluginName) {
+      effectiveSource = { ...effectiveSource, pluginName: options.pluginName };
+    }
+
     return {
       plugin: await this.loadPluginFromDirectory(pluginDir, effectiveSource, resolutionWarnings),
       effectiveSource,
@@ -447,7 +465,7 @@ export class PluginManager {
 
   async preparePluginInstall(
     source: string,
-    options: Pick<PluginInstallOptions, 'from'> = {},
+    options: Pick<PluginInstallOptions, 'from'> & { pluginName?: string } = {},
   ): Promise<PluginInspectionResult> {
     const context = await this.loadPluginContext(source, options);
 
@@ -463,7 +481,7 @@ export class PluginManager {
 
   async inspectPlugin(
     source: string,
-    options: Pick<PluginInstallOptions, 'from'> = {},
+    options: Pick<PluginInstallOptions, 'from'> & { pluginName?: string } = {},
   ): Promise<PluginInspectionResult> {
     const context = await this.loadPluginContext(source, options);
 
@@ -1549,10 +1567,13 @@ ${body.trim()}
   async installPlugin(
     source: string,
     projectPath: string,
-    options: PluginInstallOptions = {}
+    options: PluginInstallOptions & { pluginName?: string } = {}
   ): Promise<PluginInstallResult> {
     const context = this.takePreparedInstallContext(source, options.from)
-      || await this.loadPluginContext(source, { from: options.from });
+      || await this.loadPluginContext(source, {
+        from: options.from,
+        ...(options.pluginName ? { pluginName: options.pluginName } : {}),
+      });
 
     try {
       // 2. Parse plugin

@@ -214,6 +214,8 @@ agentinit skills list --agent agents
 agentinit skills remove openai-docs
 ```
 
+If a GitHub or local Claude bundle contains multiple plugins, `agentinit skills add` prompts you to choose which bundled plugin to inspect or install. In non-interactive `--yes` mode, ambiguous multi-plugin bundles fail instead of prompting.
+
 Skills are installed into a canonical store by default (`.agents/skills/` for project, `~/.agents/skills/` for global), with agent-specific paths symlinked automatically. Bare skill names resolve from your configured default marketplace, falling back to the public catalog at `vercel-labs/agent-skills`. Use `./name` for local paths, `owner/repo` for GitHub repos, or `--from <marketplace>` for explicit marketplace sources.
 
 ### `agentinit plugins`
@@ -249,6 +251,8 @@ agentinit plugins remove code-review
 ```
 
 Bare plugin names resolve through your configured default marketplace. Built-in marketplaces include `claude` and `openai`; add custom ones with `agentinit config marketplaces add`. For Claude-format plugins, native bundles are installed into `~/.claude/plugins` alongside portable skill and MCP installs.
+
+If a GitHub or local Claude bundle contains multiple plugins, `agentinit plugins install` prompts you to choose which bundled plugin to inspect or install. In non-interactive `--yes` mode, ambiguous multi-plugin bundles fail instead of prompting.
 
 ### `agentinit config`
 

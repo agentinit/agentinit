@@ -353,6 +353,7 @@ export class SkillsManager {
   private async discoverMarketplaceSkills(
     source: SkillSource,
     projectPath: string,
+    pluginName?: string,
   ): Promise<{ skills: SkillInfo[]; warnings: string[] }> {
     const { PluginManager } = await import('./pluginManager.js');
     const pluginManager = new PluginManager(this.agentManager);
@@ -360,6 +361,7 @@ export class SkillsManager {
     const result = await pluginManager.installPlugin(source.pluginName || this.getMarketplaceSourceId(source), projectPath, {
       from: source.marketplace,
       list: true,
+      ...(pluginName ? { pluginName } : {}),
     });
 
     const warnings = [...result.warnings];
@@ -451,10 +453,13 @@ export class SkillsManager {
   private async loadDiscoveredSkillsContext(
     source: string,
     projectPath: string,
-    options: { from?: string } = {},
+    options: { from?: string; pluginName?: string } = {},
   ): Promise<LoadedSkillsContext> {
     const request = this.resolveSourceRequest(source, options);
     const resolved = request.source;
+    if (options.pluginName && resolved.type !== 'marketplace') {
+      resolved.pluginName = options.pluginName;
+    }
     let tempDir: string | null = null;
     const cleanup = async () => {
       await this.cleanupTempDir(tempDir);
@@ -463,7 +468,7 @@ export class SkillsManager {
 
     try {
       if (resolved.type === 'marketplace') {
-        const discovered = await this.discoverMarketplaceSkills(resolved, projectPath);
+        const discovered = await this.discoverMarketplaceSkills(resolved, projectPath, options.pluginName);
         return {
           ...discovered,
           cleanup,
@@ -518,7 +523,7 @@ export class SkillsManager {
   async discoverFromSource(
     source: string,
     projectPath: string,
-    options: { from?: string } = {},
+    options: { from?: string; pluginName?: string } = {},
   ): Promise<{ skills: SkillInfo[]; warnings: string[] }> {
     const context = await this.loadDiscoveredSkillsContext(source, projectPath, options);
     try {
@@ -561,7 +566,7 @@ export class SkillsManager {
   async prepareSource(
     source: string,
     projectPath: string,
-    options: { from?: string } = {},
+    options: { from?: string; pluginName?: string } = {},
   ): Promise<{ skills: SkillInfo[]; warnings: string[] }> {
     const context = await this.loadDiscoveredSkillsContext(source, projectPath, options);
     await this.storePreparedSourceContext(source, projectPath, options.from, context);
@@ -882,6 +887,7 @@ export class SkillsManager {
     const context = this.takePreparedSourceContext(source, projectPath, options.from)
       || await this.loadDiscoveredSkillsContext(source, projectPath, {
         ...(options.from !== undefined ? { from: options.from } : {}),
+        ...(options.pluginName !== undefined ? { pluginName: options.pluginName } : {}),
       });
     try {
       let skills = context.skills;

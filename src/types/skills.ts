@@ -35,6 +35,7 @@ export interface SkillsAddOptions {
   list?: boolean;
   copy?: boolean;
   from?: string;
+  pluginName?: string;
   yes?: boolean;
 }
 

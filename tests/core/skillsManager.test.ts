@@ -5,7 +5,7 @@ import { join } from 'path';
 import { ClaudeAgent } from '../../src/agents/ClaudeAgent.js';
 import { ClaudeDesktopAgent } from '../../src/agents/ClaudeDesktopAgent.js';
 import { CodexCliAgent } from '../../src/agents/CodexCliAgent.js';
-import { MarketplacePluginNotFoundError, PluginManager } from '../../src/core/pluginManager.js';
+import { MarketplacePluginNotFoundError, MultipleBundlePluginsError, PluginManager } from '../../src/core/pluginManager.js';
 import { AgentManager } from '../../src/core/agentManager.js';
 import { SkillsManager } from '../../src/core/skillsManager.js';
 import { SHARED_SKILLS_TARGET_ID } from '../../src/types/skills.js';
@@ -746,6 +746,132 @@ describe('SkillsManager', () => {
       'Source "https://github.com/openai/codex-plugin-cc" is a Claude Code marketplace bundle; using bundled plugin "codex".',
       'Agent definitions (agents/) are Claude Code-specific',
     ]));
+  });
+
+  it('throws MultipleBundlePluginsError for bundles with multiple plugins', async () => {
+    const manager = new SkillsManager();
+    const projectDir = await mkdtemp(join(tmpdir(), 'agentinit-skill-project-'));
+    const bundleDir = await mkdtemp(join(tmpdir(), 'agentinit-skill-multi-bundle-'));
+    tempDirs.push(projectDir, bundleDir);
+
+    await mkdir(join(bundleDir, '.claude-plugin'), { recursive: true });
+    await mkdir(join(bundleDir, 'plugins', 'alpha', '.claude-plugin'), { recursive: true });
+    await mkdir(join(bundleDir, 'plugins', 'beta', '.claude-plugin'), { recursive: true });
+    await writeFile(
+      join(bundleDir, '.claude-plugin', 'marketplace.json'),
+      JSON.stringify({
+        name: 'multi-bundle',
+        plugins: [
+          { name: 'alpha', source: './plugins/alpha' },
+          { name: 'beta', source: './plugins/beta' },
+        ],
+      }, null, 2),
+    );
+
+    vi.spyOn(manager, 'cloneRepo').mockResolvedValue(bundleDir);
+
+    await expect(
+      manager.discoverFromSource('https://github.com/example/multi-bundle', projectDir),
+    ).rejects.toThrow(MultipleBundlePluginsError);
+  });
+
+  it('selects correct plugin from multi-plugin bundle when pluginName is provided', async () => {
+    const manager = new SkillsManager();
+    const projectDir = await mkdtemp(join(tmpdir(), 'agentinit-skill-project-'));
+    const bundleDir = await mkdtemp(join(tmpdir(), 'agentinit-skill-multi-bundle-'));
+    tempDirs.push(projectDir, bundleDir);
+
+    await mkdir(join(bundleDir, '.claude-plugin'), { recursive: true });
+    await mkdir(join(bundleDir, 'plugins', 'alpha', '.claude-plugin'), { recursive: true });
+    await mkdir(join(bundleDir, 'plugins', 'alpha', 'commands'), { recursive: true });
+    await mkdir(join(bundleDir, 'plugins', 'beta', '.claude-plugin'), { recursive: true });
+    await writeFile(
+      join(bundleDir, '.claude-plugin', 'marketplace.json'),
+      JSON.stringify({
+        name: 'multi-bundle',
+        plugins: [
+          { name: 'alpha', source: './plugins/alpha' },
+          { name: 'beta', source: './plugins/beta' },
+        ],
+      }, null, 2),
+    );
+    await writeFile(
+      join(bundleDir, 'plugins', 'alpha', '.claude-plugin', 'plugin.json'),
+      JSON.stringify({ name: 'alpha', version: '1.0.0', description: 'Alpha plugin' }, null, 2),
+    );
+    await writeFile(
+      join(bundleDir, 'plugins', 'alpha', 'commands', 'test.md'),
+      '---\nname: alpha-test\ndescription: Alpha test skill\n---\nTest.\n',
+    );
+    await writeFile(
+      join(bundleDir, 'plugins', 'beta', '.claude-plugin', 'plugin.json'),
+      JSON.stringify({ name: 'beta', version: '1.0.0', description: 'Beta plugin' }, null, 2),
+    );
+
+    vi.spyOn(manager, 'cloneRepo').mockResolvedValue(bundleDir);
+
+    const result = await manager.discoverFromSource('https://github.com/example/multi-bundle', projectDir, {
+      pluginName: 'alpha',
+    });
+
+    expect(result.skills).toEqual([
+      expect.objectContaining({
+        name: 'alpha-test',
+        description: 'Alpha test skill',
+      }),
+    ]);
+  });
+
+  it('keeps repo fallback source identity when adding from a selected bundle plugin', async () => {
+    const manager = new SkillsManager();
+    const projectDir = await mkdtemp(join(tmpdir(), 'agentinit-skill-project-'));
+    const bundleDir = await mkdtemp(join(tmpdir(), 'agentinit-skill-multi-bundle-'));
+    tempDirs.push(projectDir, bundleDir);
+
+    await mkdir(join(bundleDir, '.claude-plugin'), { recursive: true });
+    await mkdir(join(bundleDir, 'plugins', 'alpha', '.claude-plugin'), { recursive: true });
+    await mkdir(join(bundleDir, 'plugins', 'beta', '.claude-plugin'), { recursive: true });
+    await mkdir(join(bundleDir, 'plugins', 'beta', 'commands'), { recursive: true });
+    await writeFile(
+      join(bundleDir, '.claude-plugin', 'marketplace.json'),
+      JSON.stringify({
+        name: 'multi-bundle',
+        plugins: [
+          { name: 'alpha', source: './plugins/alpha' },
+          { name: 'beta', source: './plugins/beta' },
+        ],
+      }, null, 2),
+    );
+    await writeFile(
+      join(bundleDir, 'plugins', 'alpha', '.claude-plugin', 'plugin.json'),
+      JSON.stringify({ name: 'alpha', version: '1.0.0', description: 'Alpha plugin' }, null, 2),
+    );
+    await writeFile(
+      join(bundleDir, 'plugins', 'beta', '.claude-plugin', 'plugin.json'),
+      JSON.stringify({ name: 'beta', version: '1.0.0', description: 'Beta plugin' }, null, 2),
+    );
+    await writeFile(
+      join(bundleDir, 'plugins', 'beta', 'commands', 'beta.md'),
+      '---\nname: beta-skill\ndescription: Beta skill\n---\nTest.\n',
+    );
+
+    vi.spyOn(PluginManager.prototype, 'resolveMarketplacePlugin').mockRejectedValueOnce(
+      new MarketplacePluginNotFoundError('codex-plugin-cc', 'openai', 'OpenAI Skills', []),
+    );
+    const cloneRepoSpy = vi.spyOn(SkillsManager.prototype, 'cloneRepo').mockResolvedValue(bundleDir);
+
+    const result = await manager.addFromSource('codex-plugin-cc', projectDir, {
+      from: 'openai',
+      agents: ['claude'],
+      pluginName: 'beta',
+    });
+
+    expect(cloneRepoSpy).toHaveBeenCalledWith('https://github.com/openai/codex-plugin-cc.git');
+    expect(result.installed).toHaveLength(1);
+    expect(result.installed[0]).toMatchObject({
+      agent: 'claude',
+      path: join(projectDir, '.claude/skills', 'beta-skill'),
+    });
   });
 
   it('discovers skills from GitHub blob SKILL.md sources', async () => {
