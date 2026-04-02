@@ -1,3 +1,10 @@
+## [1.17.1](https://github.com/agentinit/agentinit/compare/v1.17.0...v1.17.1) (2026-04-02)
+
+
+### Bug Fixes
+
+* preserve multi-plugin bundle selection ([08e17d3](https://github.com/agentinit/agentinit/commit/08e17d3fd91049d22d846ffb54375f751f43b8b9))
+
 # [1.17.0](https://github.com/agentinit/agentinit/compare/v1.16.2...v1.17.0) (2026-04-02)
 
 
