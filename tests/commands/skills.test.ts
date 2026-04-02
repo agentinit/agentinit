@@ -380,7 +380,7 @@ describe('skills command', () => {
 
     // Prompts: 1) bundle plugin selection, 2) scope, 3) agent groups
     promptsMock
-      .mockResolvedValueOnce({ plugin: 'beta' })
+      .mockResolvedValueOnce({ plugins: ['beta'] })
       .mockResolvedValueOnce({ scope: 'global' })
       .mockResolvedValueOnce({ groups: [['claude']] });
 
@@ -396,8 +396,8 @@ describe('skills command', () => {
     await program.parseAsync(['skills', 'add', TEST_GITHUB_SKILL_SOURCE], { from: 'user' });
 
     expect(promptsMock).toHaveBeenCalledWith(expect.objectContaining({
-      type: 'select',
-      name: 'plugin',
+      type: 'multiselect',
+      name: 'plugins',
       message: expect.stringContaining('multiple plugins'),
     }));
     expect(prepareSourceSpy).toHaveBeenCalledTimes(2);
@@ -410,6 +410,48 @@ describe('skills command', () => {
       TEST_GITHUB_SKILL_SOURCE,
       expect.any(String),
       expect.objectContaining({ pluginName: 'beta' }),
+    );
+  });
+
+  it('installs all selected bundle plugins for skills add and shows the selection hint', async () => {
+    const infoSpy = vi.spyOn(logger, 'info').mockImplementation(() => {});
+    const entries = [
+      { name: 'alpha', source: './plugins/alpha' },
+      { name: 'beta', source: './plugins/beta' },
+    ];
+    const bundleError = new MultipleBundlePluginsError('/tmp/test', entries);
+
+    const prepareSourceSpy = vi.spyOn(SkillsManager.prototype, 'prepareSource');
+    prepareSourceSpy.mockRejectedValueOnce(bundleError);
+    prepareSourceSpy
+      .mockResolvedValueOnce({ skills: [], warnings: [] })
+      .mockResolvedValueOnce({ skills: [], warnings: [] });
+
+    promptsMock.mockResolvedValueOnce({ plugins: ['alpha', 'beta'] });
+
+    const addFromSourceSpy = vi.spyOn(SkillsManager.prototype, 'addFromSource');
+    addFromSourceSpy
+      .mockResolvedValueOnce({ installed: [], skipped: [], warnings: [] })
+      .mockResolvedValueOnce({ installed: [], skipped: [], warnings: [] });
+
+    const program = new Command();
+    registerSkillsCommand(program);
+
+    await program.parseAsync(['skills', 'add', TEST_GITHUB_SKILL_SOURCE, '--agent', 'claude'], { from: 'user' });
+
+    expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('Press Space to select'));
+    expect(prepareSourceSpy).toHaveBeenCalledTimes(3);
+    expect(addFromSourceSpy).toHaveBeenNthCalledWith(
+      1,
+      TEST_GITHUB_SKILL_SOURCE,
+      expect.any(String),
+      expect.objectContaining({ pluginName: 'alpha', agents: ['claude'] }),
+    );
+    expect(addFromSourceSpy).toHaveBeenNthCalledWith(
+      2,
+      TEST_GITHUB_SKILL_SOURCE,
+      expect.any(String),
+      expect.objectContaining({ pluginName: 'beta', agents: ['claude'] }),
     );
   });
 

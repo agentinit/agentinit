@@ -218,11 +218,11 @@ describe('plugins command', () => {
       choices: [
         expect.objectContaining({
           selected: true,
-          description: expect.stringContaining('Full plugin support is available in Claude Code; the native plugin installs at ~/.claude/plugins/cache/openai-codex/codex/1.0.1.'),
+          description: expect.stringContaining('Full plugin support is available in Claude Code; native components install at ~/.claude/plugins/cache/openai-codex/codex/1.0.1.'),
         }),
         expect.objectContaining({
           selected: true,
-          description: expect.stringContaining('Skills will be installed here, but Claude-specific components will not be fully available for these agents.'),
+          description: expect.stringContaining('Some selected plugins also include Claude-specific components that will not be fully available for these agents.'),
         }),
       ],
     });
@@ -458,7 +458,7 @@ describe('plugins command', () => {
     expect(globalPrompt.choices[0]).toMatchObject({
       title: expect.stringContaining('~/.agents/skills'),
       selected: true,
-      description: expect.stringContaining('Skills will be installed here, but Claude-specific components will not be fully available for these agents.'),
+      description: expect.stringContaining('Some selected plugins also include Claude-specific components that will not be fully available for these agents.'),
     });
     expect(globalPrompt.choices[1]).toMatchObject({
       title: expect.stringContaining('~/.claude/skills'),
@@ -470,17 +470,17 @@ describe('plugins command', () => {
         expect.objectContaining({
           title: expect.stringContaining('~/.copilot/skills'),
           selected: false,
-          description: expect.stringContaining('Skills will be installed here, but Claude-specific components will not be fully available for these agents.'),
+          description: expect.stringContaining('Some selected plugins also include Claude-specific components that will not be fully available for these agents.'),
         }),
         expect.objectContaining({
           title: expect.stringContaining('~/.openclaw/skills'),
           selected: false,
-          description: expect.stringContaining('Skills will be installed here, but Claude-specific components will not be fully available for these agents.'),
+          description: expect.stringContaining('Some selected plugins also include Claude-specific components that will not be fully available for these agents.'),
         }),
         expect.objectContaining({
           title: expect.stringContaining('~/.hermes/skills'),
           selected: false,
-          description: expect.stringContaining('Skills will be installed here, but Claude-specific components will not be fully available for these agents.'),
+          description: expect.stringContaining('Some selected plugins also include Claude-specific components that will not be fully available for these agents.'),
         }),
       ]),
     });
@@ -594,7 +594,7 @@ describe('plugins command', () => {
 
     // First call: bundle selection, second call: agent group selection
     vi.mocked(prompts)
-      .mockResolvedValueOnce({ plugin: 'beta' } as never)
+      .mockResolvedValueOnce({ plugins: ['beta'] } as never)
       .mockResolvedValueOnce({ groups: [['claude']] } as never);
 
     vi.spyOn(PluginManager.prototype, 'installPlugin').mockResolvedValue({
@@ -611,14 +611,167 @@ describe('plugins command', () => {
     await program.parseAsync(['plugins', 'install', 'https://github.com/example/multi-bundle'], { from: 'user' });
 
     expect(vi.mocked(prompts)).toHaveBeenCalledWith(expect.objectContaining({
-      type: 'select',
-      name: 'plugin',
+      type: 'multiselect',
+      name: 'plugins',
       message: expect.stringContaining('multiple plugins'),
     }));
     expect(prepareSpy).toHaveBeenCalledTimes(2);
     expect(prepareSpy).toHaveBeenLastCalledWith(
       'https://github.com/example/multi-bundle',
       expect.objectContaining({ pluginName: 'beta' }),
+    );
+  });
+
+  it('aggregates compatibility across multiple selected bundle plugins and shows the selection hint', async () => {
+    process.env.HOME = '/Users/tester';
+
+    const entries = [
+      { name: 'alpha', source: './plugins/alpha', description: 'Portable plugin' },
+      { name: 'beta', source: './plugins/beta', description: 'Claude-native plugin' },
+    ];
+    const bundleError = new MultipleBundlePluginsError('/tmp/test', entries);
+
+    const infoSpy = vi.spyOn(logger, 'info').mockImplementation(() => {});
+    const prepareSpy = vi.spyOn(PluginManager.prototype, 'preparePluginInstall');
+    prepareSpy.mockRejectedValueOnce(bundleError);
+    prepareSpy
+      .mockResolvedValueOnce({
+        plugin: {
+          name: 'beta',
+          version: '1.0.0',
+          description: 'Beta plugin',
+          source: { type: 'github' as const },
+          format: 'claude' as const,
+          skills: [],
+          mcpServers: [],
+          warnings: [
+            'Source "https://github.com/example/multi-bundle" is a Claude Code marketplace bundle; using bundled plugin "beta".',
+          ],
+        },
+        nativePreview: {
+          agent: 'claude',
+          pluginKey: 'beta@test',
+          installPath: '/Users/tester/.claude/plugins/cache/test/beta/1.0.0',
+          features: ['commands'],
+        },
+      } as never)
+      .mockResolvedValueOnce({
+        plugin: {
+          name: 'alpha',
+          version: '1.0.0',
+          description: 'Alpha plugin',
+          source: { type: 'github' as const },
+          format: 'claude' as const,
+          skills: [{ name: 'alpha-skill', description: 'Alpha skill', path: '/tmp/alpha' }],
+          mcpServers: [],
+          warnings: [
+            'Source "https://github.com/example/multi-bundle" is a Claude Code marketplace bundle; using bundled plugin "alpha".',
+          ],
+        },
+        nativePreview: null,
+      } as never)
+      .mockResolvedValueOnce({
+        plugin: {
+          name: 'beta',
+          version: '1.0.0',
+          description: 'Beta plugin',
+          source: { type: 'github' as const },
+          format: 'claude' as const,
+          skills: [],
+          mcpServers: [],
+          warnings: [],
+        },
+        nativePreview: {
+          agent: 'claude',
+          pluginKey: 'beta@test',
+          installPath: '/Users/tester/.claude/plugins/cache/test/beta/1.0.0',
+          features: ['commands'],
+        },
+      } as never);
+
+    vi.spyOn(PluginManager.prototype, 'groupAgentsBySkillsDir').mockResolvedValue([
+      {
+        dir: '.claude/skills/',
+        agents: [{ id: 'claude' } as any],
+        agentNames: ['Claude Code'],
+        compatibleAgents: [],
+        compatibleAgentNames: [],
+      },
+      {
+        dir: '.agents/skills/',
+        agents: [{ id: 'cursor' } as any],
+        agentNames: ['Cursor IDE'],
+        compatibleAgents: [],
+        compatibleAgentNames: [],
+      },
+    ]);
+
+    vi.mocked(prompts)
+      .mockResolvedValueOnce({ plugins: ['alpha', 'beta'] } as never)
+      .mockResolvedValueOnce({ groups: [['claude']] } as never);
+
+    const installPluginSpy = vi.spyOn(PluginManager.prototype, 'installPlugin');
+    installPluginSpy
+      .mockResolvedValueOnce({
+        plugin: {
+          name: 'alpha',
+          version: '1.0.0',
+          description: 'Alpha plugin',
+          source: { type: 'github' as const },
+          format: 'claude' as const,
+          skills: [{ name: 'alpha-skill', description: 'Alpha skill', path: '/tmp/alpha' }],
+          mcpServers: [],
+          warnings: [],
+        },
+        skills: { installed: [], skipped: [] },
+        mcpServers: { applied: [], skipped: [] },
+        nativePlugins: { installed: [], skipped: [] },
+        warnings: [],
+      } as never)
+      .mockResolvedValueOnce({
+        plugin: {
+          name: 'beta',
+          version: '1.0.0',
+          description: 'Beta plugin',
+          source: { type: 'github' as const },
+          format: 'claude' as const,
+          skills: [],
+          mcpServers: [],
+          warnings: [],
+        },
+        skills: { installed: [], skipped: [] },
+        mcpServers: { applied: [], skipped: [] },
+        nativePlugins: { installed: [{ agent: 'claude', pluginKey: 'beta@test', installPath: '/Users/tester/.claude/plugins/cache/test/beta/1.0.0' }], skipped: [] },
+        warnings: [
+          'Claude Code-native plugin components detected (commands); they will only work in Claude Code and install into ~/.claude/plugins.',
+        ],
+      } as never);
+
+    const program = new Command();
+    registerPluginsCommand(program);
+
+    await program.parseAsync(['plugins', 'install', 'https://github.com/example/multi-bundle'], { from: 'user' });
+
+    expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('Press Space to select'));
+    const groupPrompt = vi.mocked(prompts).mock.calls[1]?.[0] as { choices?: Array<{ title: string; description?: string }> };
+    expect(groupPrompt.choices).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        title: expect.stringContaining('Cursor IDE'),
+        description: expect.stringContaining('Claude-specific components'),
+      }),
+    ]));
+    expect(prepareSpy).toHaveBeenCalledTimes(4);
+    expect(installPluginSpy).toHaveBeenNthCalledWith(
+      1,
+      'https://github.com/example/multi-bundle',
+      process.cwd(),
+      expect.objectContaining({ pluginName: 'alpha', agents: ['claude'] }),
+    );
+    expect(installPluginSpy).toHaveBeenNthCalledWith(
+      2,
+      'https://github.com/example/multi-bundle',
+      process.cwd(),
+      expect.objectContaining({ pluginName: 'beta', agents: ['claude'] }),
     );
   });
 

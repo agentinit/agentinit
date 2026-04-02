@@ -26,6 +26,15 @@ type PluginTargetSelection = {
   aborted?: boolean;
 };
 
+type PluginSelectionPreview = {
+  selectedCount: number;
+  skillCount: number;
+  mcpServerCount: number;
+  nativeAgentIds: string[];
+  nativeFeatures: string[];
+  nativeInstallPaths: string[];
+};
+
 export function registerPluginsCommand(program: Command): void {
   const marketplaceHelp = new PluginManager().getMarketplaceIds().join(', ');
   const marketplaceCategoryHelp = getMarketplaceCategories().join(', ');
@@ -88,46 +97,48 @@ export function registerPluginsCommand(program: Command): void {
         } catch (error) {
           if (error instanceof MultipleBundlePluginsError) {
             spinner.stop();
-            const selected = await selectBundlePlugin(error, 'preview');
+            const selected = await selectBundlePlugins(error, 'preview');
             if (!selected) {
               return;
             }
-            const retrySpinner = ora('Fetching plugin...').start();
-            try {
-              const preview = await pluginManager.inspectPlugin(source, {
-                from: options.from,
-                pluginName: selected,
-              });
-              retrySpinner.stop();
-              const p = preview.plugin;
+            for (const pluginName of selected) {
+              const retrySpinner = ora(`Fetching plugin ${pluginName}...`).start();
+              try {
+                const preview = await pluginManager.inspectPlugin(source, {
+                  from: options.from,
+                  pluginName,
+                });
+                retrySpinner.stop();
+                const p = preview.plugin;
 
-              console.log('');
-              logger.info(`${bold(p.name)} ${dim(`v${p.version}`)} ${dim(`[${p.format} format]`)}`);
-              if (p.description) logger.info(`  ${p.description}`);
-              console.log('');
+                console.log('');
+                logger.info(`${bold(p.name)} ${dim(`v${p.version}`)} ${dim(`[${p.format} format]`)}`);
+                if (p.description) logger.info(`  ${p.description}`);
+                console.log('');
 
-              if (p.skills.length > 0) {
-                logger.info(`  ${green('Skills')} (${p.skills.length}):`);
-                for (const skill of p.skills) {
-                  logger.info(`    ${green(skill.name)} - ${skill.description}`);
+                if (p.skills.length > 0) {
+                  logger.info(`  ${green('Skills')} (${p.skills.length}):`);
+                  for (const skill of p.skills) {
+                    logger.info(`    ${green(skill.name)} - ${skill.description}`);
+                  }
                 }
-              }
 
-              if (p.mcpServers.length > 0) {
-                logger.info(`  ${cyan('MCP Servers')} (${p.mcpServers.length}):`);
-                for (const mcp of p.mcpServers) {
-                  logger.info(`    ${cyan(mcp.name)} [${mcp.type}]`);
+                if (p.mcpServers.length > 0) {
+                  logger.info(`  ${cyan('MCP Servers')} (${p.mcpServers.length}):`);
+                  for (const mcp of p.mcpServers) {
+                    logger.info(`    ${cyan(mcp.name)} [${mcp.type}]`);
+                  }
                 }
-              }
 
-              if (p.skills.length === 0 && p.mcpServers.length === 0) {
-                logger.info('  No portable components found (no skills or MCP servers).');
-              }
+                if (p.skills.length === 0 && p.mcpServers.length === 0) {
+                  logger.info('  No portable components found (no skills or MCP servers).');
+                }
 
-              renderPluginWarnings(preview, process.cwd());
-            } catch (retryError) {
-              retrySpinner.fail('Failed to fetch plugin');
-              logger.error(`Error: ${retryError instanceof Error ? retryError.message : 'Unknown error'}`);
+                renderPluginWarnings(preview, process.cwd());
+              } catch (retryError) {
+                retrySpinner.fail(`Failed to fetch plugin ${pluginName}`);
+                logger.error(`Error: ${retryError instanceof Error ? retryError.message : 'Unknown error'}`);
+              }
             }
           } else {
             spinner.fail('Failed to fetch plugin');
@@ -140,34 +151,49 @@ export function registerPluginsCommand(program: Command): void {
       // Interactive agent selection if not --yes and not --agent
       let agentIds = options.agent as string[] | undefined;
       let targetGlobal = options.global as boolean | undefined;
-      let preview: PluginInspectionResult | null = null;
+      let selectionPreview: PluginSelectionPreview | null = null;
       let previewRendered = false;
-      let selectedPluginName: string | undefined;
+      let selectedPluginNames: string[] | undefined;
       if (!agentIds && !options.yes) {
         const previewSpinner = ora('Inspecting plugin...').start();
         try {
-          preview = await pluginManager.preparePluginInstall(source, {
+          const preview = await pluginManager.preparePluginInstall(source, {
             from: options.from,
           });
           previewSpinner.stop();
-          renderPluginWarnings(preview, process.cwd());
+          selectionPreview = buildPluginSelectionPreview([preview]);
+          renderPreparedPluginWarnings([preview], process.cwd());
           previewRendered = true;
         } catch (error) {
           if (error instanceof MultipleBundlePluginsError) {
             previewSpinner.stop();
-            const selected = await selectBundlePlugin(error, 'install');
+            const selected = await selectBundlePlugins(error, 'install');
             if (!selected) {
               return;
             }
-            selectedPluginName = selected;
+            selectedPluginNames = selected;
             const retrySpinner = ora('Inspecting plugin...').start();
             try {
-              preview = await pluginManager.preparePluginInstall(source, {
-                from: options.from,
-                pluginName: selectedPluginName,
-              });
+              const previewsByPlugin = new Map<string, PluginInspectionResult>();
+              const previewOrder = selectedPluginNames.length > 1
+                ? [...selectedPluginNames.slice(1), selectedPluginNames[0]!]
+                : selectedPluginNames;
+
+              for (const pluginName of previewOrder) {
+                const preparedPreview = await pluginManager.preparePluginInstall(source, {
+                  from: options.from,
+                  pluginName,
+                });
+                previewsByPlugin.set(pluginName, preparedPreview);
+              }
+
+              const previews = selectedPluginNames
+                .map(pluginName => previewsByPlugin.get(pluginName))
+                .filter((value): value is PluginInspectionResult => !!value);
+
               retrySpinner.stop();
-              renderPluginWarnings(preview, process.cwd());
+              selectionPreview = buildPluginSelectionPreview(previews);
+              renderPreparedPluginWarnings(previews, process.cwd());
               previewRendered = true;
             } catch (retryError) {
               retrySpinner.fail('Failed to inspect plugin');
@@ -187,7 +213,7 @@ export function registerPluginsCommand(program: Command): void {
             agentManager,
             process.cwd(),
             targetGlobal,
-            preview,
+            selectionPreview,
           );
           if (!selection || selection.aborted || !selection.agents || selection.agents.length === 0) {
             await pluginManager.discardPreparedPlugin(source, { from: options.from });
@@ -206,92 +232,103 @@ export function registerPluginsCommand(program: Command): void {
       }
 
       // Install
-      const spinner = ora('Installing plugin...').start();
-      try {
-        const result = await pluginManager.installPlugin(source, process.cwd(), {
-          from: options.from,
-          agents: agentIds,
-          global: targetGlobal,
-          copySkills: options.copySkills,
-          yes: options.yes,
-          ...(selectedPluginName ? { pluginName: selectedPluginName } : {}),
-        });
+      const pluginsToInstall = selectedPluginNames || [undefined];
+      for (const pluginName of pluginsToInstall) {
+        const spinner = ora(pluginName ? `Installing plugin ${pluginName}...` : 'Installing plugin...').start();
+        try {
+          if (pluginName && pluginName !== selectedPluginNames?.[0]) {
+            await pluginManager.preparePluginInstall(source, {
+              from: options.from,
+              pluginName,
+            });
+          }
+          const result = await pluginManager.installPlugin(source, process.cwd(), {
+            from: options.from,
+            agents: agentIds,
+            global: targetGlobal,
+            copySkills: options.copySkills,
+            yes: options.yes,
+            ...(pluginName ? { pluginName } : {}),
+          });
 
-        const p = result.plugin;
-        const totalSkills = result.skills.installed.length;
-        const totalMcp = result.mcpServers.applied.length;
-        const totalNative = result.nativePlugins.installed.length;
+          const p = result.plugin;
+          const totalSkills = result.skills.installed.length;
+          const totalMcp = result.mcpServers.applied.length;
+          const totalNative = result.nativePlugins.installed.length;
 
-        if (totalSkills === 0 && totalMcp === 0 && totalNative === 0) {
-          spinner.warn(`Plugin "${p.name}" has no portable components to install.`);
+          if (totalSkills === 0 && totalMcp === 0 && totalNative === 0) {
+            spinner.warn(`Plugin "${p.name}" has no portable components to install.`);
+            if (!previewRendered) {
+              renderPluginWarnings(result, process.cwd());
+            }
+            continue;
+          }
+
+          spinner.succeed(`Installed plugin ${green(bold(p.name))} ${dim(`v${p.version}`)}`);
+          renderInstalledComponents(result, agentManager, process.cwd());
+
+          // Skipped
+          if (result.skills.skipped.length > 0 || result.mcpServers.skipped.length > 0 || result.nativePlugins.skipped.length > 0) {
+            console.log('');
+            for (const s of result.skills.skipped) {
+              logger.debug(`Skipped skill ${s.name}: ${s.reason}`);
+            }
+            for (const s of result.mcpServers.skipped) {
+              logger.debug(`Skipped MCP ${s.name}: ${s.reason}`);
+            }
+            for (const s of result.nativePlugins.skipped) {
+              logger.warn(`Skipped native plugin payload for ${s.agent}: ${s.reason}`);
+            }
+          }
+
           if (!previewRendered) {
             renderPluginWarnings(result, process.cwd());
           }
-          return;
-        }
 
-        spinner.succeed(`Installed plugin ${green(bold(p.name))} ${dim(`v${p.version}`)}`);
-        renderInstalledComponents(result, agentManager, process.cwd());
-
-        // Skipped
-        if (result.skills.skipped.length > 0 || result.mcpServers.skipped.length > 0 || result.nativePlugins.skipped.length > 0) {
-          console.log('');
-          for (const s of result.skills.skipped) {
-            logger.debug(`Skipped skill ${s.name}: ${s.reason}`);
-          }
-          for (const s of result.mcpServers.skipped) {
-            logger.debug(`Skipped MCP ${s.name}: ${s.reason}`);
-          }
-          for (const s of result.nativePlugins.skipped) {
-            logger.warn(`Skipped native plugin payload for ${s.agent}: ${s.reason}`);
-          }
-        }
-
-        if (!previewRendered) {
-          renderPluginWarnings(result, process.cwd());
-        }
-
-        logger.success('Plugin installation complete.');
-      } catch (error) {
-        if (error instanceof MultipleBundlePluginsError && !options.yes) {
-          spinner.stop();
-          const selected = await selectBundlePlugin(error, 'install');
-          if (!selected) {
-            return;
-          }
-          const retrySpinner = ora('Installing plugin...').start();
-          try {
-            const result = await pluginManager.installPlugin(source, process.cwd(), {
-              from: options.from,
-              agents: agentIds,
-              global: targetGlobal,
-              copySkills: options.copySkills,
-              yes: options.yes,
-              pluginName: selected,
-            });
-
-            const p = result.plugin;
-            const totalSkills = result.skills.installed.length;
-            const totalMcp = result.mcpServers.applied.length;
-            const totalNative = result.nativePlugins.installed.length;
-
-            if (totalSkills === 0 && totalMcp === 0 && totalNative === 0) {
-              retrySpinner.warn(`Plugin "${p.name}" has no portable components to install.`);
-              renderPluginWarnings(result, process.cwd());
+          logger.success('Plugin installation complete.');
+        } catch (error) {
+          if (error instanceof MultipleBundlePluginsError && !options.yes) {
+            spinner.stop();
+            const selected = await selectBundlePlugins(error, 'install');
+            if (!selected) {
               return;
             }
+            for (const selectedName of selected) {
+              const retrySpinner = ora(`Installing plugin ${selectedName}...`).start();
+              try {
+                const result = await pluginManager.installPlugin(source, process.cwd(), {
+                  from: options.from,
+                  agents: agentIds,
+                  global: targetGlobal,
+                  copySkills: options.copySkills,
+                  yes: options.yes,
+                  pluginName: selectedName,
+                });
 
-            retrySpinner.succeed(`Installed plugin ${green(bold(p.name))} ${dim(`v${p.version}`)}`);
-            renderInstalledComponents(result, agentManager, process.cwd());
-            renderPluginWarnings(result, process.cwd());
-            logger.success('Plugin installation complete.');
-          } catch (retryError) {
-            retrySpinner.fail('Failed to install plugin');
-            logger.error(`Error: ${retryError instanceof Error ? retryError.message : 'Unknown error'}`);
+                const p = result.plugin;
+                const totalSkills = result.skills.installed.length;
+                const totalMcp = result.mcpServers.applied.length;
+                const totalNative = result.nativePlugins.installed.length;
+
+                if (totalSkills === 0 && totalMcp === 0 && totalNative === 0) {
+                  retrySpinner.warn(`Plugin "${p.name}" has no portable components to install.`);
+                  renderPluginWarnings(result, process.cwd());
+                  continue;
+                }
+
+                retrySpinner.succeed(`Installed plugin ${green(bold(p.name))} ${dim(`v${p.version}`)}`);
+                renderInstalledComponents(result, agentManager, process.cwd());
+                renderPluginWarnings(result, process.cwd());
+                logger.success('Plugin installation complete.');
+              } catch (retryError) {
+                retrySpinner.fail(`Failed to install plugin ${selectedName}`);
+                logger.error(`Error: ${retryError instanceof Error ? retryError.message : 'Unknown error'}`);
+              }
+            }
+          } else {
+            spinner.fail('Failed to install plugin');
+            logger.error(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
           }
-        } else {
-          spinner.fail('Failed to install plugin');
-          logger.error(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
       }
     });
@@ -442,26 +479,30 @@ export function registerPluginsCommand(program: Command): void {
     });
 }
 
-async function selectBundlePlugin(
+async function selectBundlePlugins(
   error: MultipleBundlePluginsError,
   actionLabel: string,
-): Promise<string | null> {
+): Promise<string[] | null> {
+  logger.info(dim('Press Space to select, then Enter to confirm.'));
   const response = await prompts({
-    type: 'select',
-    name: 'plugin',
-    message: `This repository contains multiple plugins. Select one to ${actionLabel}:`,
+    type: 'multiselect',
+    name: 'plugins',
+    message: `This repository contains multiple plugins. Select which to ${actionLabel}:`,
+    instructions: false,
+    min: 1,
     choices: error.entries.map(entry => ({
       title: entry.name,
       value: entry.name,
+      ...(entry.description ? { description: entry.description } : {}),
     })),
   });
 
-  if (!response.plugin) {
+  if (!response.plugins || response.plugins.length === 0) {
     logger.info('Cancelled.');
     return null;
   }
 
-  return response.plugin;
+  return response.plugins;
 }
 
 function formatPathForDisplay(pathValue: string, projectPath: string): string {
@@ -481,15 +522,55 @@ function getAgentLabel(agentIds: string[], agentManager: AgentManager): string {
     .join(', ');
 }
 
-function getPortableComponentSummary(preview: PluginInspectionResult): string {
-  const parts: string[] = [];
-  if (preview.plugin.skills.length > 0) {
-    parts.push(`${preview.plugin.skills.length} skill(s)`);
+function buildPluginSelectionPreview(previews: PluginInspectionResult[]): PluginSelectionPreview {
+  const nativeAgentIds = new Set<string>();
+  const nativeFeatures = new Set<string>();
+  const nativeInstallPaths = new Set<string>();
+
+  for (const preview of previews) {
+    if (!preview.nativePreview) {
+      continue;
+    }
+
+    nativeAgentIds.add(preview.nativePreview.agent);
+    nativeInstallPaths.add(preview.nativePreview.installPath);
+    for (const feature of preview.nativePreview.features) {
+      nativeFeatures.add(feature);
+    }
   }
-  if (preview.plugin.mcpServers.length > 0) {
-    parts.push(`${preview.plugin.mcpServers.length} MCP server(s)`);
+
+  return {
+    selectedCount: previews.length,
+    skillCount: previews.reduce((total, preview) => total + preview.plugin.skills.length, 0),
+    mcpServerCount: previews.reduce((total, preview) => total + preview.plugin.mcpServers.length, 0),
+    nativeAgentIds: [...nativeAgentIds],
+    nativeFeatures: [...nativeFeatures],
+    nativeInstallPaths: [...nativeInstallPaths],
+  };
+}
+
+function getPortableComponentSummary(preview: PluginSelectionPreview): string {
+  const parts: string[] = [];
+  if (preview.skillCount > 0) {
+    parts.push(`${preview.skillCount} skill(s)`);
+  }
+  if (preview.mcpServerCount > 0) {
+    parts.push(`${preview.mcpServerCount} MCP server(s)`);
   }
   return parts.length > 0 ? parts.join(', ') : 'No portable components';
+}
+
+function renderPreparedPluginWarnings(
+  previews: PluginInspectionResult[],
+  projectPath: string,
+): void {
+  for (const preview of previews) {
+    if (previews.length > 1) {
+      console.log('');
+      logger.info(`${bold(preview.plugin.name)} ${dim(`v${preview.plugin.version}`)}`);
+    }
+    renderPluginWarnings(preview, projectPath);
+  }
 }
 
 type SourceWarningItem = {
@@ -809,7 +890,7 @@ function buildGlobalPluginGroups(
 function shouldPreselectPluginGroup(
   group: PluginAgentGroup,
   installGlobal: boolean,
-  preview: PluginInspectionResult,
+  preview: PluginSelectionPreview,
 ): boolean {
   if (!installGlobal) {
     return true;
@@ -819,8 +900,8 @@ function shouldPreselectPluginGroup(
     return true;
   }
 
-  if (preview.nativePreview) {
-    return group.agents.some(agent => agent.id === preview.nativePreview?.agent);
+  if (preview.nativeAgentIds.length > 0) {
+    return group.agents.some(agent => preview.nativeAgentIds.includes(agent.id));
   }
 
   return false;
@@ -828,32 +909,37 @@ function shouldPreselectPluginGroup(
 
 function getPluginGroupDescription(
   group: PluginAgentGroup,
-  preview: PluginInspectionResult,
+  preview: PluginSelectionPreview,
   projectPath: string,
 ): string {
   const portableSummary = getPortableComponentSummary(preview);
-  if (!preview.nativePreview) {
+  if (preview.nativeAgentIds.length === 0) {
     return portableSummary;
   }
 
-  const containsClaudeCode = group.agents.some(agent => agent.id === 'claude');
+  const containsClaudeCode = group.agents.some(agent => preview.nativeAgentIds.includes(agent.id));
   if (!containsClaudeCode) {
-    return `${portableSummary}. Skills will be installed here, but Claude-specific components will not be fully available for these agents.`;
+    return `${portableSummary}. Some selected plugins also include Claude-specific components that will not be fully available for these agents.`;
   }
 
   const otherAgents = group.agents
-    .filter(agent => agent.id !== 'claude')
+    .filter(agent => !preview.nativeAgentIds.includes(agent.id))
     .map(agent => agent.name);
-  const installPath = formatPathForDisplay(preview.nativePreview.installPath, projectPath);
+  const installPath = preview.nativeInstallPaths.length === 1
+    ? formatPathForDisplay(preview.nativeInstallPaths[0]!, projectPath)
+    : `~/.claude/plugins (${preview.nativeInstallPaths.length} plugin-specific install paths)`;
+  const nativeSummary = preview.nativeFeatures.length > 0
+    ? ` Native components: ${preview.nativeFeatures.join(', ')}.`
+    : '';
 
   if (otherAgents.length === 0) {
-    return `${portableSummary}. Full plugin support is available in Claude Code; the native plugin installs at ${installPath}.`;
+    return `${portableSummary}. Full plugin support is available in Claude Code; native components install at ${installPath}.${nativeSummary}`;
   }
 
   const otherAgentsLabel = otherAgents.join(', ');
   const shareVerb = otherAgents.length === 1 ? 'shares' : 'share';
   const receiveVerb = otherAgents.length === 1 ? 'receives' : 'receive';
-  return `${portableSummary}. Full plugin support is available in Claude Code; the native plugin installs at ${installPath}. ${otherAgentsLabel} ${shareVerb} this skills directory but only ${receiveVerb} the installed skills.`;
+  return `${portableSummary}. Full plugin support is available in Claude Code; native components install at ${installPath}.${nativeSummary} ${otherAgentsLabel} ${shareVerb} this skills directory but only ${receiveVerb} the installed skills.`;
 }
 
 /**
@@ -864,8 +950,12 @@ async function interactiveAgentSelect(
   agentManager: AgentManager,
   projectPath: string,
   global: boolean | undefined,
-  preview: PluginInspectionResult,
+  preview: PluginSelectionPreview | null,
 ): Promise<PluginTargetSelection | undefined> {
+  if (!preview) {
+    return { aborted: true };
+  }
+
   let installGlobal = !!global;
   let groups: PluginAgentGroup[] = installGlobal
     ? buildGlobalPluginGroups(agentManager, projectPath)

@@ -69,21 +69,23 @@ export function registerSkillsCommand(program: Command): void {
         } catch (error) {
           if (error instanceof MultipleBundlePluginsError) {
             spinner.stop();
-            const selected = await selectBundlePlugin(error, 'list');
+            const selected = await selectBundlePlugins(error, 'list');
             if (!selected) {
               return;
             }
-            const retrySpinner = ora('Discovering skills...').start();
-            try {
-              const result = await skillsManager.discoverFromSource(source, process.cwd(), {
-                from: options.from,
-                pluginName: selected,
-              });
-              retrySpinner.stop();
-              displayDiscoveredSkills(result.skills, result.warnings);
-            } catch (retryError) {
-              retrySpinner.fail('Failed to discover skills');
-              logger.error(`Error: ${retryError instanceof Error ? retryError.message : 'Unknown error'}`);
+            for (const pluginName of selected) {
+              const retrySpinner = ora(`Discovering skills from ${pluginName}...`).start();
+              try {
+                const result = await skillsManager.discoverFromSource(source, process.cwd(), {
+                  from: options.from,
+                  pluginName,
+                });
+                retrySpinner.stop();
+                displayDiscoveredSkills(result.skills, result.warnings);
+              } catch (retryError) {
+                retrySpinner.fail(`Failed to discover skills from ${pluginName}`);
+                logger.error(`Error: ${retryError instanceof Error ? retryError.message : 'Unknown error'}`);
+              }
             }
           } else {
             spinner.fail('Failed to discover skills');
@@ -94,7 +96,7 @@ export function registerSkillsCommand(program: Command): void {
       }
 
       const verifySpinner = ora('Verifying skill source...').start();
-      let selectedPluginName: string | undefined;
+      let selectedPluginNames: string[] | undefined;
       try {
         await skillsManager.prepareSource(source, process.cwd(), {
           from: options.from,
@@ -103,16 +105,16 @@ export function registerSkillsCommand(program: Command): void {
       } catch (error) {
         if (error instanceof MultipleBundlePluginsError && !options.yes) {
           verifySpinner.stop();
-          const selected = await selectBundlePlugin(error, 'install');
+          const selected = await selectBundlePlugins(error, 'install');
           if (!selected) {
             return;
           }
-          selectedPluginName = selected;
+          selectedPluginNames = selected;
           const retrySpinner = ora('Verifying skill source...').start();
           try {
             await skillsManager.prepareSource(source, process.cwd(), {
               from: options.from,
-              pluginName: selectedPluginName,
+              ...(selectedPluginNames[0] ? { pluginName: selectedPluginNames[0] } : {}),
             });
             retrySpinner.stop();
           } catch (retryError) {
@@ -155,23 +157,32 @@ export function registerSkillsCommand(program: Command): void {
       }
 
       // Install skills
-      const buildInstallOptions = (fromOverride?: string) => ({
-        ...(fromOverride !== undefined ? { from: fromOverride } : options.from !== undefined ? { from: options.from } : {}),
+      const buildInstallOptions = (pluginName?: string) => ({
+        ...(options.from !== undefined ? { from: options.from } : {}),
         ...(targetGlobal !== undefined ? { global: targetGlobal } : {}),
         ...(targetAgents !== undefined ? { agents: targetAgents } : {}),
         ...(options.skill !== undefined ? { skills: options.skill } : {}),
         ...(options.copy !== undefined ? { copy: options.copy } : {}),
-        ...(selectedPluginName !== undefined ? { pluginName: selectedPluginName } : {}),
+        ...(pluginName !== undefined ? { pluginName } : {}),
         ...(options.yes !== undefined ? { yes: options.yes } : {}),
       });
 
-      const spinner = ora('Installing skills...').start();
-      try {
-        const result = await skillsManager.addFromSource(source, process.cwd(), buildInstallOptions());
-        displayInstallResult(result, spinner, agentManager, skillsManager, source, { from: options.from });
-      } catch (error) {
-        spinner.fail('Failed to install skills');
-        logger.error(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      const pluginsToInstall = selectedPluginNames || [undefined];
+      for (const pluginName of pluginsToInstall) {
+        const spinner = ora(pluginName ? `Installing skills from ${pluginName}...` : 'Installing skills...').start();
+        try {
+          if (pluginName && pluginName !== selectedPluginNames?.[0]) {
+            await skillsManager.prepareSource(source, process.cwd(), {
+              from: options.from,
+              pluginName,
+            });
+          }
+          const result = await skillsManager.addFromSource(source, process.cwd(), buildInstallOptions(pluginName));
+          displayInstallResult(result, spinner, agentManager, skillsManager, source, { from: options.from });
+        } catch (error) {
+          spinner.fail(pluginName ? `Failed to install skills from ${pluginName}` : 'Failed to install skills');
+          logger.error(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
       }
     });
 
@@ -290,26 +301,30 @@ export function registerSkillsCommand(program: Command): void {
     });
 }
 
-async function selectBundlePlugin(
+async function selectBundlePlugins(
   error: MultipleBundlePluginsError,
   actionLabel: string,
-): Promise<string | null> {
+): Promise<string[] | null> {
+  logger.info(dim('Press Space to select, then Enter to confirm.'));
   const response = await prompts({
-    type: 'select',
-    name: 'plugin',
-    message: `This repository contains multiple plugins. Select one to ${actionLabel}:`,
+    type: 'multiselect',
+    name: 'plugins',
+    message: `This repository contains multiple plugins. Select which to ${actionLabel}:`,
+    instructions: false,
+    min: 1,
     choices: error.entries.map(entry => ({
       title: entry.name,
       value: entry.name,
+      ...(entry.description ? { description: entry.description } : {}),
     })),
   });
 
-  if (!response.plugin) {
+  if (!response.plugins || response.plugins.length === 0) {
     logger.info('Cancelled.');
     return null;
   }
 
-  return response.plugin;
+  return response.plugins;
 }
 
 async function resolveInteractiveSkillTargets(

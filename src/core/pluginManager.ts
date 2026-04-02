@@ -34,11 +34,11 @@ import type {
 } from '../types/plugins.js';
 
 export class MultipleBundlePluginsError extends Error {
-  public readonly entries: Array<{ name: string; source: string }>;
+  public readonly entries: Array<{ name: string; source: string; description?: string }>;
 
   constructor(
     pluginDir: string,
-    entries: Array<{ name: string; source: string }>,
+    entries: Array<{ name: string; source: string; description?: string }>,
   ) {
     const names = entries.map(e => e.name).join(', ');
     super(
@@ -292,6 +292,7 @@ export class PluginManager {
     type ClaudeMarketplaceEntry = {
       name?: string;
       source?: string;
+      description?: string;
     };
 
     type ClaudeMarketplaceManifest = {
@@ -307,9 +308,15 @@ export class PluginManager {
     }
 
     const entries = Array.isArray(manifest.plugins)
-      ? manifest.plugins.filter((entry): entry is { name: string; source: string } =>
-        typeof entry?.name === 'string' && typeof entry?.source === 'string'
-      )
+      ? manifest.plugins
+        .filter((entry): entry is { name: string; source: string; description?: string } =>
+          typeof entry?.name === 'string' && typeof entry?.source === 'string'
+        )
+        .map(entry => ({
+          name: entry.name,
+          source: entry.source,
+          ...(typeof entry.description === 'string' ? { description: entry.description } : {}),
+        }))
       : [];
 
     if (entries.length === 0) {
