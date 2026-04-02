@@ -2,20 +2,20 @@
 
 > A CLI tool for managing and configuring AI coding agents
 
-AgentInit transforms AI agent configuration from a fragmented, manual process into a unified, automated workflow that ensures every developer gets consistent, context-aware AI assistance tailored to their project's specific needs.
+Unified CLI for configuring AI coding agents across editors and tools.
 
-## ✨ Features
+## Features
 
-- **🤖 Universal Agent Configuration**: Unified `agents.md` file that syncs with all major AI coding agents
-- **🔍 Smart Stack Detection**: Automatically detects project language, framework, and tools
-- **🔄 Bidirectional Sync**: Keep agent configurations in sync across Claude, Cursor, Windsurf, and more
-- **📦 MCP Management**: Configure, inspect, and verify Model Context Protocol servers
-- **📋 Rules Templates**: Apply coding best practices with predefined rule templates (Git, testing, docs, linting)
-- **🔌 Plugin Marketplace**: Install portable skills and MCP bundles from built-in or custom marketplaces
-- **⚙️ Project Templates**: Pre-built templates for web apps, CLI tools, libraries, and more
-- **🎯 Stack-Aware Guidance**: Customized instructions based on your technology stack
+- **Universal Agent Configuration**: Unified `agents.md` file that syncs with all major AI coding agents
+- **Smart Stack Detection**: Automatically detects project language, framework, and tools
+- **Bidirectional Sync**: Keep agent configurations in sync across Claude, Cursor, Windsurf, and more
+- **MCP Management**: Configure, inspect, and verify Model Context Protocol servers
+- **Rules Templates**: Apply coding best practices with predefined rule templates (Git, testing, docs, linting)
+- **Plugin Marketplace**: Install portable skills and MCP bundles from built-in or custom marketplaces
+- **Project Templates**: Pre-built templates for web apps, CLI tools, libraries, and more
+- **Stack-Aware Guidance**: Customized instructions based on your technology stack
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Installation
 
@@ -51,7 +51,7 @@ agentinit mcp add --verify \
 NO_COLOR=1 agentinit plugins list
 ```
 
-## 📋 Commands
+## Commands
 
 ### `agentinit init`
 
@@ -214,23 +214,7 @@ agentinit skills list --agent agents
 agentinit skills remove openai-docs
 ```
 
-If you run `skills add` without `--agent` or `--yes`, AgentInit prompts for install scope first (`project` or `global`), then prompts for the agent skill directories to target. If no project agent files are detected, it still lets you choose project agent directories manually and points you to `agentinit init` for future auto-detection.
-
-Skills are installed into a canonical store by default: project installs use `.agents/skills/`, and global installs use `~/.agents/skills/`. Agent-specific paths are symlinked to that store when they differ. Use `--agent agents` to target that shared store directly, or `--copy` / `--copy-skills` to force independent copies instead.
-
-OpenClaw participates in the shared project skills ecosystem via `.agents/skills/`, and also exposes a dedicated global skills directory at `~/.openclaw/skills/`. AgentInit treats `~/.openclaw` as an availability signal when offering OpenClaw install targets, but does not count that home-directory marker as a project-level agent detection signal.
-
-Hermes follows the same model: project skills come from `.agents/skills/`, global installs go to `~/.hermes/skills/`, and `~/.hermes` is used only as an availability signal for Hermes install targets.
-
-Some agents share the same native skills directory. For example, Claude Code and Claude Desktop both use `~/.claude/skills/`, so `skills remove --agent ...` will skip deleting that shared path while another agent still depends on it.
-
-The shared `agents` target follows the same safety rule. `skills list --agent agents` shows everything present in the canonical store, and `skills remove --agent agents ...` skips deletion when another concrete agent target still references that canonical skill path.
-
-Bare skill names resolve from your configured default marketplace when one is set. Without a configured default, AgentInit falls back to the public skills catalog used by the open agent skills ecosystem: `vercel-labs/agent-skills`. Use `./name` for a local path, `owner/repo` for an explicit GitHub repository root, `owner/repo/path/to/skill` for a repository subdirectory, or `--from <marketplace>` / `<marketplace>/<name>` for marketplace-backed sources. Three-or-more slash segments are treated as a GitHub repository plus subpath, even when the owner matches a marketplace id. GitHub `tree/...` URLs and `blob/.../SKILL.md` URLs resolve to the referenced skill directory.
-
-Marketplace-backed `skills add` installs only the discovered skills. If a marketplace source also contains MCP servers or other portable components, AgentInit warns and points you to `agentinit plugins install ...` for the full install.
-
-If a marketplace lookup misses and the source still looks like a GitHub repository, AgentInit warns and tries the matching GitHub repo directly as a fallback. Built-in verified repos like `openai/codex-plugin-cc` are marked as verified, and you can add your own exact `owner/repo` entries with `agentinit config verified-repos add ...`. Other fallback repos remain explicitly unverified.
+Skills are installed into a canonical store by default (`.agents/skills/` for project, `~/.agents/skills/` for global), with agent-specific paths symlinked automatically. Bare skill names resolve from your configured default marketplace, falling back to the public catalog at `vercel-labs/agent-skills`. Use `./name` for local paths, `owner/repo` for GitHub repos, or `--from <marketplace>` for explicit marketplace sources.
 
 ### `agentinit plugins`
 
@@ -264,16 +248,7 @@ agentinit plugins list
 agentinit plugins remove code-review
 ```
 
-**Marketplace Rules:**
-- Use `<marketplace>/<plugin>` or `--from <marketplace>` when installing from a marketplace.
-- Bare plugin installs like `agentinit plugins install code-review` resolve through your configured default marketplace when one is set. Without a configured default, AgentInit falls back to the first available marketplace (`agentinit` by default).
-- `plugins search` uses your configured default marketplace when one is set. Without a configured default, it still requires `--from <marketplace>`.
-- `plugins search --category <category>` uses marketplace-specific categories. Examples: Claude uses `official` and `community`, AgentInit/custom marketplaces use `skills`, `mcps`, and `rules`, and OpenAI uses `curated`, `system`, and `experimental`.
-- Implemented marketplaces today include `claude` (Anthropic's Claude plugin marketplace) and `openai` (the OpenAI Codex skills catalog).
-- You can add your own marketplaces with `agentinit config marketplaces add <identifier> <repo-url>`.
-- If a marketplace lookup misses but the source still looks like `owner/repo`, AgentInit warns and tries that GitHub repository directly. Exact repos added with `agentinit config verified-repos add <owner/repo>` are labeled as verified during that fallback.
-- For Claude-format plugins, `plugins install` installs portable skills and MCP servers for compatible selected agents. If a native Claude Code plugin bundle is also present, AgentInit installs that bundle into `~/.claude/plugins` when `claude` is selected, registers the corresponding Claude marketplace metadata, and skips portable skill fallback for any selected agents that share Claude Code's skills directory. Portable MCP installs still apply to other compatible agents.
-- Claude-native plugin payloads are user-scoped and stored under `~/.claude/plugins`, even when the AgentInit install itself is project-scoped.
+Bare plugin names resolve through your configured default marketplace. Built-in marketplaces include `claude` and `openai`; add custom ones with `agentinit config marketplaces add`. For Claude-format plugins, native bundles are installed into `~/.claude/plugins` alongside portable skill and MCP installs.
 
 ### `agentinit config`
 
@@ -311,12 +286,7 @@ agentinit revert --dry-run   # Preview what would be reverted
 agentinit revert --keep-backups
 ```
 
-### Compatibility
-
-`agentinit apply` is now the project-level orchestration command for sync, project skills, and managed ignore state.
-Legacy `agentinit apply --mcp-*`, `--rules`, and related flags still work for backward compatibility, and `agentinit verify_mcp` remains deprecated in favor of `agentinit mcp verify`.
-
-## 🏗️ Project Structure
+## Project Structure
 
 AgentInit creates and manages these key files:
 
@@ -332,7 +302,7 @@ your-project/
 └── .agentinit/               # Managed state and internal backups
 ```
 
-## 📖 Configuration
+## Configuration
 
 ### agents.md Structure
 
@@ -377,23 +347,23 @@ Supported agents today are Claude Code, Claude Desktop, Cursor, Windsurf, GitHub
 
 | Agent | Config File | Status |
 |-------|-------------|--------|
-| Claude | `CLAUDE.md` | ✅ |
-| Claude Desktop | global desktop config | ✅ |
-| Cursor | `.cursorrules` | ✅ |
-| Windsurf | `.windsurfrules` | ✅ |
-| GitHub Copilot | `AGENTS.md`, `.vscode/mcp.json` | ✅ |
-| Aider | `AGENTS.md`, `.aider.conf.yml` | ✅ |
-| Cline | `.clinerules` | ✅ |
-| Codex CLI | `.codex/config.toml` | ✅ |
-| Gemini CLI | `.gemini/settings.json` | ✅ |
-| OpenClaw | `~/.openclaw` presence, `~/.openclaw/skills/` | ✅ skills |
-| Hermes | `~/.hermes` presence, `~/.hermes/skills/` | ✅ skills |
-| RooCode | `AGENTS.md`, `.roo/mcp.json` | ✅ |
-| Zed | `AGENTS.md`, `.zed/settings.json` | ✅ |
-| Droid | `AGENTS.md`, `.factory/mcp.json` | ✅ |
-| Codeium | `.codeium/config.json` | 🚧 |
+| Claude | `CLAUDE.md` | Supported |
+| Claude Desktop | global desktop config | Supported |
+| Cursor | `.cursorrules` | Supported |
+| Windsurf | `.windsurfrules` | Supported |
+| GitHub Copilot | `AGENTS.md`, `.vscode/mcp.json` | Supported |
+| Aider | `AGENTS.md`, `.aider.conf.yml` | Supported |
+| Cline | `.clinerules` | Supported |
+| Codex CLI | `.codex/config.toml` | Supported |
+| Gemini CLI | `.gemini/settings.json` | Supported |
+| OpenClaw | `~/.openclaw` presence, `~/.openclaw/skills/` | Supported (skills) |
+| Hermes | `~/.hermes` presence, `~/.hermes/skills/` | Supported (skills) |
+| RooCode | `AGENTS.md`, `.roo/mcp.json` | Supported |
+| Zed | `AGENTS.md`, `.zed/settings.json` | Supported |
+| Droid | `AGENTS.md`, `.factory/mcp.json` | Supported |
+| Codeium | `.codeium/config.json` | Partial |
 
-## 🔧 Stack Detection
+## Stack Detection
 
 AgentInit automatically detects your project's technology stack:
 
@@ -410,7 +380,7 @@ AgentInit automatically detects your project's technology stack:
 - Go (Go modules)
 - Java (Maven, Gradle)
 
-## 📦 MCP Registry
+## MCP Registry
 
 AgentInit includes a curated registry of popular MCPs:
 
@@ -423,11 +393,11 @@ AgentInit includes a curated registry of popular MCPs:
 | supabase-mcp | database | Supabase integration |
 | git-mcp | version-control | Enhanced Git operations |
 
-## 📚 Library API
+## Library API
 
 AgentInit can be used as a library in your Node.js/TypeScript applications for programmatic MCP server verification and management.
 
-> **📖 Full Documentation:** See [src/lib/verifier/README.md](src/lib/verifier/README.md) for complete API reference, examples, and advanced usage.
+> **Full Documentation:** See [src/lib/verifier/README.md](src/lib/verifier/README.md) for complete API reference, examples, and advanced usage.
 
 ### Installation
 
@@ -455,38 +425,10 @@ const result = await verifier.verifyServer({
 });
 
 if (result.status === 'success') {
-  console.log(`✅ Connected to ${result.server.name}`);
+  console.log(`Connected to ${result.server.name}`);
   console.log(`Tools: ${result.capabilities?.tools.length}`);
   console.log(`Total tokens: ${result.capabilities?.totalToolTokens}`);
 }
-```
-
-### Advanced Features
-
-The verifier supports additional options for detailed inspection:
-
-```typescript
-// Fetch resource contents and prompt templates
-const result = await verifier.verifyServer(
-  serverConfig,
-  {
-    timeout: 15000,
-    includeResourceContents: true,  // Fetch actual resource data
-    includePromptDetails: true,     // Fetch prompt templates
-    includeTokenCounts: true        // Calculate token usage (default)
-  }
-);
-
-// Access detailed tool parameters
-result.capabilities?.tools.forEach(tool => {
-  console.log(`\nTool: ${tool.name}`);
-
-  if (tool.inputSchema?.properties) {
-    Object.entries(tool.inputSchema.properties).forEach(([name, schema]) => {
-      console.log(`  - ${name}: ${schema.type} ${schema.description || ''}`);
-    });
-  }
-});
 ```
 
 ### Submodule Imports
@@ -494,7 +436,6 @@ result.capabilities?.tools.forEach(tool => {
 For better tree-shaking, import from specific submodules:
 
 ```typescript
-// Import specific modules
 import { MCPVerifier } from 'agentinit/verifier';
 import { MCPServerType } from 'agentinit/types';
 import type {
@@ -505,217 +446,9 @@ import type {
 import { countTokens, MCPParser } from 'agentinit/utils';
 ```
 
-### Examples
+> **Note:** For detailed examples, type definitions, and advanced usage patterns, see the [full library documentation](src/lib/verifier/README.md).
 
-#### Verify STDIO MCP Server
-
-```typescript
-import { MCPVerifier, MCPServerType } from 'agentinit';
-
-const verifier = new MCPVerifier(10000); // 10 second timeout
-
-const result = await verifier.verifyServer({
-  name: 'filesystem',
-  type: MCPServerType.STDIO,
-  command: 'npx',
-  args: ['-y', '@modelcontextprotocol/server-filesystem', '/workspace'],
-  env: {
-    NODE_ENV: 'production'
-  }
-});
-
-if (result.status === 'success') {
-  result.capabilities?.tools.forEach(tool => {
-    const tokens = result.capabilities?.toolTokenCounts?.get(tool.name) || 0;
-    console.log(`  • ${tool.name} (${tokens} tokens)`);
-  });
-}
-```
-
-#### Verify HTTP MCP Server
-
-```typescript
-import { MCPVerifier, MCPServerType } from 'agentinit';
-
-const result = await verifier.verifyServer({
-  name: 'github-api',
-  type: MCPServerType.HTTP,
-  url: 'https://api.example.com/mcp',
-  headers: {
-    'Authorization': 'Bearer YOUR_TOKEN',
-    'Content-Type': 'application/json'
-  }
-});
-```
-
-#### Verify Multiple Servers
-
-```typescript
-import { MCPVerifier, MCPServerType } from 'agentinit/verifier';
-
-const servers = [
-  {
-    name: 'everything',
-    type: MCPServerType.STDIO,
-    command: 'npx',
-    args: ['-y', '@modelcontextprotocol/server-everything']
-  },
-  {
-    name: 'api-server',
-    type: MCPServerType.HTTP,
-    url: 'https://api.example.com/mcp'
-  }
-];
-
-const verifier = new MCPVerifier();
-const results = await verifier.verifyServers(servers);
-
-// Display formatted results
-console.log(verifier.formatResults(results));
-
-// Or process results programmatically
-const successful = results.filter(r => r.status === 'success').length;
-console.log(`${successful}/${results.length} servers verified`);
-
-// Inspect tool parameters and token usage
-results.forEach(result => {
-  if (result.status === 'success' && result.capabilities) {
-    console.log(`\n${result.server.name}:`);
-    result.capabilities.tools.forEach(tool => {
-      const tokens = result.capabilities?.toolTokenCounts?.get(tool.name) || 0;
-      console.log(`  • ${tool.name} (${tokens} tokens)`);
-    });
-  }
-});
-```
-
-#### Count Tokens
-
-```typescript
-import { countTokens } from 'agentinit/utils';
-
-const text = 'Hello, world!';
-const tokens = countTokens(text);
-console.log(`Token count: ${tokens}`);
-```
-
-#### Parse MCP Configuration
-
-```typescript
-import { MCPParser } from 'agentinit/utils';
-
-const args = ['--mcp-stdio', 'test', 'node', 'server.js', '--args', 'arg1 arg2'];
-const parsed = MCPParser.parseArguments(args);
-
-console.log(parsed.servers); // Array of MCPServerConfig
-```
-
-### API Reference
-
-#### MCPVerifier
-
-**Constructor**
-```typescript
-new MCPVerifier(defaultTimeout?: number)
-```
-
-**Methods**
-- `verifyServer(config: MCPServerConfig, options?: MCPVerificationOptions): Promise<MCPVerificationResult>` - Verify a single MCP server
-- `verifyServers(configs: MCPServerConfig[], options?: MCPVerificationOptions): Promise<MCPVerificationResult[]>` - Verify multiple servers in parallel
-- `formatResults(results: MCPVerificationResult[]): string` - Format verification results for display
-
-**MCPVerificationOptions**
-```typescript
-interface MCPVerificationOptions {
-  timeout?: number;                    // Connection timeout (ms)
-  includeResourceContents?: boolean;   // Fetch resource data
-  includePromptDetails?: boolean;      // Fetch prompt templates
-  includeTokenCounts?: boolean;        // Calculate tokens (default: true)
-}
-```
-
-#### Types
-
-**MCPServerType**
-```typescript
-enum MCPServerType {
-  STDIO = 'stdio',
-  HTTP = 'http',
-  SSE = 'sse'
-}
-```
-
-**MCPServerConfig**
-```typescript
-interface MCPServerConfig {
-  name: string;
-  type: MCPServerType;
-
-  // For STDIO servers
-  command?: string;
-  args?: string[];
-  env?: Record<string, string>;
-
-  // For HTTP/SSE servers
-  url?: string;
-  headers?: Record<string, string>;
-}
-```
-
-**MCPVerificationResult**
-```typescript
-interface MCPVerificationResult {
-  server: MCPServerConfig;
-  status: 'success' | 'error' | 'timeout';
-  capabilities?: MCPCapabilities;
-  error?: string;
-  connectionTime?: number;
-}
-```
-
-**MCPCapabilities**
-```typescript
-interface MCPCapabilities {
-  tools: MCPTool[];           // Available tools with input schemas
-  resources: MCPResource[];   // Available resources (with optional contents)
-  prompts: MCPPrompt[];       // Available prompts (with optional templates)
-  serverInfo?: {
-    name: string;
-    version: string;
-  };
-  totalToolTokens?: number;         // Total token usage for all tools
-  toolTokenCounts?: Map<string, number>;  // Token count per tool
-}
-
-interface MCPTool {
-  name: string;
-  description?: string;
-  inputSchema?: any;  // JSON Schema defining parameters
-}
-
-interface MCPResource {
-  uri: string;
-  name?: string;
-  description?: string;
-  mimeType?: string;
-  contents?: string | Uint8Array;  // Only if includeResourceContents is true
-}
-
-interface MCPPrompt {
-  name: string;
-  description?: string;
-  arguments?: Array<{
-    name: string;
-    description?: string;
-    required?: boolean;
-  }>;
-  template?: string;  // Only if includePromptDetails is true
-}
-```
-
-> **📝 Note:** For detailed examples on working with tool parameters, resource contents, and prompt templates, see the [full library documentation](src/lib/verifier/README.md).
-
-## 🛠️ Development
+## Development
 
 ### Building from Source
 
@@ -753,20 +486,16 @@ src/
 └── types/            # TypeScript definitions
 ```
 
-## 🤝 Contributing
+## Contributing
 
 We welcome contributions! Please see our [contributing guidelines](CONTRIBUTING.md) for details.
 
-## 📄 License
+## License
 
 MIT License - see [LICENSE](LICENSE) file for details.
 
-## 🔗 Links
+## Links
 
 - [Documentation](https://docs.agentinit.dev)
 - [MCP Registry](https://registry.agentinit.dev)
 - [GitHub Issues](https://github.com/agentinit/agentinit/issues)
-
----
-
-**AgentInit** - Unify your AI agent configurations, amplify your development workflow.
