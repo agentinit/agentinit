@@ -1,3 +1,10 @@
+# [1.17.0](https://github.com/agentinit/agentinit/compare/v1.16.2...v1.17.0) (2026-04-02)
+
+
+### Features
+
+* **skills:** add shared AGENTS install target ([4815ab1](https://github.com/agentinit/agentinit/commit/4815ab1d9c6c1dd9567c89dac6a6e9de0bb1aae8))
+
 ## [1.16.2](https://github.com/agentinit/agentinit/compare/v1.16.1...v1.16.2) (2026-04-01)
 
 
