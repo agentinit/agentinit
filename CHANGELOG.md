@@ -1,3 +1,10 @@
+## [1.17.2](https://github.com/agentinit/agentinit/compare/v1.17.1...v1.17.2) (2026-04-02)
+
+
+### Bug Fixes
+
+* handle multi-bundle plugin selection safely ([840b75d](https://github.com/agentinit/agentinit/commit/840b75d765defe9118f4cb79fa402a7310171396))
+
 ## [1.17.1](https://github.com/agentinit/agentinit/compare/v1.17.0...v1.17.1) (2026-04-02)
 
 
