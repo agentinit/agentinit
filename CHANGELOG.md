@@ -1,3 +1,10 @@
+# [1.18.0](https://github.com/agentinit/agentinit/compare/v1.17.2...v1.18.0) (2026-04-04)
+
+
+### Features
+
+* **cli:** support selecting all bundled plugins ([2e533d7](https://github.com/agentinit/agentinit/commit/2e533d7bea4d6fd4c0c2a74982b169e80d9192bd))
+
 ## [1.17.2](https://github.com/agentinit/agentinit/compare/v1.17.1...v1.17.2) (2026-04-02)
 
 
