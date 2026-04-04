@@ -5,6 +5,7 @@ import { homedir } from 'os';
 import { dirname, relative, resolve } from 'path';
 import { green, dim, bold, cyan, yellow, orange } from '../utils/colors.js';
 import { logger } from '../utils/logger.js';
+import { promptMultiselect, selectBundlePlugins } from '../utils/promptUtils.js';
 import { MultipleBundlePluginsError, PluginManager } from '../core/pluginManager.js';
 import { AgentManager } from '../core/agentManager.js';
 import { getConfiguredDefaultMarketplaceId, getMarketplaceCategories } from '../core/marketplaceRegistry.js';
@@ -51,6 +52,7 @@ export function registerPluginsCommand(program: Command): void {
     .option('-a, --agent <agents...>', 'Target specific agent(s)')
     .option('-g, --global', 'Install globally')
     .option('--copy-skills', 'Copy plugin skills instead of using canonical symlink installs')
+    .option('--all', 'Select all bundled plugins when the source contains multiple plugins')
     .option('-l, --list', 'Preview plugin contents without installing')
     .option('-y, --yes', 'Skip confirmation prompts, auto-detect project-configured agents')
     .action(async (source: string, options) => {
@@ -97,7 +99,7 @@ export function registerPluginsCommand(program: Command): void {
         } catch (error) {
           if (error instanceof MultipleBundlePluginsError) {
             spinner.stop();
-            const selected = await selectBundlePlugins(error, 'preview');
+            const selected = await selectBundlePlugins(error.entries, 'preview', { selectAll: options.all });
             if (!selected) {
               return;
             }
@@ -167,7 +169,7 @@ export function registerPluginsCommand(program: Command): void {
         } catch (error) {
           if (error instanceof MultipleBundlePluginsError) {
             previewSpinner.stop();
-            const selected = await selectBundlePlugins(error, 'install');
+            const selected = await selectBundlePlugins(error.entries, 'install', { selectAll: options.all });
             if (!selected) {
               return;
             }
@@ -287,9 +289,9 @@ export function registerPluginsCommand(program: Command): void {
 
           logger.success('Plugin installation complete.');
         } catch (error) {
-          if (error instanceof MultipleBundlePluginsError && !options.yes) {
+          if (error instanceof MultipleBundlePluginsError && (options.all || !options.yes)) {
             spinner.stop();
-            const selected = await selectBundlePlugins(error, 'install');
+            const selected = await selectBundlePlugins(error.entries, 'install', { selectAll: options.all });
             if (!selected) {
               return;
             }
@@ -477,32 +479,6 @@ export function registerPluginsCommand(program: Command): void {
         logger.error(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
       }
     });
-}
-
-async function selectBundlePlugins(
-  error: MultipleBundlePluginsError,
-  actionLabel: string,
-): Promise<string[] | null> {
-  logger.info(dim('Press Space to select, then Enter to confirm.'));
-  const response = await prompts({
-    type: 'multiselect',
-    name: 'plugins',
-    message: `This repository contains multiple plugins. Select which to ${actionLabel}:`,
-    instructions: false,
-    min: 1,
-    choices: error.entries.map(entry => ({
-      title: entry.name,
-      value: entry.name,
-      ...(entry.description ? { description: entry.description } : {}),
-    })),
-  });
-
-  if (!response.plugins || response.plugins.length === 0) {
-    logger.info('Cancelled.');
-    return null;
-  }
-
-  return response.plugins;
 }
 
 function formatPathForDisplay(pathValue: string, projectPath: string): string {
@@ -996,13 +972,11 @@ async function interactiveAgentSelect(
     return { aborted: true };
   }
 
-  const response = await prompts({
-    type: 'multiselect',
+  const response = await promptMultiselect<string[]>({
     name: 'groups',
     message: installGlobal
       ? 'Select which global agents should receive this plugin:'
       : 'Select which agents should receive this plugin:',
-    instructions: false,
     min: 1,
     choices: groups.map(group => {
       const compatible = group.compatibleAgentNames.length > 0

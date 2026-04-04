@@ -5,6 +5,7 @@ import { homedir } from 'os';
 import { relative, resolve } from 'path';
 import { green, dim } from 'kleur/colors';
 import { logger } from '../utils/logger.js';
+import { promptMultiselect, selectBundlePlugins } from '../utils/promptUtils.js';
 import { SkillsManager } from '../core/skillsManager.js';
 import { MultipleBundlePluginsError } from '../core/pluginManager.js';
 import { getMarketplaceIds } from '../core/marketplaceRegistry.js';
@@ -49,6 +50,7 @@ export function registerSkillsCommand(program: Command): void {
     .option('-a, --agent <agents...>', 'Target specific agent(s)')
     .option('-s, --skill <names...>', 'Install only specific skills by name')
     .option('-l, --list', 'List available skills from the source without installing')
+    .option('--all', 'Select all bundled plugins when the source contains multiple plugins')
     .option('--copy', 'Copy skill files instead of symlinking')
     .option('-y, --yes', 'Skip prompts and auto-detect project-configured agents only')
     .action(async (source: string, options) => {
@@ -69,7 +71,7 @@ export function registerSkillsCommand(program: Command): void {
         } catch (error) {
           if (error instanceof MultipleBundlePluginsError) {
             spinner.stop();
-            const selected = await selectBundlePlugins(error, 'list');
+            const selected = await selectBundlePlugins(error.entries, 'list', { selectAll: options.all });
             if (!selected) {
               return;
             }
@@ -103,9 +105,9 @@ export function registerSkillsCommand(program: Command): void {
         });
         verifySpinner.stop();
       } catch (error) {
-        if (error instanceof MultipleBundlePluginsError && !options.yes) {
+        if (error instanceof MultipleBundlePluginsError && (options.all || !options.yes)) {
           verifySpinner.stop();
-          const selected = await selectBundlePlugins(error, 'install');
+          const selected = await selectBundlePlugins(error.entries, 'install', { selectAll: options.all });
           if (!selected) {
             return;
           }
@@ -301,32 +303,6 @@ export function registerSkillsCommand(program: Command): void {
     });
 }
 
-async function selectBundlePlugins(
-  error: MultipleBundlePluginsError,
-  actionLabel: string,
-): Promise<string[] | null> {
-  logger.info(dim('Press Space to select, then Enter to confirm.'));
-  const response = await prompts({
-    type: 'multiselect',
-    name: 'plugins',
-    message: `This repository contains multiple plugins. Select which to ${actionLabel}:`,
-    instructions: false,
-    min: 1,
-    choices: error.entries.map(entry => ({
-      title: entry.name,
-      value: entry.name,
-      ...(entry.description ? { description: entry.description } : {}),
-    })),
-  });
-
-  if (!response.plugins || response.plugins.length === 0) {
-    logger.info('Cancelled.');
-    return null;
-  }
-
-  return response.plugins;
-}
-
 async function resolveInteractiveSkillTargets(
   skillsManager: SkillsManager,
   agentManager: AgentManager,
@@ -385,15 +361,13 @@ async function resolveInteractiveSkillTargets(
     logger.info('Select project agent directories manually. Run `agentinit init` if you want future installs to auto-detect.');
   }
 
-  const response = await prompts({
-    type: 'multiselect',
+  const response = await promptMultiselect<string[]>({
     name: 'groups',
     message: installGlobal
       ? 'Select which global agent skills directories to install into:'
       : detectedGroups.length > 0
         ? 'Select which project agent skills directories to install into:'
         : 'Select which project agent skills directories to install into manually:',
-    instructions: false,
     min: 1,
     choices: availableGroups.map(group => ({
       title: formatSkillGroupTitle(group),

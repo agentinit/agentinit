@@ -365,6 +365,47 @@ describe('skills command', () => {
     expect(errorSpy).toHaveBeenCalledWith('Error: Repository not found');
   });
 
+  it('uses --all to list every bundled plugin without prompting', async () => {
+    const infoSpy = vi.spyOn(logger, 'info').mockImplementation(() => {});
+    const entries = [
+      { name: 'alpha', source: './plugins/alpha' },
+      { name: 'beta', source: './plugins/beta' },
+    ];
+    const bundleError = new MultipleBundlePluginsError('/tmp/test', entries);
+
+    const discoverSourceSpy = vi.spyOn(SkillsManager.prototype, 'discoverFromSource');
+    discoverSourceSpy
+      .mockRejectedValueOnce(bundleError)
+      .mockResolvedValueOnce({ skills: [], warnings: [] })
+      .mockResolvedValueOnce({ skills: [], warnings: [] });
+
+    const program = new Command();
+    registerSkillsCommand(program);
+
+    await program.parseAsync([
+      'skills',
+      'add',
+      TEST_GITHUB_SKILL_SOURCE,
+      '--list',
+      '--all',
+    ], { from: 'user' });
+
+    expect(promptsMock).not.toHaveBeenCalled();
+    expect(infoSpy).toHaveBeenCalledWith('Selecting all bundled plugins (--all).');
+    expect(discoverSourceSpy).toHaveBeenNthCalledWith(
+      2,
+      TEST_GITHUB_SKILL_SOURCE,
+      expect.any(String),
+      expect.objectContaining({ pluginName: 'alpha' }),
+    );
+    expect(discoverSourceSpy).toHaveBeenNthCalledWith(
+      3,
+      TEST_GITHUB_SKILL_SOURCE,
+      expect.any(String),
+      expect.objectContaining({ pluginName: 'beta' }),
+    );
+  });
+
   it('prompts for plugin selection when MultipleBundlePluginsError is thrown', async () => {
     const entries = [
       { name: 'alpha', source: './plugins/alpha' },
@@ -439,7 +480,7 @@ describe('skills command', () => {
 
     await program.parseAsync(['skills', 'add', TEST_GITHUB_SKILL_SOURCE, '--agent', 'claude'], { from: 'user' });
 
-    expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('Press Space to select'));
+    expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('A to select or deselect all'));
     expect(prepareSourceSpy).toHaveBeenCalledTimes(3);
     expect(addFromSourceSpy).toHaveBeenNthCalledWith(
       1,
@@ -452,6 +493,46 @@ describe('skills command', () => {
       TEST_GITHUB_SKILL_SOURCE,
       expect.any(String),
       expect.objectContaining({ pluginName: 'beta', agents: ['claude'] }),
+    );
+  });
+
+  it('uses --all to install every bundled plugin without prompting, including with --yes', async () => {
+    const infoSpy = vi.spyOn(logger, 'info').mockImplementation(() => {});
+    const entries = [
+      { name: 'alpha', source: './plugins/alpha' },
+      { name: 'beta', source: './plugins/beta' },
+    ];
+    const bundleError = new MultipleBundlePluginsError('/tmp/test', entries);
+
+    const prepareSourceSpy = vi.spyOn(SkillsManager.prototype, 'prepareSource');
+    prepareSourceSpy.mockRejectedValueOnce(bundleError);
+    prepareSourceSpy
+      .mockResolvedValueOnce({ skills: [], warnings: [] })
+      .mockResolvedValueOnce({ skills: [], warnings: [] });
+
+    const addFromSourceSpy = vi.spyOn(SkillsManager.prototype, 'addFromSource');
+    addFromSourceSpy
+      .mockResolvedValueOnce({ installed: [], skipped: [], warnings: [] })
+      .mockResolvedValueOnce({ installed: [], skipped: [], warnings: [] });
+
+    const program = new Command();
+    registerSkillsCommand(program);
+
+    await program.parseAsync(['skills', 'add', TEST_GITHUB_SKILL_SOURCE, '--all', '--yes', '--agent', 'claude'], { from: 'user' });
+
+    expect(promptsMock).not.toHaveBeenCalled();
+    expect(infoSpy).toHaveBeenCalledWith('Selecting all bundled plugins (--all).');
+    expect(addFromSourceSpy).toHaveBeenNthCalledWith(
+      1,
+      TEST_GITHUB_SKILL_SOURCE,
+      expect.any(String),
+      expect.objectContaining({ pluginName: 'alpha', agents: ['claude'], yes: true }),
+    );
+    expect(addFromSourceSpy).toHaveBeenNthCalledWith(
+      2,
+      TEST_GITHUB_SKILL_SOURCE,
+      expect.any(String),
+      expect.objectContaining({ pluginName: 'beta', agents: ['claude'], yes: true }),
     );
   });
 

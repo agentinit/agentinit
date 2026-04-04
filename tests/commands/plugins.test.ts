@@ -268,6 +268,71 @@ describe('plugins command', () => {
     expect(treeSpy).not.toHaveBeenCalledWith(expect.stringContaining('Verified GitHub repository: https://github.com/acme/community-plugin'), expect.any(Boolean));
   });
 
+  it('uses --all to preview every bundled plugin without prompting', async () => {
+    const infoSpy = vi.spyOn(logger, 'info').mockImplementation(() => {});
+    vi.spyOn(logger, 'titleBox').mockImplementation(() => {});
+
+    const entries = [
+      { name: 'alpha', source: './plugins/alpha' },
+      { name: 'beta', source: './plugins/beta' },
+    ];
+    const bundleError = new MultipleBundlePluginsError('/tmp/test', entries);
+
+    const inspectPluginSpy = vi.spyOn(PluginManager.prototype, 'inspectPlugin');
+    inspectPluginSpy
+      .mockRejectedValueOnce(bundleError)
+      .mockResolvedValueOnce({
+        plugin: {
+          name: 'alpha',
+          version: '1.0.0',
+          description: 'Alpha plugin',
+          format: 'claude',
+          source: { type: 'github', url: 'https://github.com/example/multi-bundle.git' },
+          skills: [],
+          mcpServers: [],
+          warnings: [],
+        },
+        nativePreview: null,
+      } as never)
+      .mockResolvedValueOnce({
+        plugin: {
+          name: 'beta',
+          version: '1.0.0',
+          description: 'Beta plugin',
+          format: 'claude',
+          source: { type: 'github', url: 'https://github.com/example/multi-bundle.git' },
+          skills: [],
+          mcpServers: [],
+          warnings: [],
+        },
+        nativePreview: null,
+      } as never);
+
+    const program = new Command();
+    registerPluginsCommand(program);
+
+    await program.parseAsync([
+      'plugins',
+      'install',
+      'https://github.com/example/multi-bundle',
+      '--list',
+      '--all',
+    ], { from: 'user' });
+
+    expect(vi.mocked(prompts)).not.toHaveBeenCalled();
+    expect(infoSpy).toHaveBeenCalledWith('Selecting all bundled plugins (--all).');
+    expect(inspectPluginSpy).toHaveBeenNthCalledWith(
+      2,
+      'https://github.com/example/multi-bundle',
+      expect.objectContaining({ pluginName: 'alpha' }),
+    );
+    expect(inspectPluginSpy).toHaveBeenNthCalledWith(
+      3,
+      'https://github.com/example/multi-bundle',
+      expect.objectContaining({ pluginName: 'beta' }),
+    );
+  });
+
   it('warns explicitly when Claude-native install is skipped after deselecting Claude', async () => {
     process.env.HOME = '/Users/tester';
 
@@ -752,7 +817,7 @@ describe('plugins command', () => {
 
     await program.parseAsync(['plugins', 'install', 'https://github.com/example/multi-bundle'], { from: 'user' });
 
-    expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('Press Space to select'));
+    expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('A to select or deselect all'));
     const groupPrompt = vi.mocked(prompts).mock.calls[1]?.[0] as { choices?: Array<{ title: string; description?: string }> };
     expect(groupPrompt.choices).toEqual(expect.arrayContaining([
       expect.objectContaining({
@@ -772,6 +837,78 @@ describe('plugins command', () => {
       'https://github.com/example/multi-bundle',
       process.cwd(),
       expect.objectContaining({ pluginName: 'beta', agents: ['claude'] }),
+    );
+  });
+
+  it('uses --all to install every bundled plugin without prompting, including with --yes', async () => {
+    const infoSpy = vi.spyOn(logger, 'info').mockImplementation(() => {});
+    const entries = [
+      { name: 'alpha', source: './plugins/alpha' },
+      { name: 'beta', source: './plugins/beta' },
+    ];
+    const bundleError = new MultipleBundlePluginsError('/tmp/test', entries);
+
+    vi.spyOn(PluginManager.prototype, 'installPlugin')
+      .mockRejectedValueOnce(bundleError)
+      .mockResolvedValueOnce({
+        plugin: {
+          name: 'alpha',
+          version: '1.0.0',
+          description: '',
+          source: { type: 'github' as const },
+          format: 'claude' as const,
+          skills: [],
+          mcpServers: [],
+          warnings: [],
+        },
+        skills: { installed: [], skipped: [] },
+        mcpServers: { applied: [], skipped: [] },
+        nativePlugins: { installed: [], skipped: [] },
+        warnings: [],
+      } as never)
+      .mockResolvedValueOnce({
+        plugin: {
+          name: 'beta',
+          version: '1.0.0',
+          description: '',
+          source: { type: 'github' as const },
+          format: 'claude' as const,
+          skills: [],
+          mcpServers: [],
+          warnings: [],
+        },
+        skills: { installed: [], skipped: [] },
+        mcpServers: { applied: [], skipped: [] },
+        nativePlugins: { installed: [], skipped: [] },
+        warnings: [],
+      } as never);
+
+    const program = new Command();
+    registerPluginsCommand(program);
+
+    await program.parseAsync([
+      'plugins',
+      'install',
+      'https://github.com/example/multi-bundle',
+      '--all',
+      '--yes',
+      '--agent',
+      'claude',
+    ], { from: 'user' });
+
+    expect(vi.mocked(prompts)).not.toHaveBeenCalled();
+    expect(infoSpy).toHaveBeenCalledWith('Selecting all bundled plugins (--all).');
+    expect(PluginManager.prototype.installPlugin).toHaveBeenNthCalledWith(
+      2,
+      'https://github.com/example/multi-bundle',
+      process.cwd(),
+      expect.objectContaining({ pluginName: 'alpha', agents: ['claude'], yes: true }),
+    );
+    expect(PluginManager.prototype.installPlugin).toHaveBeenNthCalledWith(
+      3,
+      'https://github.com/example/multi-bundle',
+      process.cwd(),
+      expect.objectContaining({ pluginName: 'beta', agents: ['claude'], yes: true }),
     );
   });
 
