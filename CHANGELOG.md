@@ -1,3 +1,10 @@
+## [1.18.1](https://github.com/agentinit/agentinit/compare/v1.18.0...v1.18.1) (2026-04-05)
+
+
+### Bug Fixes
+
+* **skills:** compare full skill payloads before updates ([4b1e27c](https://github.com/agentinit/agentinit/commit/4b1e27cc69264d46edb38c2f6435b7f2659cfdb3))
+
 ## [Unreleased]
 
 
