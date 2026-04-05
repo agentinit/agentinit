@@ -1,3 +1,10 @@
+## [1.18.2](https://github.com/agentinit/agentinit/compare/v1.18.1...v1.18.2) (2026-04-05)
+
+
+### Bug Fixes
+
+* **skills:** preview install status during target selection ([97d93ec](https://github.com/agentinit/agentinit/commit/97d93ecb73d6522d2e10b6133eb8b050826c3849))
+
 ## [1.18.1](https://github.com/agentinit/agentinit/compare/v1.18.0...v1.18.1) (2026-04-05)
 
 
