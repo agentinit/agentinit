@@ -12,6 +12,7 @@ const { promptsMock, oraMock, spinner } = vi.hoisted(() => {
   const spinner = {
     start: vi.fn(),
     stop: vi.fn(),
+    info: vi.fn(),
     warn: vi.fn(),
     succeed: vi.fn(),
     fail: vi.fn(),
@@ -59,6 +60,7 @@ describe('skills command', () => {
     oraMock.mockClear();
     spinner.start.mockClear();
     spinner.stop.mockClear();
+    spinner.info.mockClear();
     spinner.warn.mockClear();
     spinner.succeed.mockClear();
     spinner.fail.mockClear();
@@ -84,6 +86,8 @@ describe('skills command', () => {
           mode: 'copy',
         },
       ],
+      updated: [],
+      unchanged: [],
       skipped: [],
       warnings: [],
     });
@@ -131,6 +135,8 @@ describe('skills command', () => {
           mode: 'copy',
         },
       ],
+      updated: [],
+      unchanged: [],
       skipped: [],
       warnings: [],
     });
@@ -178,6 +184,8 @@ describe('skills command', () => {
           mode: 'copy',
         },
       ],
+      updated: [],
+      unchanged: [],
       skipped: [],
       warnings: [],
     });
@@ -228,6 +236,8 @@ describe('skills command', () => {
           mode: 'symlink',
         },
       ],
+      updated: [],
+      unchanged: [],
       skipped: [],
       warnings: [],
     });
@@ -274,6 +284,8 @@ describe('skills command', () => {
           mode: 'symlink',
         },
       ],
+      updated: [],
+      unchanged: [],
       skipped: [],
       warnings: [],
     });
@@ -305,6 +317,8 @@ describe('skills command', () => {
     });
     vi.spyOn(SkillsManager.prototype, 'addFromSource').mockResolvedValue({
       installed: [],
+      updated: [],
+      unchanged: [],
       skipped: [
         {
           skill: {
@@ -363,6 +377,83 @@ describe('skills command', () => {
     expect(promptsMock).not.toHaveBeenCalled();
     expect(spinner.fail).toHaveBeenCalledWith('Failed to verify skill source');
     expect(errorSpy).toHaveBeenCalledWith('Error: Repository not found');
+  });
+
+  it('passes an update confirmation callback that prompts before overwriting changed skills', async () => {
+    vi.spyOn(SkillsManager.prototype, 'prepareSource').mockResolvedValue({
+      skills: [],
+      warnings: [],
+    });
+
+    let confirmUpdate: ((skills: Array<{ name: string; description: string; path: string }>) => Promise<Array<{ name: string; description: string; path: string }>>) | undefined;
+    vi.spyOn(SkillsManager.prototype, 'addFromSource').mockImplementation(async (_source, _cwd, options) => {
+      confirmUpdate = options?.confirmUpdate;
+      return {
+        installed: [],
+        updated: [],
+        unchanged: [],
+        skipped: [],
+        warnings: [],
+      };
+    });
+
+    promptsMock.mockResolvedValueOnce({ update: true });
+
+    const program = new Command();
+    registerSkillsCommand(program);
+
+    await program.parseAsync(['skills', 'add', 'claude/skill-creator', '--agent', 'claude'], { from: 'user' });
+
+    expect(confirmUpdate).toBeTypeOf('function');
+    const selected = await confirmUpdate!([
+      {
+        name: 'skill-creator',
+        description: 'Create skills',
+        path: '/tmp/skill-creator',
+      },
+    ]);
+
+    expect(promptsMock).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'confirm',
+      name: 'update',
+      message: 'Skill "skill-creator" has been updated. Update it?',
+      initial: true,
+    }));
+    expect(selected).toHaveLength(1);
+    expect(selected[0]?.name).toBe('skill-creator');
+  });
+
+  it('shows an up-to-date summary when installed skills do not need changes', async () => {
+    const infoSpy = vi.spyOn(logger, 'info').mockImplementation(() => {});
+    vi.spyOn(SkillsManager.prototype, 'prepareSource').mockResolvedValue({
+      skills: [],
+      warnings: [],
+    });
+    vi.spyOn(SkillsManager.prototype, 'addFromSource').mockResolvedValue({
+      installed: [],
+      updated: [],
+      unchanged: [
+        {
+          skill: {
+            name: 'skill-creator',
+            description: 'Create skills',
+            path: '/tmp/skill-creator',
+          },
+          agent: 'claude',
+          path: '/tmp/.agents/skills/skill-creator',
+        },
+      ],
+      skipped: [],
+      warnings: [],
+    });
+
+    const program = new Command();
+    registerSkillsCommand(program);
+
+    await program.parseAsync(['skills', 'add', 'claude/skill-creator', '--agent', 'claude'], { from: 'user' });
+
+    expect(spinner.info).toHaveBeenCalledWith('1 skill(s) already up to date');
+    expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('Already installed: skill-creator'));
   });
 
   it('uses --all to list every bundled plugin without prompting', async () => {
@@ -427,6 +518,8 @@ describe('skills command', () => {
 
     const addFromSourceSpy = vi.spyOn(SkillsManager.prototype, 'addFromSource').mockResolvedValue({
       installed: [],
+      updated: [],
+      unchanged: [],
       skipped: [],
       warnings: [],
     });
@@ -472,8 +565,8 @@ describe('skills command', () => {
 
     const addFromSourceSpy = vi.spyOn(SkillsManager.prototype, 'addFromSource');
     addFromSourceSpy
-      .mockResolvedValueOnce({ installed: [], skipped: [], warnings: [] })
-      .mockResolvedValueOnce({ installed: [], skipped: [], warnings: [] });
+      .mockResolvedValueOnce({ installed: [], updated: [], unchanged: [], skipped: [], warnings: [] })
+      .mockResolvedValueOnce({ installed: [], updated: [], unchanged: [], skipped: [], warnings: [] });
 
     const program = new Command();
     registerSkillsCommand(program);
@@ -512,8 +605,8 @@ describe('skills command', () => {
 
     const addFromSourceSpy = vi.spyOn(SkillsManager.prototype, 'addFromSource');
     addFromSourceSpy
-      .mockResolvedValueOnce({ installed: [], skipped: [], warnings: [] })
-      .mockResolvedValueOnce({ installed: [], skipped: [], warnings: [] });
+      .mockResolvedValueOnce({ installed: [], updated: [], unchanged: [], skipped: [], warnings: [] })
+      .mockResolvedValueOnce({ installed: [], updated: [], unchanged: [], skipped: [], warnings: [] });
 
     const program = new Command();
     registerSkillsCommand(program);

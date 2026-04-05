@@ -3,7 +3,7 @@ import ora from 'ora';
 import prompts from 'prompts';
 import { homedir } from 'os';
 import { relative, resolve } from 'path';
-import { green, dim } from 'kleur/colors';
+import { green, yellow, dim } from 'kleur/colors';
 import { logger } from '../utils/logger.js';
 import { promptMultiselect, selectBundlePlugins } from '../utils/promptUtils.js';
 import { SkillsManager } from '../core/skillsManager.js';
@@ -52,7 +52,7 @@ export function registerSkillsCommand(program: Command): void {
     .option('-l, --list', 'List available skills from the source without installing')
     .option('--all', 'Select all bundled plugins when the source contains multiple plugins')
     .option('--copy', 'Copy skill files instead of symlinking')
-    .option('-y, --yes', 'Skip prompts and auto-detect project-configured agents only')
+    .option('-y, --yes', 'Skip prompts, auto-detect project-configured agents, and apply available skill updates')
     .action(async (source: string, options) => {
       logger.titleBox('AgentInit  Skills');
 
@@ -159,6 +159,21 @@ export function registerSkillsCommand(program: Command): void {
       }
 
       // Install skills
+      const confirmUpdate = options.yes
+        ? undefined
+        : async (skills: SkillInfo[]) => {
+            const names = skills.map(s => s.name).join(', ');
+            const response = await prompts({
+              type: 'confirm',
+              name: 'update',
+              message: skills.length === 1
+                ? `Skill "${skills[0]!.name}" has been updated. Update it?`
+                : `${skills.length} skill(s) have updates (${names}). Update them?`,
+              initial: true,
+            });
+            return response.update ? skills : [];
+          };
+
       const buildInstallOptions = (pluginName?: string) => ({
         ...(options.from !== undefined ? { from: options.from } : {}),
         ...(targetGlobal !== undefined ? { global: targetGlobal } : {}),
@@ -167,6 +182,7 @@ export function registerSkillsCommand(program: Command): void {
         ...(options.copy !== undefined ? { copy: options.copy } : {}),
         ...(pluginName !== undefined ? { pluginName } : {}),
         ...(options.yes !== undefined ? { yes: options.yes } : {}),
+        ...(confirmUpdate !== undefined ? { confirmUpdate } : {}),
       });
 
       const pluginsToInstall = selectedPluginNames || [undefined];
@@ -721,7 +737,12 @@ function displayInstallResult(
   source: string,
   options: { from?: string },
 ): void {
-  if (result.installed.length === 0 && result.skipped.length === 0) {
+  const hasInstalled = result.installed.length > 0;
+  const hasUpdated = result.updated.length > 0;
+  const hasUnchanged = result.unchanged.length > 0;
+  const hasSkipped = result.skipped.length > 0;
+
+  if (!hasInstalled && !hasUpdated && !hasUnchanged && !hasSkipped) {
     spinner.warn('No skills found in the source.');
     for (const warning of result.warnings) {
       logger.warn(warning);
@@ -729,7 +750,7 @@ function displayInstallResult(
     return;
   }
 
-  if (result.installed.length === 0 && result.skipped.length > 0 && result.skipped.every(skip => skip.reason === 'No target agents found')) {
+  if (!hasInstalled && !hasUpdated && !hasUnchanged && hasSkipped && result.skipped.every(skip => skip.reason === 'No target agents found')) {
     spinner.warn('No target agents found.');
     logNoTargetAgentsGuidance(skillsManager, agentManager, source, {
       ...(options.from !== undefined ? { from: options.from } : {}),
@@ -744,36 +765,75 @@ function displayInstallResult(
     return;
   }
 
-  const uniqueInstallCount = new Set(
-    result.installed.map(item => `${item.path}:${item.skill.name}`)
-  ).size;
-  spinner.succeed(`Installed ${green(String(uniqueInstallCount))} skill(s)`);
+  // Build summary message
+  if (!hasInstalled && !hasUpdated && hasUnchanged) {
+    const uniqueUnchanged = new Set(result.unchanged.map(item => item.skill.name));
+    spinner.info(`${uniqueUnchanged.size} skill(s) already up to date`);
+    logger.info(dim(`  Already installed: ${[...uniqueUnchanged].join(', ')}`));
+  } else {
+    const parts: string[] = [];
+    if (hasInstalled) {
+      const uniqueInstallCount = new Set(
+        result.installed.map(item => `${item.path}:${item.skill.name}`)
+      ).size;
+      parts.push(`Installed ${green(String(uniqueInstallCount))}`);
+    }
+    if (hasUpdated) {
+      const uniqueUpdateCount = new Set(
+        result.updated.map(item => `${item.path}:${item.skill.name}`)
+      ).size;
+      parts.push(`Updated ${yellow(String(uniqueUpdateCount))}`);
+    }
+    if (hasUnchanged) {
+      const uniqueUnchanged = new Set(result.unchanged.map(item => item.skill.name)).size;
+      parts.push(`${uniqueUnchanged} already up to date`);
+    }
+    spinner.succeed(`${parts.join(', ')} skill(s)`);
 
-  // Show per-path breakdown
-  const byPath = new Map<string, { agents: Set<string>; skills: Set<string> }>();
-  for (const item of result.installed) {
-    const path = item.path;
-    const existing = byPath.get(path) || {
-      agents: new Set<string>(),
-      skills: new Set<string>(),
-    };
-    existing.agents.add(formatSkillTargetName(agentManager, item.agent));
-    existing.skills.add(item.skill.name);
-    byPath.set(path, existing);
-  }
-  for (const [path, details] of byPath) {
-    logger.info(`  ${relative(process.cwd(), path) || path}`);
-    logger.info(`    Agents: ${[...details.agents].join(', ')}`);
-    logger.info(`    Skills: ${green(String(details.skills.size))} installed (${[...details.skills].join(', ')})`);
+    // Show per-path breakdown for installed
+    const byPath = new Map<string, { agents: Set<string>; skills: Set<string> }>();
+    for (const item of result.installed) {
+      const path = item.path;
+      const existing = byPath.get(path) || {
+        agents: new Set<string>(),
+        skills: new Set<string>(),
+      };
+      existing.agents.add(formatSkillTargetName(agentManager, item.agent));
+      existing.skills.add(item.skill.name);
+      byPath.set(path, existing);
+    }
+    for (const [path, details] of byPath) {
+      logger.info(`  ${relative(process.cwd(), path) || path}`);
+      logger.info(`    Agents: ${[...details.agents].join(', ')}`);
+      logger.info(`    Skills: ${green(String(details.skills.size))} installed (${[...details.skills].join(', ')})`);
+    }
+
+    // Show per-path breakdown for updated
+    const byPathUpdated = new Map<string, { agents: Set<string>; skills: Set<string> }>();
+    for (const item of result.updated) {
+      const path = item.path;
+      const existing = byPathUpdated.get(path) || {
+        agents: new Set<string>(),
+        skills: new Set<string>(),
+      };
+      existing.agents.add(formatSkillTargetName(agentManager, item.agent));
+      existing.skills.add(item.skill.name);
+      byPathUpdated.set(path, existing);
+    }
+    for (const [path, details] of byPathUpdated) {
+      logger.info(`  ${relative(process.cwd(), path) || path}`);
+      logger.info(`    Agents: ${[...details.agents].join(', ')}`);
+      logger.info(`    Skills: ${yellow(String(details.skills.size))} updated (${[...details.skills].join(', ')})`);
+    }
   }
 
-  const copiedFallbacks = result.installed.filter(item => item.symlinkFailed);
+  const copiedFallbacks = [...result.installed, ...result.updated].filter(item => item.symlinkFailed);
   if (copiedFallbacks.length > 0) {
     logger.warn(`Symlink creation failed for ${copiedFallbacks.length} install(s); copied the skill files instead.`);
   }
 
   // Show skipped skills
-  if (result.skipped.length > 0) {
+  if (hasSkipped) {
     logger.info('');
     logger.warn(`Skipped ${result.skipped.length} skill(s):`);
     for (const skip of result.skipped) {
@@ -788,5 +848,7 @@ function displayInstallResult(
     }
   }
 
-  logger.success('Skills installation complete.');
+  if (hasInstalled || hasUpdated) {
+    logger.success('Skills installation complete.');
+  }
 }

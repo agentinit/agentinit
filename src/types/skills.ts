@@ -37,10 +37,13 @@ export interface SkillsAddOptions {
   from?: string;
   pluginName?: string;
   yes?: boolean;
+  confirmUpdate?: (skills: SkillInfo[]) => Promise<SkillInfo[]>;
 }
 
 export interface SkillsAddResult {
   installed: Array<{ skill: SkillInfo; agent: string } & SkillInstallResult>;
+  updated: Array<{ skill: SkillInfo; agent: string } & SkillInstallResult>;
+  unchanged: Array<{ skill: SkillInfo; agent: string; path: string }>;
   skipped: Array<{ skill: SkillInfo; reason: string }>;
   warnings: string[];
 }

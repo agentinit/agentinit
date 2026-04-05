@@ -1,3 +1,10 @@
+## [Unreleased]
+
+
+### Bug Fixes
+
+* **skills:** compare installed skill payloads before prompting for updates
+
 # [1.18.0](https://github.com/agentinit/agentinit/compare/v1.17.2...v1.18.0) (2026-04-04)
 
 

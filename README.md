@@ -221,6 +221,8 @@ If a GitHub or local Claude bundle contains multiple plugins, `agentinit skills 
 
 Skills are installed into a canonical store by default (`.agents/skills/` for project, `~/.agents/skills/` for global), with agent-specific paths symlinked automatically. Bare skill names resolve from your configured default marketplace, falling back to the public catalog at `vercel-labs/agent-skills`. Use `./name` for local paths, `owner/repo` for GitHub repos, or `--from <marketplace>` for explicit marketplace sources.
 
+When you re-run `agentinit skills add`, AgentInit now compares the installed skill payload with the source before overwriting anything. Unchanged skills are reported as already up to date. If an installed skill has changed, interactive runs ask for confirmation before replacing it, while `--yes` applies the update automatically.
+
 ### `agentinit plugins`
 
 Install, inspect, search, and remove portable plugins from explicit marketplace sources, GitHub repositories, or local paths.

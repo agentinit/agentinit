@@ -965,4 +965,203 @@ describe('SkillsManager', () => {
       `Local path not found: ${missingPath}`
     );
   });
+
+  describe('addFromSource skill comparison', () => {
+    it('reports unchanged when skill is already installed with identical content', async () => {
+      const manager = new SkillsManager();
+      const projectDir = await mkdtemp(join(tmpdir(), 'agentinit-skill-project-'));
+      const repoDir = await mkdtemp(join(tmpdir(), 'agentinit-skill-repo-'));
+      tempDirs.push(projectDir, repoDir);
+
+      const skillContent = '---\nname: my-skill\ndescription: test skill\n---\nSome content\n';
+
+      // Set up the source
+      await mkdir(join(repoDir, 'my-skill'), { recursive: true });
+      await writeFile(join(repoDir, 'my-skill', 'SKILL.md'), skillContent);
+      await writeFile(join(repoDir, 'my-skill', 'notes.txt'), 'Auxiliary content\n');
+
+      // Pre-install the skill with identical content
+      const canonicalDir = join(projectDir, '.agents/skills/my-skill');
+      await mkdir(canonicalDir, { recursive: true });
+      await writeFile(join(canonicalDir, 'SKILL.md'), skillContent);
+      await writeFile(join(canonicalDir, 'notes.txt'), 'Auxiliary content\n');
+
+      vi.spyOn(manager, 'cloneRepo').mockResolvedValue(repoDir);
+
+      const result = await manager.addFromSource(TEST_GITHUB_SKILL_REPO, projectDir, {
+        agents: ['codex'],
+      });
+
+      expect(result.installed).toHaveLength(0);
+      expect(result.updated).toHaveLength(0);
+      expect(result.unchanged).toHaveLength(1);
+      expect(result.unchanged[0]?.skill.name).toBe('my-skill');
+    });
+
+    it('updates skill when auxiliary files differ even if SKILL.md matches', async () => {
+      const manager = new SkillsManager();
+      const projectDir = await mkdtemp(join(tmpdir(), 'agentinit-skill-project-'));
+      const repoDir = await mkdtemp(join(tmpdir(), 'agentinit-skill-repo-'));
+      tempDirs.push(projectDir, repoDir);
+
+      const skillContent = '---\nname: my-skill\ndescription: test skill\n---\nShared content\n';
+
+      await mkdir(join(repoDir, 'my-skill', 'assets'), { recursive: true });
+      await writeFile(join(repoDir, 'my-skill', 'SKILL.md'), skillContent);
+      await writeFile(join(repoDir, 'my-skill', 'assets', 'guide.txt'), 'New guide\n');
+
+      const canonicalDir = join(projectDir, '.agents/skills/my-skill');
+      await mkdir(join(canonicalDir, 'assets'), { recursive: true });
+      await writeFile(join(canonicalDir, 'SKILL.md'), skillContent);
+      await writeFile(join(canonicalDir, 'assets', 'guide.txt'), 'Old guide\n');
+
+      vi.spyOn(manager, 'cloneRepo').mockResolvedValue(repoDir);
+
+      const result = await manager.addFromSource(TEST_GITHUB_SKILL_REPO, projectDir, {
+        agents: ['codex'],
+        yes: true,
+      });
+
+      expect(result.installed).toHaveLength(0);
+      expect(result.updated).toHaveLength(1);
+      expect(result.unchanged).toHaveLength(0);
+      expect(result.updated[0]?.skill.name).toBe('my-skill');
+      expect(await readFile(join(canonicalDir, 'assets', 'guide.txt'), 'utf8')).toContain('New guide');
+    });
+
+    it('installs new skill normally when not previously installed', async () => {
+      const manager = new SkillsManager();
+      const projectDir = await mkdtemp(join(tmpdir(), 'agentinit-skill-project-'));
+      const repoDir = await mkdtemp(join(tmpdir(), 'agentinit-skill-repo-'));
+      tempDirs.push(projectDir, repoDir);
+
+      await mkdir(join(repoDir, 'my-skill'), { recursive: true });
+      await writeFile(join(repoDir, 'my-skill', 'SKILL.md'), '---\nname: my-skill\ndescription: test skill\n---\nContent\n');
+
+      vi.spyOn(manager, 'cloneRepo').mockResolvedValue(repoDir);
+
+      const result = await manager.addFromSource(TEST_GITHUB_SKILL_REPO, projectDir, {
+        agents: ['codex'],
+      });
+
+      expect(result.installed).toHaveLength(1);
+      expect(result.updated).toHaveLength(0);
+      expect(result.unchanged).toHaveLength(0);
+      expect(result.installed[0]?.skill.name).toBe('my-skill');
+    });
+
+    it('updates skill when content differs and yes is true', async () => {
+      const manager = new SkillsManager();
+      const projectDir = await mkdtemp(join(tmpdir(), 'agentinit-skill-project-'));
+      const repoDir = await mkdtemp(join(tmpdir(), 'agentinit-skill-repo-'));
+      tempDirs.push(projectDir, repoDir);
+
+      // Source with new content
+      await mkdir(join(repoDir, 'my-skill'), { recursive: true });
+      await writeFile(join(repoDir, 'my-skill', 'SKILL.md'), '---\nname: my-skill\ndescription: test skill\n---\nNew content\n');
+
+      // Pre-install with old content
+      const canonicalDir = join(projectDir, '.agents/skills/my-skill');
+      await mkdir(canonicalDir, { recursive: true });
+      await writeFile(join(canonicalDir, 'SKILL.md'), '---\nname: my-skill\ndescription: test skill\n---\nOld content\n');
+
+      vi.spyOn(manager, 'cloneRepo').mockResolvedValue(repoDir);
+
+      const result = await manager.addFromSource(TEST_GITHUB_SKILL_REPO, projectDir, {
+        agents: ['codex'],
+        yes: true,
+      });
+
+      expect(result.installed).toHaveLength(0);
+      expect(result.updated).toHaveLength(1);
+      expect(result.unchanged).toHaveLength(0);
+      expect(result.updated[0]?.skill.name).toBe('my-skill');
+
+      // Verify the file was actually updated
+      const updatedContent = await readFile(join(canonicalDir, 'SKILL.md'), 'utf8');
+      expect(updatedContent).toContain('New content');
+    });
+
+    it('skips update when content differs and confirmUpdate returns empty', async () => {
+      const manager = new SkillsManager();
+      const projectDir = await mkdtemp(join(tmpdir(), 'agentinit-skill-project-'));
+      const repoDir = await mkdtemp(join(tmpdir(), 'agentinit-skill-repo-'));
+      tempDirs.push(projectDir, repoDir);
+
+      await mkdir(join(repoDir, 'my-skill'), { recursive: true });
+      await writeFile(join(repoDir, 'my-skill', 'SKILL.md'), '---\nname: my-skill\ndescription: test skill\n---\nNew content\n');
+
+      const canonicalDir = join(projectDir, '.agents/skills/my-skill');
+      await mkdir(canonicalDir, { recursive: true });
+      await writeFile(join(canonicalDir, 'SKILL.md'), '---\nname: my-skill\ndescription: test skill\n---\nOld content\n');
+
+      vi.spyOn(manager, 'cloneRepo').mockResolvedValue(repoDir);
+
+      const result = await manager.addFromSource(TEST_GITHUB_SKILL_REPO, projectDir, {
+        agents: ['codex'],
+        confirmUpdate: async () => [],
+      });
+
+      expect(result.installed).toHaveLength(0);
+      expect(result.updated).toHaveLength(0);
+      expect(result.skipped).toHaveLength(1);
+      expect(result.skipped[0]?.reason).toContain('Update available');
+
+      // Verify the file was NOT updated
+      const content = await readFile(join(canonicalDir, 'SKILL.md'), 'utf8');
+      expect(content).toContain('Old content');
+    });
+
+    it('updates skill when confirmUpdate approves it', async () => {
+      const manager = new SkillsManager();
+      const projectDir = await mkdtemp(join(tmpdir(), 'agentinit-skill-project-'));
+      const repoDir = await mkdtemp(join(tmpdir(), 'agentinit-skill-repo-'));
+      tempDirs.push(projectDir, repoDir);
+
+      await mkdir(join(repoDir, 'my-skill'), { recursive: true });
+      await writeFile(join(repoDir, 'my-skill', 'SKILL.md'), '---\nname: my-skill\ndescription: test skill\n---\nNew content\n');
+
+      const canonicalDir = join(projectDir, '.agents/skills/my-skill');
+      await mkdir(canonicalDir, { recursive: true });
+      await writeFile(join(canonicalDir, 'SKILL.md'), '---\nname: my-skill\ndescription: test skill\n---\nOld content\n');
+
+      vi.spyOn(manager, 'cloneRepo').mockResolvedValue(repoDir);
+
+      const result = await manager.addFromSource(TEST_GITHUB_SKILL_REPO, projectDir, {
+        agents: ['codex'],
+        confirmUpdate: async (skills) => skills,
+      });
+
+      expect(result.installed).toHaveLength(0);
+      expect(result.updated).toHaveLength(1);
+      expect(result.updated[0]?.skill.name).toBe('my-skill');
+
+      const updatedContent = await readFile(join(canonicalDir, 'SKILL.md'), 'utf8');
+      expect(updatedContent).toContain('New content');
+    });
+
+    it('skips update with no callback and no yes flag', async () => {
+      const manager = new SkillsManager();
+      const projectDir = await mkdtemp(join(tmpdir(), 'agentinit-skill-project-'));
+      const repoDir = await mkdtemp(join(tmpdir(), 'agentinit-skill-repo-'));
+      tempDirs.push(projectDir, repoDir);
+
+      await mkdir(join(repoDir, 'my-skill'), { recursive: true });
+      await writeFile(join(repoDir, 'my-skill', 'SKILL.md'), '---\nname: my-skill\ndescription: test skill\n---\nNew content\n');
+
+      const canonicalDir = join(projectDir, '.agents/skills/my-skill');
+      await mkdir(canonicalDir, { recursive: true });
+      await writeFile(join(canonicalDir, 'SKILL.md'), '---\nname: my-skill\ndescription: test skill\n---\nOld content\n');
+
+      vi.spyOn(manager, 'cloneRepo').mockResolvedValue(repoDir);
+
+      const result = await manager.addFromSource(TEST_GITHUB_SKILL_REPO, projectDir, {
+        agents: ['codex'],
+      });
+
+      expect(result.updated).toHaveLength(0);
+      expect(result.skipped).toHaveLength(1);
+      expect(result.skipped[0]?.reason).toContain('Update available');
+    });
+  });
 });

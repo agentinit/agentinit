@@ -2,6 +2,7 @@ import { resolve, join, relative, basename, dirname } from 'path';
 import { promises as fs } from 'fs';
 import { homedir, tmpdir } from 'os';
 import { execFile } from 'child_process';
+import { createHash } from 'crypto';
 import { promisify } from 'util';
 import matter from 'gray-matter';
 import {
@@ -855,6 +856,62 @@ export class SkillsManager {
     return this.resolveInstallPath(targetDir, this.normalizeSkillName(skillName));
   }
 
+  private updateSnapshotWithFile(hash: ReturnType<typeof createHash>, relativePath: string, content: Buffer | string): void {
+    hash.update(`file:${relativePath}\n`);
+    hash.update(content);
+    hash.update('\n');
+  }
+
+  private async createDirectorySnapshot(rootPath: string): Promise<string | null> {
+    if (!(await fileExists(rootPath))) return null;
+
+    const hash = createHash('sha256');
+
+    const walk = async (currentPath: string, relativePath: string): Promise<void> => {
+      const stat = await fs.stat(currentPath);
+      if (!stat.isDirectory()) {
+        const content = await fs.readFile(currentPath);
+        this.updateSnapshotWithFile(hash, relativePath, content);
+        return;
+      }
+
+      hash.update(`dir:${relativePath || '.'}\n`);
+      const entries = (await fs.readdir(currentPath)).sort((left, right) => left.localeCompare(right));
+      for (const entry of entries) {
+        await walk(join(currentPath, entry), relativePath ? join(relativePath, entry) : entry);
+      }
+    };
+
+    await walk(rootPath, '');
+    return hash.digest('hex');
+  }
+
+  private async readExistingSkillSnapshot(installPath: string): Promise<string | null> {
+    return this.createDirectorySnapshot(installPath);
+  }
+
+  private async getNewSkillSnapshot(skill: SkillInfo): Promise<string | null> {
+    if (skill.generatedContent) {
+      const hash = createHash('sha256');
+      hash.update('dir:.\n');
+      this.updateSnapshotWithFile(hash, 'SKILL.md', skill.generatedContent.trim());
+      return hash.digest('hex');
+    }
+
+    return this.createDirectorySnapshot(skill.path);
+  }
+
+  private async compareSkillSnapshot(
+    skill: SkillInfo,
+    installPath: string,
+  ): Promise<'new' | 'unchanged' | 'changed'> {
+    const existing = await this.readExistingSkillSnapshot(installPath);
+    if (existing === null) return 'new';
+    const incoming = await this.getNewSkillSnapshot(skill);
+    if (incoming === null) return 'new';
+    return existing === incoming ? 'unchanged' : 'changed';
+  }
+
   private async cleanAndCreateDirectory(path: string): Promise<void> {
     await fs.rm(path, { recursive: true, force: true }).catch(() => {});
     await fs.mkdir(path, { recursive: true });
@@ -893,7 +950,7 @@ export class SkillsManager {
       let skills = context.skills;
 
       if (skills.length === 0) {
-        return { installed: [], skipped: [], warnings: context.warnings };
+        return { installed: [], updated: [], unchanged: [], skipped: [], warnings: context.warnings };
       }
 
       if (options.skills && options.skills.length > 0) {
@@ -906,13 +963,26 @@ export class SkillsManager {
       if (agents.length === 0 && !installToSharedStore) {
         return {
           installed: [],
+          updated: [],
+          unchanged: [],
           skipped: skills.map(skill => ({ skill, reason: 'No target agents found' })),
           warnings: context.warnings,
         };
       }
 
-      const result: SkillsAddResult = { installed: [], skipped: [], warnings: context.warnings };
+      const result: SkillsAddResult = { installed: [], updated: [], unchanged: [], skipped: [], warnings: context.warnings };
       const installableAgents: Agent[] = [];
+
+      // Cache comparison results by canonical path to avoid re-comparing for multiple agents
+      const comparisonCache = new Map<string, 'new' | 'unchanged' | 'changed'>();
+
+      // Collect pending updates to prompt user once for all of them
+      const pendingUpdates: Array<{
+        skill: SkillInfo;
+        agent: string;
+        agentObj?: Agent;
+        installOptions: { global?: boolean; copy?: boolean };
+      }> = [];
 
       if (installToSharedStore) {
         for (const skill of skills) {
@@ -920,6 +990,20 @@ export class SkillsManager {
             const installOptions = {
               ...(options.global !== undefined ? { global: options.global } : {}),
             };
+            const plan = this.getCanonicalInstallPlan(skill.name, projectPath, installOptions);
+            const comparison = await this.compareSkillSnapshot(skill, plan.path);
+            comparisonCache.set(plan.path, comparison);
+
+            if (comparison === 'unchanged') {
+              result.unchanged.push({ skill, agent: SHARED_SKILLS_TARGET_ID, path: plan.path });
+              continue;
+            }
+
+            if (comparison === 'changed') {
+              pendingUpdates.push({ skill, agent: SHARED_SKILLS_TARGET_ID, installOptions });
+              continue;
+            }
+
             const installed = skill.generatedContent
               ? await this.installSkillFromContentToCanonicalStore(
                 skill.name,
@@ -967,6 +1051,25 @@ export class SkillsManager {
               ...(options.global !== undefined ? { global: options.global } : {}),
               ...(options.copy !== undefined ? { copy: options.copy } : {}),
             };
+            const plan = await this.getInstallPlan(skill.name, agent, projectPath, installOptions);
+            const comparisonPath = plan.canonicalPath || plan.path;
+
+            let comparison = comparisonCache.get(comparisonPath);
+            if (comparison === undefined) {
+              comparison = await this.compareSkillSnapshot(skill, comparisonPath);
+              comparisonCache.set(comparisonPath, comparison);
+            }
+
+            if (comparison === 'unchanged') {
+              result.unchanged.push({ skill, agent: agent.id, path: comparisonPath });
+              continue;
+            }
+
+            if (comparison === 'changed') {
+              pendingUpdates.push({ skill, agent: agent.id, agentObj: agent, installOptions });
+              continue;
+            }
+
             const installed = skill.generatedContent
               ? await this.installSkillFromContentForAgent(
                 skill.name,
@@ -986,6 +1089,66 @@ export class SkillsManager {
             result.installed.push({ skill, agent: agent.id, ...installed });
           } catch (error: any) {
             result.skipped.push({ skill, reason: error.message });
+          }
+        }
+      }
+
+      // Handle pending updates
+      if (pendingUpdates.length > 0) {
+        let approvedNames: Set<string>;
+
+        if (options.yes) {
+          approvedNames = new Set(pendingUpdates.map(p => p.skill.name));
+        } else if (options.confirmUpdate) {
+          const uniqueSkills = [...new Map(pendingUpdates.map(p => [p.skill.name, p.skill])).values()];
+          const approved = await options.confirmUpdate(uniqueSkills);
+          approvedNames = new Set(approved.map(s => s.name));
+        } else {
+          approvedNames = new Set();
+        }
+
+        for (const pending of pendingUpdates) {
+          if (!approvedNames.has(pending.skill.name)) {
+            result.skipped.push({ skill: pending.skill, reason: 'Update available; re-run with -y to update' });
+            continue;
+          }
+
+          try {
+            if (pending.agent === SHARED_SKILLS_TARGET_ID) {
+              const installed = pending.skill.generatedContent
+                ? await this.installSkillFromContentToCanonicalStore(
+                  pending.skill.name,
+                  pending.skill.generatedContent,
+                  projectPath,
+                  pending.installOptions,
+                )
+                : await this.installSkillToCanonicalStore(
+                  pending.skill.path,
+                  pending.skill.name,
+                  projectPath,
+                  pending.installOptions,
+                );
+              result.updated.push({ skill: pending.skill, agent: pending.agent, ...installed });
+            } else if (pending.agentObj) {
+              const installed = pending.skill.generatedContent
+                ? await this.installSkillFromContentForAgent(
+                  pending.skill.name,
+                  pending.skill.generatedContent,
+                  pending.agentObj,
+                  projectPath,
+                  pending.installOptions,
+                )
+                : await this.installSkillForAgent(
+                  pending.skill.path,
+                  pending.skill.name,
+                  pending.agentObj,
+                  projectPath,
+                  pending.installOptions,
+                );
+              result.updated.push({ skill: pending.skill, agent: pending.agent, ...installed });
+            }
+          } catch (error: any) {
+            result.skipped.push({ skill: pending.skill, reason: error.message });
           }
         }
       }
