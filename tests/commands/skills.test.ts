@@ -309,6 +309,52 @@ describe('skills command', () => {
     );
   });
 
+  it('shows install status previews in the selection prompt and omits descriptions for new installs', async () => {
+    vi.spyOn(SkillsManager.prototype, 'prepareSource').mockResolvedValue({
+      skills: [
+        {
+          name: 'playground',
+          description: 'Interactive playground',
+          path: '/tmp/playground',
+        },
+      ],
+      warnings: [],
+    });
+    vi.spyOn(SkillsManager.prototype, 'previewInstallStatus').mockImplementation(async (_skill, _projectPath, options) => {
+      if (options?.sharedStore) {
+        return 'unchanged';
+      }
+      if (options?.agent?.id === 'claude') {
+        return 'changed';
+      }
+      return 'new';
+    });
+    vi.spyOn(SkillsManager.prototype, 'addFromSource').mockResolvedValue({
+      installed: [],
+      updated: [],
+      unchanged: [],
+      skipped: [],
+      warnings: [],
+    });
+
+    let groupsPrompt: Record<string, any> | undefined;
+    promptsMock
+      .mockResolvedValueOnce({ scope: 'global' })
+      .mockImplementationOnce(async prompt => {
+        groupsPrompt = prompt as Record<string, any>;
+        return { groups: [[SHARED_SKILLS_TARGET_ID], ['claude']] };
+      });
+
+    const program = new Command();
+    registerSkillsCommand(program);
+
+    await program.parseAsync(['skills', 'add', 'claude/playground'], { from: 'user' });
+
+    expect(groupsPrompt?.choices[0]?.description).toBe('Already up to date: playground');
+    expect(groupsPrompt?.choices.find((choice: Record<string, any>) => choice.title.startsWith('~/.claude/skills/ -> Claude Code, Claude Desktop'))?.description).toBe('Update available: playground');
+    expect(groupsPrompt?.choices.find((choice: Record<string, any>) => choice.title.startsWith('~/.codex/skills/ -> OpenAI Codex CLI'))?.description).toBeUndefined();
+  });
+
   it('shows actionable guidance when --yes leaves skills add with no target agents', async () => {
     const infoSpy = vi.spyOn(logger, 'info').mockImplementation(() => {});
     vi.spyOn(SkillsManager.prototype, 'prepareSource').mockResolvedValue({

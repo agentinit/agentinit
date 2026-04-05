@@ -99,10 +99,12 @@ export function registerSkillsCommand(program: Command): void {
 
       const verifySpinner = ora('Verifying skill source...').start();
       let selectedPluginNames: string[] | undefined;
+      let preparedSkills: SkillInfo[] = [];
       try {
-        await skillsManager.prepareSource(source, process.cwd(), {
+        const prepared = await skillsManager.prepareSource(source, process.cwd(), {
           from: options.from,
         });
+        preparedSkills = prepared.skills;
         verifySpinner.stop();
       } catch (error) {
         if (error instanceof MultipleBundlePluginsError && (options.all || !options.yes)) {
@@ -114,10 +116,11 @@ export function registerSkillsCommand(program: Command): void {
           selectedPluginNames = selected;
           const retrySpinner = ora('Verifying skill source...').start();
           try {
-            await skillsManager.prepareSource(source, process.cwd(), {
+            const prepared = await skillsManager.prepareSource(source, process.cwd(), {
               from: options.from,
               ...(selectedPluginNames[0] ? { pluginName: selectedPluginNames[0] } : {}),
             });
+            preparedSkills = prepared.skills;
             retrySpinner.stop();
           } catch (retryError) {
             retrySpinner.fail('Failed to verify skill source');
@@ -134,6 +137,12 @@ export function registerSkillsCommand(program: Command): void {
       let targetAgents = options.agent as string[] | undefined;
       let targetGlobal = options.global as boolean | undefined;
       if (!targetAgents && !options.yes) {
+        const selectedSkillNames = options.skill && options.skill.length > 0
+          ? new Set((options.skill as string[]).map((name: string) => name.toLowerCase()))
+          : undefined;
+        const filteredPreviewSkills = selectedSkillNames
+          ? preparedSkills.filter(skill => selectedSkillNames.has(skill.name.toLowerCase()))
+          : preparedSkills;
         const selection = await resolveInteractiveSkillTargets(
           skillsManager,
           agentManager,
@@ -142,6 +151,8 @@ export function registerSkillsCommand(program: Command): void {
           {
             from: options.from,
             global: options.global,
+            copy: options.copy,
+            skills: filteredPreviewSkills,
           },
         );
 
@@ -324,7 +335,7 @@ async function resolveInteractiveSkillTargets(
   agentManager: AgentManager,
   source: string,
   projectPath: string,
-  options: { from?: string; global?: boolean },
+  options: { from?: string; global?: boolean; copy?: boolean; skills?: SkillInfo[] },
 ): Promise<SkillTargetSelection | undefined> {
   let installGlobal = !!options.global;
   if (!options.global) {
@@ -385,18 +396,26 @@ async function resolveInteractiveSkillTargets(
         ? 'Select which project agent skills directories to install into:'
         : 'Select which project agent skills directories to install into manually:',
     min: 1,
-    choices: availableGroups.map(group => ({
-      title: formatSkillGroupTitle(group),
-      ...(group.description ? { description: group.description } : {}),
-      value: group.kind === 'canonical-shared'
-        ? [SHARED_SKILLS_TARGET_ID]
-        : group.agents.map(agent => agent.id),
-      selected: shouldPreselectSkillGroup(
-        group,
-        installGlobal,
-        detectedGroups.length > 0,
-        recommendedAgentId,
-      ),
+    choices: await Promise.all(availableGroups.map(async group => {
+      const description = await buildSkillGroupPreviewDescription(skillsManager, group, projectPath, {
+        global: installGlobal,
+        ...(options.copy !== undefined ? { copy: options.copy } : {}),
+        ...(options.skills !== undefined ? { skills: options.skills } : {}),
+      });
+
+      return {
+        title: formatSkillGroupTitle(group),
+        ...(description ? { description } : {}),
+        value: group.kind === 'canonical-shared'
+          ? [SHARED_SKILLS_TARGET_ID]
+          : group.agents.map(agent => agent.id),
+        selected: shouldPreselectSkillGroup(
+          group,
+          installGlobal,
+          detectedGroups.length > 0,
+          recommendedAgentId,
+        ),
+      };
     })),
   });
 
@@ -605,6 +624,54 @@ function describeGlobalSkillGroup(group: SkillAgentGroup): string | undefined {
   }
 
   return undefined;
+}
+
+async function buildSkillGroupPreviewDescription(
+  skillsManager: SkillsManager,
+  group: SkillAgentGroup,
+  projectPath: string,
+  options: { global: boolean; copy?: boolean; skills?: SkillInfo[] },
+): Promise<string | undefined> {
+  const skills = options.skills || [];
+  if (skills.length === 0) {
+    return group.description || describeGlobalSkillGroup(group);
+  }
+
+  const statuses = await Promise.all(skills.map(async skill => ({
+    skill,
+    status: await skillsManager.previewInstallStatus(
+      skill,
+      projectPath,
+      group.kind === 'canonical-shared'
+        ? { global: options.global, sharedStore: true }
+        : {
+          global: options.global,
+          ...(options.copy !== undefined ? { copy: options.copy } : {}),
+          ...(group.agents[0] ? { agent: group.agents[0] } : {}),
+        },
+    ),
+  })));
+
+  const unchanged = statuses
+    .filter(entry => entry.status === 'unchanged')
+    .map(entry => entry.skill.name);
+  const changed = statuses
+    .filter(entry => entry.status === 'changed')
+    .map(entry => entry.skill.name);
+
+  const parts: string[] = [];
+  if (unchanged.length > 0) {
+    parts.push(`Already up to date: ${unchanged.join(', ')}`);
+  }
+  if (changed.length > 0) {
+    parts.push(`${changed.length === 1 ? 'Update available' : 'Updates available'}: ${changed.join(', ')}`);
+  }
+
+  if (parts.length === 0) {
+    return undefined;
+  }
+
+  return parts.join('. ');
 }
 
 function formatSkillGroupTitle(group: SkillAgentGroup): string {

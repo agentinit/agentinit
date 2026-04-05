@@ -697,6 +697,29 @@ export class SkillsManager {
     };
   }
 
+  async previewInstallStatus(
+    skill: SkillInfo,
+    projectPath: string,
+    options: { global?: boolean; copy?: boolean; agent?: Agent; sharedStore?: boolean } = {},
+  ): Promise<'new' | 'unchanged' | 'changed'> {
+    if (options.sharedStore) {
+      const plan = this.getCanonicalInstallPlan(skill.name, projectPath, {
+        ...(options.global !== undefined ? { global: options.global } : {}),
+      });
+      return this.compareSkillSnapshot(skill, plan.path);
+    }
+
+    if (!options.agent) {
+      throw new Error('Agent is required to preview install status');
+    }
+
+    const plan = await this.getInstallPlan(skill.name, options.agent, projectPath, {
+      ...(options.global !== undefined ? { global: options.global } : {}),
+      ...(options.copy !== undefined ? { copy: options.copy } : {}),
+    });
+    return this.compareSkillSnapshot(skill, plan.canonicalPath || plan.path);
+  }
+
   async installSkillForAgent(
     skillPath: string,
     skillName: string,
