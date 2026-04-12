@@ -309,7 +309,109 @@ describe('skills command', () => {
     );
   });
 
-  it('shows install status previews in the selection prompt and omits descriptions for new installs', async () => {
+  it('prompts for skill selection when a source contains multiple skills', async () => {
+    vi.spyOn(SkillsManager.prototype, 'prepareSource').mockResolvedValue({
+      skills: [
+        {
+          name: 'ascii-art',
+          description: 'Create ASCII art',
+          path: '/tmp/ascii-art',
+        },
+        {
+          name: 'ideation',
+          description: 'Generate creative ideas',
+          path: '/tmp/ideation',
+        },
+      ],
+      warnings: [],
+    });
+    const addFromSourceSpy = vi.spyOn(SkillsManager.prototype, 'addFromSource').mockResolvedValue({
+      installed: [],
+      updated: [],
+      unchanged: [],
+      skipped: [],
+      warnings: [],
+    });
+
+    let skillsPrompt: Record<string, any> | undefined;
+    promptsMock
+      .mockImplementationOnce(async prompt => {
+        skillsPrompt = prompt as Record<string, any>;
+        return { skills: ['ascii-art'] };
+      })
+      .mockResolvedValueOnce({ scope: 'global' })
+      .mockResolvedValueOnce({ groups: [[SHARED_SKILLS_TARGET_ID]] });
+
+    const program = new Command();
+    registerSkillsCommand(program);
+
+    await program.parseAsync(['skills', 'add', TEST_GITHUB_SKILL_REPO], { from: 'user' });
+
+    expect(skillsPrompt).toEqual(expect.objectContaining({
+      type: 'multiselect',
+      name: 'skills',
+      message: 'Select skills to install (2 found):',
+    }));
+    expect(skillsPrompt?.choices).toEqual([
+      {
+        title: 'ascii-art',
+        value: 'ascii-art',
+        description: 'Create ASCII art',
+        selected: true,
+      },
+      {
+        title: 'ideation',
+        value: 'ideation',
+        description: 'Generate creative ideas',
+        selected: true,
+      },
+    ]);
+    expect(addFromSourceSpy).toHaveBeenCalledWith(
+      TEST_GITHUB_SKILL_REPO,
+      process.cwd(),
+      expect.objectContaining({
+        global: true,
+        agents: [SHARED_SKILLS_TARGET_ID],
+        skills: ['ascii-art'],
+      }),
+    );
+  });
+
+  it('cancels installation when the skill selection prompt is dismissed', async () => {
+    vi.spyOn(SkillsManager.prototype, 'prepareSource').mockResolvedValue({
+      skills: [
+        {
+          name: 'ascii-art',
+          description: 'Create ASCII art',
+          path: '/tmp/ascii-art',
+        },
+        {
+          name: 'ideation',
+          description: 'Generate creative ideas',
+          path: '/tmp/ideation',
+        },
+      ],
+      warnings: [],
+    });
+    const discardSpy = vi.spyOn(SkillsManager.prototype, 'discardPreparedSource').mockResolvedValue();
+    const addFromSourceSpy = vi.spyOn(SkillsManager.prototype, 'addFromSource');
+
+    promptsMock.mockResolvedValueOnce({});
+
+    const program = new Command();
+    registerSkillsCommand(program);
+
+    await program.parseAsync(['skills', 'add', TEST_GITHUB_SKILL_REPO], { from: 'user' });
+
+    expect(discardSpy).toHaveBeenCalledWith(
+      TEST_GITHUB_SKILL_REPO,
+      process.cwd(),
+      expect.objectContaining({}),
+    );
+    expect(addFromSourceSpy).not.toHaveBeenCalled();
+  });
+
+  it('shows install status previews in the selection prompt including new installs', async () => {
     vi.spyOn(SkillsManager.prototype, 'prepareSource').mockResolvedValue({
       skills: [
         {
@@ -352,7 +454,7 @@ describe('skills command', () => {
 
     expect(groupsPrompt?.choices[0]?.description).toBe('Already up to date: playground');
     expect(groupsPrompt?.choices.find((choice: Record<string, any>) => choice.title.startsWith('~/.claude/skills/ -> Claude Code, Claude Desktop'))?.description).toBe('Update available: playground');
-    expect(groupsPrompt?.choices.find((choice: Record<string, any>) => choice.title.startsWith('~/.codex/skills/ -> OpenAI Codex CLI'))?.description).toBeUndefined();
+    expect(groupsPrompt?.choices.find((choice: Record<string, any>) => choice.title.startsWith('~/.codex/skills/ -> OpenAI Codex CLI'))?.description).toBe('Will install: playground');
   });
 
   it('shows actionable guidance when --yes leaves skills add with no target agents', async () => {

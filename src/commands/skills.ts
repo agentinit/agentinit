@@ -35,6 +35,11 @@ interface SkillTargetSelection {
   aborted?: boolean;
 }
 
+interface InteractiveSkillSelection {
+  skills?: string[];
+  aborted?: boolean;
+}
+
 export function registerSkillsCommand(program: Command): void {
   const marketplaceHelp = getMarketplaceIds().join(', ');
   const skills = program
@@ -136,12 +141,30 @@ export function registerSkillsCommand(program: Command): void {
 
       let targetAgents = options.agent as string[] | undefined;
       let targetGlobal = options.global as boolean | undefined;
+      let selectedSkillNames = options.skill as string[] | undefined;
+
+      if (!options.yes && (!selectedSkillNames || selectedSkillNames.length === 0) && preparedSkills.length > 1) {
+        if (selectedPluginNames && selectedPluginNames.length > 1) {
+          logger.info('Multiple bundled plugins selected; installing all skills from each selected plugin. Use --skill to filter by skill name.');
+        } else {
+          const skillSelection = await resolveInteractiveSkillSelection(preparedSkills);
+          if (skillSelection.aborted) {
+            await skillsManager.discardPreparedSource(source, process.cwd(), {
+              from: options.from,
+            });
+            return;
+          }
+
+          selectedSkillNames = skillSelection.skills;
+        }
+      }
+
       if (!targetAgents && !options.yes) {
-        const selectedSkillNames = options.skill && options.skill.length > 0
-          ? new Set((options.skill as string[]).map((name: string) => name.toLowerCase()))
+        const selectedSkillNameSet = selectedSkillNames && selectedSkillNames.length > 0
+          ? new Set(selectedSkillNames.map((name: string) => name.toLowerCase()))
           : undefined;
-        const filteredPreviewSkills = selectedSkillNames
-          ? preparedSkills.filter(skill => selectedSkillNames.has(skill.name.toLowerCase()))
+        const filteredPreviewSkills = selectedSkillNameSet
+          ? preparedSkills.filter(skill => selectedSkillNameSet.has(skill.name.toLowerCase()))
           : preparedSkills;
         const selection = await resolveInteractiveSkillTargets(
           skillsManager,
@@ -189,7 +212,7 @@ export function registerSkillsCommand(program: Command): void {
         ...(options.from !== undefined ? { from: options.from } : {}),
         ...(targetGlobal !== undefined ? { global: targetGlobal } : {}),
         ...(targetAgents !== undefined ? { agents: targetAgents } : {}),
-        ...(options.skill !== undefined ? { skills: options.skill } : {}),
+        ...(selectedSkillNames !== undefined ? { skills: selectedSkillNames } : {}),
         ...(options.copy !== undefined ? { copy: options.copy } : {}),
         ...(pluginName !== undefined ? { pluginName } : {}),
         ...(options.yes !== undefined ? { yes: options.yes } : {}),
@@ -435,6 +458,27 @@ async function resolveInteractiveSkillTargets(
   return selection;
 }
 
+async function resolveInteractiveSkillSelection(skills: SkillInfo[]): Promise<InteractiveSkillSelection> {
+  const response = await promptMultiselect<string>({
+    name: 'skills',
+    message: `Select skills to install (${skills.length} found):`,
+    min: 1,
+    choices: skills.map(skill => ({
+      title: skill.name,
+      value: skill.name,
+      description: skill.description,
+      selected: true,
+    })),
+  });
+
+  if (!response.skills || response.skills.length === 0) {
+    logger.info('No skills selected. Aborting.');
+    return { aborted: true };
+  }
+
+  return { skills: response.skills };
+}
+
 async function getDetectedSkillGroups(
   agentManager: AgentManager,
   projectPath: string,
@@ -658,8 +702,14 @@ async function buildSkillGroupPreviewDescription(
   const changed = statuses
     .filter(entry => entry.status === 'changed')
     .map(entry => entry.skill.name);
+  const fresh = statuses
+    .filter(entry => entry.status === 'new')
+    .map(entry => entry.skill.name);
 
   const parts: string[] = [];
+  if (fresh.length > 0) {
+    parts.push(`Will install: ${fresh.join(', ')}`);
+  }
   if (unchanged.length > 0) {
     parts.push(`Already up to date: ${unchanged.join(', ')}`);
   }
