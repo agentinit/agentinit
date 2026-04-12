@@ -1,3 +1,10 @@
+# [1.19.0](https://github.com/agentinit/agentinit/compare/v1.18.2...v1.19.0) (2026-04-12)
+
+
+### Features
+
+* **skills:** prompt for skill selection before install ([de7d83c](https://github.com/agentinit/agentinit/commit/de7d83cd918848ea62e1b8707b4f94a5a594017d))
+
 ## [1.18.2](https://github.com/agentinit/agentinit/compare/v1.18.1...v1.18.2) (2026-04-05)
 
 
