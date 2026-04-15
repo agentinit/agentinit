@@ -3,14 +3,17 @@ import ora from 'ora';
 import prompts from 'prompts';
 import { homedir } from 'os';
 import { relative, resolve } from 'path';
-import { green, yellow, dim } from 'kleur/colors';
+import { green, yellow, red, dim, cyan } from 'kleur/colors';
 import { logger } from '../utils/logger.js';
 import { promptMultiselect, selectBundlePlugins } from '../utils/promptUtils.js';
 import { SkillsManager } from '../core/skillsManager.js';
 import { MultipleBundlePluginsError } from '../core/pluginManager.js';
 import { getMarketplaceIds } from '../core/marketplaceRegistry.js';
 import { AgentManager } from '../core/agentManager.js';
+import { InstallLock, getLockEntryTargetLabel } from '../core/installLock.js';
+import { fileExists } from '../utils/fs.js';
 import type { Agent } from '../agents/Agent.js';
+import type { LockEntry, LockSource } from '../types/lockfile.js';
 import {
   SHARED_SKILLS_TARGET_ID,
   SHARED_SKILLS_TARGET_NAME,
@@ -351,6 +354,270 @@ export function registerSkillsCommand(program: Command): void {
         logger.info('Nothing to remove.');
       }
     });
+
+  // --- skills update [name] ---
+  skills
+    .command('update [name]')
+    .description('Update installed skills from their original source')
+    .option('--everywhere', 'Update across all tracked projects (uses global lockfile)')
+    .option('-d, --dry-run', 'Show what would be updated without making changes')
+    .action(async (name: string | undefined, options) => {
+      logger.titleBox('AgentInit  Skills');
+
+      const installLock = new InstallLock();
+
+      if (options.everywhere) {
+        if (!name) {
+          logger.error('Skill name is required with --everywhere.');
+          logger.info('Usage: agentinit skills update <name> --everywhere');
+          return;
+        }
+
+        const entries = await installLock.findProjectsWithSkill(name);
+        if (entries.length === 0) {
+          logger.info(`No tracked installations found for skill "${name}".`);
+          logger.info(dim('Install the skill first, then update with --everywhere.'));
+          return;
+        }
+
+        logger.info(`Found ${cyan(String(entries.length))} tracked target(s) with skill "${green(name)}":\n`);
+
+        const staleProjects: string[] = [];
+        const updateTargets: LockEntry[] = [];
+
+        for (const entry of entries) {
+          const targetLabel = getLockEntryTargetLabel(entry);
+          if (entry.scope !== 'global' && !(await fileExists(entry.projectPath))) {
+            staleProjects.push(entry.projectPath);
+            logger.info(`  ${red('x')} ${targetLabel} ${dim('(missing)')}`);
+          } else {
+            updateTargets.push(entry);
+            logger.info(`  ${green('+')} ${targetLabel} ${dim(`[${entry.agents.join(', ')}]`)}`);
+          }
+        }
+
+        if (staleProjects.length > 0) {
+          logger.info('');
+          logger.warn(`${staleProjects.length} project(s) no longer exist. Run "agentinit lock prune" to clean up.`);
+        }
+
+        if (updateTargets.length === 0) {
+          logger.info('\nNo valid projects to update.');
+          return;
+        }
+
+        if (options.dryRun) {
+          logger.info(dim('\nDry run — no changes made.'));
+          return;
+        }
+
+        logger.info('');
+        const spinner = ora('Updating skills across projects...').start();
+        let updatedCount = 0;
+        let unchangedCount = 0;
+        let failedCount = 0;
+
+        for (const entry of updateTargets) {
+            spinner.text = `Updating in ${getLockEntryTargetLabel(entry)}...`;
+
+          try {
+            const sourceString = lockSourceToString(entry.source);
+            if (!sourceString) {
+              failedCount++;
+              logger.info(`  ${red('x')} ${getLockEntryTargetLabel(entry)}: cannot reconstruct source`);
+              continue;
+            }
+
+            const agentManager = new AgentManager();
+            const skillsManager = new SkillsManager(agentManager);
+
+            const result = await skillsManager.addFromSource(
+              sourceString.source,
+              entry.projectPath,
+              {
+                ...(sourceString.from ? { from: sourceString.from } : {}),
+                agents: entry.agents,
+                global: entry.scope === 'global',
+                skills: [name],
+                yes: true,
+              },
+            );
+
+              if (result.updated.length > 0) {
+                updatedCount++;
+                logger.info(`  ${green('~')} ${getLockEntryTargetLabel(entry)}: updated`);
+              } else if (result.installed.length > 0) {
+                updatedCount++;
+                logger.info(`  ${green('+')} ${getLockEntryTargetLabel(entry)}: installed`);
+              } else {
+                unchangedCount++;
+                logger.info(`  ${dim('-')} ${getLockEntryTargetLabel(entry)}: ${dim('unchanged')}`);
+              }
+          } catch (error) {
+            failedCount++;
+            logger.info(`  ${red('x')} ${getLockEntryTargetLabel(entry)}: ${error instanceof Error ? error.message : 'unknown error'}`);
+          }
+        }
+
+        if (updatedCount > 0) {
+          spinner.succeed(`Updated "${name}" in ${updatedCount} target(s)`);
+        } else {
+          spinner.info(`"${name}" is already up to date in all tracked targets`);
+        }
+
+        if (unchangedCount > 0) logger.info(dim(`  ${unchangedCount} unchanged`));
+        if (failedCount > 0) logger.info(red(`  ${failedCount} failed`));
+      } else {
+        // Update in current project only
+        const cwd = process.cwd();
+        const agentManager = new AgentManager();
+        const skillsManager = new SkillsManager(agentManager);
+
+        if (name) {
+          // Update specific skill from lockfile source
+          const entries = await installLock.getCurrentState({
+            kind: 'skill',
+            name,
+            projectPath: resolve(cwd),
+            scope: 'project',
+          });
+
+          if (entries.length === 0) {
+            logger.info(`Skill "${name}" not tracked in the lockfile for this project.`);
+            logger.info(dim('Try: agentinit skills add <source> or use --everywhere for global installs.'));
+            return;
+          }
+
+          if (options.dryRun) {
+            logger.info(`Would update "${name}" in ${entries.length} tracked target(s):`);
+            for (const entry of entries) {
+              const sourceString = lockSourceToString(entry.source);
+              logger.info(`  ${green(entry.name)} ${dim(`[${entry.agents.join(', ')}]`)} ${sourceString ? dim(sourceString.source) : red('unavailable source')}`);
+            }
+            return;
+          }
+
+          const spinner = ora(`Updating skill "${name}"...`).start();
+          let updatedCount = 0;
+          let unchangedCount = 0;
+          let failedCount = 0;
+
+          for (const entry of entries) {
+            const sourceString = lockSourceToString(entry.source);
+            if (!sourceString) {
+              failedCount++;
+              continue;
+            }
+
+            try {
+              const result = await skillsManager.addFromSource(
+                sourceString.source,
+                cwd,
+                {
+                  ...(sourceString.from ? { from: sourceString.from } : {}),
+                  agents: entry.agents,
+                  global: entry.scope === 'global',
+                  skills: [name],
+                  yes: true,
+                },
+              );
+
+              if (result.updated.length > 0 || result.installed.length > 0) {
+                updatedCount++;
+              } else {
+                unchangedCount++;
+              }
+            } catch {
+              failedCount++;
+            }
+          }
+
+          if (updatedCount > 0) {
+            spinner.succeed(`Updated "${name}" in ${updatedCount} target(s)`);
+          } else {
+            spinner.info(`"${name}" is already up to date`);
+          }
+          if (unchangedCount > 0) logger.info(dim(`  ${unchangedCount} unchanged`));
+          if (failedCount > 0) logger.info(red(`  ${failedCount} failed`));
+        } else {
+          // Update all skills tracked for this project
+          const entries = await installLock.getCurrentState({
+            kind: 'skill',
+            projectPath: resolve(cwd),
+            scope: 'project',
+          });
+
+          if (entries.length === 0) {
+            logger.info('No skills tracked in the lockfile for this project.');
+            return;
+          }
+
+          if (options.dryRun) {
+            logger.info(`Would update ${entries.length} skill(s):`);
+            for (const entry of entries) {
+              logger.info(`  ${green(entry.name)} ${dim(`[${entry.agents.join(', ')}]`)}`);
+            }
+            return;
+          }
+
+          const spinner = ora('Updating all skills...').start();
+          let updatedCount = 0;
+
+          for (const entry of entries) {
+            const sourceString = lockSourceToString(entry.source);
+            if (!sourceString) continue;
+
+            spinner.text = `Updating "${entry.name}"...`;
+            try {
+              const result = await skillsManager.addFromSource(
+                sourceString.source,
+                cwd,
+                {
+                  ...(sourceString.from ? { from: sourceString.from } : {}),
+                  agents: entry.agents,
+                  global: entry.scope === 'global',
+                  skills: [entry.name],
+                  yes: true,
+                },
+              );
+
+              if (result.updated.length > 0 || result.installed.length > 0) {
+                updatedCount++;
+              }
+            } catch {
+              // Continue with other skills
+            }
+          }
+
+          if (updatedCount > 0) {
+            spinner.succeed(`Updated ${updatedCount} skill(s)`);
+          } else {
+            spinner.info('All skills are up to date');
+          }
+        }
+      }
+    });
+}
+
+function lockSourceToString(source: LockSource): { source: string; from?: string } | null {
+  if (source.type === 'marketplace' && source.marketplace && source.pluginName) {
+    return { source: source.pluginName, from: source.marketplace };
+  }
+  if (source.type === 'github') {
+    if (source.owner && source.repo) {
+      if (source.subpath) {
+        return { source: `${source.owner}/${source.repo}/${source.subpath}` };
+      }
+      return { source: `${source.owner}/${source.repo}` };
+    }
+    if (source.url) {
+      return { source: source.url };
+    }
+  }
+  if (source.type === 'local' && source.path) {
+    return { source: source.path };
+  }
+  return null;
 }
 
 async function resolveInteractiveSkillTargets(

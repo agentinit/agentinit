@@ -8,6 +8,7 @@ import { TOKEN_COUNT_THRESHOLDS } from '../constants/index.js';
 import { readFileIfExists, writeFile } from '../utils/fs.js';
 import type { Agent } from '../agents/Agent.js';
 import type { AppliedRules, RuleSection, RuleApplicationResult } from '../types/rules.js';
+import { InstallLock, logLockWriteWarning } from '../core/installLock.js';
 
 // ── Token display helpers ──────────────────────────────────────────────────
 
@@ -275,6 +276,31 @@ export function registerRulesCommand(program: Command): void {
             }
           }
         }
+
+        // Record to global install lock
+        try {
+          const lock = new InstallLock();
+
+          for (const { agent, result } of results) {
+            if (!result.success || result.rulesApplied === 0) continue;
+            const sections = result.mergedSections || uniqueSections;
+            for (const section of sections) {
+              await lock.recordRules({
+                action: 'install',
+                name: section.templateId,
+                projectPath: cwd,
+                agents: [agent.id],
+                scope: isGlobal ? 'global' : 'project',
+                source: { type: 'local' },
+                configPath: result.configPath || '',
+                templateIds: [section.templateId],
+                ruleCount: section.rules.length,
+              });
+            }
+          }
+        } catch (error) {
+          logLockWriteWarning('Rules were applied successfully', error);
+        }
       } catch (error) {
         spinner.fail('Failed to apply rules');
         logger.error(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -370,6 +396,11 @@ export function registerRulesCommand(program: Command): void {
       const spinner = ora('Removing rules...').start();
 
       let totalRemoved = 0;
+      const removedSections: Array<{
+        agent: Agent;
+        configPath: string;
+        section: RuleSection;
+      }> = [];
 
       try {
         for (const agent of agents) {
@@ -403,6 +434,9 @@ export function registerRulesCommand(program: Command): void {
 
           await writeFile(configPath, updatedContent);
           totalRemoved += removed.length;
+          for (const section of removed) {
+            removedSections.push({ agent, configPath, section });
+          }
 
           for (const s of removed) {
             logger.info(`  ${agent.name}: removed ${green(s.templateName)} (${s.rules.length} rules)`);
@@ -414,6 +448,26 @@ export function registerRulesCommand(program: Command): void {
           logger.info('Run "agentinit rules list" to see current sections.');
         } else {
           spinner.succeed(`Removed ${totalRemoved} rule section${totalRemoved !== 1 ? 's' : ''}`);
+
+          // Record to global install lock
+          try {
+            const lock = new InstallLock();
+            for (const { agent, configPath, section } of removedSections) {
+              await lock.recordRules({
+                action: 'remove',
+                name: section.templateId,
+                projectPath: cwd,
+                agents: [agent.id],
+                scope: isGlobal ? 'global' : 'project',
+                source: { type: 'local' },
+                configPath,
+                templateIds: [section.templateId],
+                ruleCount: 0,
+              });
+            }
+          } catch (error) {
+            logLockWriteWarning('Rules were removed successfully', error);
+          }
         }
       } catch (error) {
         spinner.fail('Failed to remove rules');

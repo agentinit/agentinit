@@ -13,6 +13,7 @@ import {
   readFileIfExists,
   resolveRealPathOrSelf,
 } from '../utils/fs.js';
+import { expandTilde } from '../utils/paths.js';
 import { AgentManager } from './agentManager.js';
 import { getConfiguredDefaultMarketplaceId, getMarketplace, getMarketplaceIds } from './marketplaceRegistry.js';
 import type { Agent } from '../agents/Agent.js';
@@ -28,6 +29,8 @@ import type {
   SkillSource
 } from '../types/skills.js';
 import { SHARED_SKILLS_TARGET_ID } from '../types/skills.js';
+import { InstallLock, hashDirectory, logLockWriteWarning } from './installLock.js';
+import type { LockSource, LockAction } from '../types/lockfile.js';
 
 const execFileAsync = promisify(execFile);
 const DEFAULT_SKILLS_CATALOG = {
@@ -1176,6 +1179,53 @@ export class SkillsManager {
         }
       }
 
+      // Record to global install lock
+      try {
+        const lock = new InstallLock();
+        const fromOption = options.from;
+        const { source: resolvedSource } = this.resolveSourceRequest(
+          source,
+          ...(fromOption ? [{ from: fromOption }] : []),
+        );
+        const lockSource: LockSource = {
+          type: resolvedSource.type,
+          ...(resolvedSource.marketplace ? { marketplace: resolvedSource.marketplace } : {}),
+          ...(resolvedSource.pluginName ? { pluginName: resolvedSource.pluginName } : {}),
+          ...(resolvedSource.url ? { url: resolvedSource.url } : {}),
+          ...(resolvedSource.path ? { path: resolve(projectPath, expandTilde(resolvedSource.path)) } : {}),
+          ...(resolvedSource.owner ? { owner: resolvedSource.owner } : {}),
+          ...(resolvedSource.repo ? { repo: resolvedSource.repo } : {}),
+          ...(resolvedSource.subpath ? { subpath: resolvedSource.subpath } : {}),
+        };
+
+        const recordEntries = async (
+          entries: typeof result.installed,
+          action: LockAction,
+        ) => {
+          for (const entry of entries) {
+            const hashPath = entry.canonicalPath || entry.path;
+            const contentHash = await hashDirectory(hashPath);
+            await lock.recordSkill({
+              action,
+              name: entry.skill.name,
+              projectPath: resolve(projectPath),
+              agents: [entry.agent],
+              scope: options.global ? 'global' : 'project',
+              source: lockSource,
+              installPath: entry.path,
+              mode: entry.mode,
+              ...(entry.canonicalPath ? { canonicalPath: entry.canonicalPath } : {}),
+              ...(contentHash ? { contentHash } : {}),
+            });
+          }
+        };
+
+        await recordEntries(result.installed, 'install');
+        await recordEntries(result.updated, 'update');
+      } catch (error) {
+        logLockWriteWarning('Skills changed successfully', error);
+      }
+
       return result;
     } finally {
       await context.cleanup();
@@ -1424,6 +1474,31 @@ export class SkillsManager {
       if (!foundNames.has(name.toLowerCase())) {
         notFound.push(name);
       }
+    }
+
+    // Record removals to global install lock
+    try {
+      if (targetedEntries.length > 0) {
+        const lock = new InstallLock();
+        for (const entry of targetedEntries) {
+          const entryKey = `${entry.agent}:${entry.name}`;
+          if (!removed.includes(entryKey)) continue;
+
+          await lock.recordSkill({
+            action: 'remove',
+            name: entry.name,
+            projectPath: resolve(projectPath),
+            agents: [entry.agent],
+            scope: entry.scope,
+            source: { type: 'local', path: entry.path },
+            installPath: entry.path,
+            mode: entry.mode,
+            ...(entry.canonicalPath ? { canonicalPath: entry.canonicalPath } : {}),
+          });
+        }
+      }
+    } catch (error) {
+      logLockWriteWarning('Skills removed successfully', error);
     }
 
     return { removed, notFound, skipped };

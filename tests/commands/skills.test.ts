@@ -5,6 +5,7 @@ import { registerSkillsCommand } from '../../src/commands/skills.js';
 import { SkillsManager } from '../../src/core/skillsManager.js';
 import { MultipleBundlePluginsError } from '../../src/core/pluginManager.js';
 import { AgentManager } from '../../src/core/agentManager.js';
+import { InstallLock } from '../../src/core/installLock.js';
 import { SHARED_SKILLS_TARGET_ID, SHARED_SKILLS_TARGET_NAME } from '../../src/types/skills.js';
 import { logger } from '../../src/utils/logger.js';
 
@@ -797,5 +798,129 @@ describe('skills command', () => {
 
     expect(infoSpy).toHaveBeenCalledWith('Cancelled.');
     expect(addSpy).not.toHaveBeenCalled();
+  });
+
+  it('updates every tracked target for a named skill in the current project', async () => {
+    const getCurrentStateSpy = vi.spyOn(InstallLock.prototype, 'getCurrentState').mockResolvedValue([
+      {
+        kind: 'skill',
+        action: 'install',
+        name: 'shared-skill',
+        projectPath: process.cwd(),
+        agents: ['claude'],
+        scope: 'project',
+        source: { type: 'github', owner: 'test', repo: 'skills' },
+        metadata: {
+          kind: 'skill',
+          installPath: '/tmp/project/.claude/skills/shared-skill',
+          mode: 'symlink',
+        },
+        id: '1',
+        timestamp: new Date().toISOString(),
+      },
+      {
+        kind: 'skill',
+        action: 'install',
+        name: 'shared-skill',
+        projectPath: process.cwd(),
+        agents: ['cursor'],
+        scope: 'project',
+        source: { type: 'github', owner: 'test', repo: 'skills' },
+        metadata: {
+          kind: 'skill',
+          installPath: '/tmp/project/.cursor/skills/shared-skill',
+          mode: 'symlink',
+        },
+        id: '2',
+        timestamp: new Date().toISOString(),
+      },
+    ]);
+
+    const addFromSourceSpy = vi.spyOn(SkillsManager.prototype, 'addFromSource').mockResolvedValue({
+      installed: [],
+      updated: [],
+      unchanged: [
+        {
+          skill: { name: 'shared-skill', description: 'Shared skill', path: '/tmp/source/shared-skill' },
+          agent: 'claude',
+          path: '/tmp/project/.claude/skills/shared-skill',
+        },
+      ],
+      skipped: [],
+      warnings: [],
+    });
+
+    const program = new Command();
+    registerSkillsCommand(program);
+
+    await program.parseAsync(['skills', 'update', 'shared-skill'], { from: 'user' });
+
+    expect(getCurrentStateSpy).toHaveBeenCalledWith({
+      kind: 'skill',
+      name: 'shared-skill',
+      projectPath: process.cwd(),
+      scope: 'project',
+    });
+    expect(addFromSourceSpy).toHaveBeenCalledTimes(2);
+    expect(addFromSourceSpy).toHaveBeenNthCalledWith(
+      1,
+      'test/skills',
+      process.cwd(),
+      expect.objectContaining({ agents: ['claude'], skills: ['shared-skill'], yes: true }),
+    );
+    expect(addFromSourceSpy).toHaveBeenNthCalledWith(
+      2,
+      'test/skills',
+      process.cwd(),
+      expect.objectContaining({ agents: ['cursor'], skills: ['shared-skill'], yes: true }),
+    );
+  });
+
+  it('updates a global tracked skill with --everywhere even when the originating project path is gone', async () => {
+    vi.spyOn(InstallLock.prototype, 'findProjectsWithSkill').mockResolvedValue([
+      {
+        kind: 'skill',
+        action: 'install',
+        name: 'shared-skill',
+        projectPath: '/tmp/non-existent-project-for-global-skill',
+        agents: ['claude'],
+        scope: 'global',
+        source: { type: 'github', owner: 'test', repo: 'skills' },
+        metadata: {
+          kind: 'skill',
+          installPath: '/tmp/home/.claude/skills/shared-skill',
+          mode: 'copy',
+        },
+        id: 'global-1',
+        timestamp: new Date().toISOString(),
+      },
+    ]);
+
+    const addFromSourceSpy = vi.spyOn(SkillsManager.prototype, 'addFromSource').mockResolvedValue({
+      installed: [],
+      updated: [
+        {
+          skill: { name: 'shared-skill', description: 'Shared skill', path: '/tmp/source/shared-skill' },
+          agent: 'claude',
+          path: '/tmp/home/.claude/skills/shared-skill',
+          mode: 'copy',
+        },
+      ],
+      unchanged: [],
+      skipped: [],
+      warnings: [],
+    });
+
+    const program = new Command();
+    registerSkillsCommand(program);
+
+    await program.parseAsync(['skills', 'update', 'shared-skill', '--everywhere'], { from: 'user' });
+
+    expect(addFromSourceSpy).toHaveBeenCalledTimes(1);
+    expect(addFromSourceSpy).toHaveBeenCalledWith(
+      'test/skills',
+      '/tmp/non-existent-project-for-global-skill',
+      expect.objectContaining({ agents: ['claude'], global: true, skills: ['shared-skill'], yes: true }),
+    );
   });
 });

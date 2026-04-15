@@ -233,6 +233,22 @@ export type {
   CursorPluginManifest,
 } from './plugins.js';
 
+// Re-export lockfile types
+export type {
+  LockEntryKind,
+  LockAction,
+  LockSource,
+  LockSkillMeta,
+  LockMcpMeta,
+  LockRulesMeta,
+  LockEntryMeta,
+  LockEntry,
+  LockState,
+  LockQueryOptions,
+  LockPruneResult,
+  LockDriftResult,
+} from './lockfile.js';
+
 // Re-export JSON Schema types
 export type { JSONSchema, JSONSchemaProperty } from './jsonSchema.js';
 

@@ -9,7 +9,7 @@
 
 ## Project Context
 
-This is a typescript project. The codebase follows modern development practices with automated testing using jest.
+This is a typescript project. The codebase follows modern development practices with automated testing using vitest.
 
 ## Development Guidelines
 
@@ -20,7 +20,7 @@ This is a typescript project. The codebase follows modern development practices 
 - Add comments for complex logic
 
 ### Testing Strategy
-- Write unit tests for all business logic using jest
+- Write unit tests for all business logic using vitest
 - Aim for high test coverage (>80%)
 - Include integration tests for critical paths
 - Test edge cases and error scenarios
@@ -146,6 +146,12 @@ agentinit rules add --global --agent claude --template git,write_docs
 - `write_tests` - Test-driven development practices
 
 Rules are automatically merged and managed in the section below. They can be updated by running new `agentinit rules add` commands.
+
+## Install Lock
+
+AgentInit records successful skill, MCP, and rules changes in `~/.agentinit/lock.json`. Use `agentinit lock list`, `agentinit lock status --check-drift`, and `agentinit lock prune` when reviewing install state. The lock may contain absolute local paths and source metadata, so do not include it in project commits or public issue output.
+
+Tracked skills can be refreshed with `agentinit skills update [name]` for project-scoped installs in the current repo. Use `agentinit skills update <name> --everywhere` only when intentionally updating every tracked target, including global installs.
 
 ### Token Tracking
 

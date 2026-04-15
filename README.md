@@ -171,7 +171,7 @@ agentinit rules add --global --agent claude --template git,write_tests
 
 ### `agentinit skills`
 
-Install, list, and remove reusable agent skills from marketplaces, local paths, or GitHub repositories.
+Install, list, update, and remove reusable agent skills from marketplaces, local paths, or GitHub repositories.
 
 **Examples:**
 ```bash
@@ -214,6 +214,8 @@ agentinit skills add owner/repo --all
 # Review and clean up installed skills
 agentinit skills list
 agentinit skills list --agent agents
+agentinit skills update openai-docs
+agentinit skills update openai-docs --everywhere
 agentinit skills remove openai-docs
 ```
 
@@ -222,6 +224,29 @@ If a GitHub or local Claude bundle contains multiple plugins, `agentinit skills 
 Skills are installed into a canonical store by default (`.agents/skills/` for project, `~/.agents/skills/` for global), with agent-specific paths symlinked automatically. Bare skill names resolve from your configured default marketplace, falling back to the public catalog at `vercel-labs/agent-skills`. Use `./name` for local paths, `owner/repo` for GitHub repos, or `--from <marketplace>` for explicit marketplace sources.
 
 When you re-run `agentinit skills add`, AgentInit now compares the installed skill payload with the source before overwriting anything. Unchanged skills are reported as already up to date. If an installed skill has changed, interactive runs ask for confirmation before replacing it, while `--yes` applies the update automatically.
+
+`agentinit skills update [name]` replays tracked project-scoped installs from their original source in the current project. Use `agentinit skills update <name> --everywhere` to update that skill across every tracked target, including global installs.
+
+### `agentinit lock`
+
+Inspect and maintain the global install lock at `~/.agentinit/lock.json`. The lock records successful skill, MCP, and rules changes so AgentInit can report current installations, find stale project paths, detect skill drift, and update tracked skills later.
+
+**Examples:**
+```bash
+# List current tracked installs across projects
+agentinit lock list
+agentinit lock list --kind skill --agent claude
+
+# Show a summary and optionally compare skill files with their install hashes
+agentinit lock status
+agentinit lock status --check-drift
+
+# Remove entries for projects that no longer exist
+agentinit lock prune --dry-run
+agentinit lock prune
+```
+
+The lock is stored with user-only permissions when supported by the operating system. It can include absolute project paths, agent config paths, skill install paths, source repository or marketplace names, sanitized MCP URLs, and MCP command names. Do not share this file if those paths or source names are sensitive.
 
 ### `agentinit plugins`
 
@@ -487,10 +512,13 @@ src/
 │   ├── init.ts       # Project initialization
 │   ├── detect.ts     # Stack detection
 │   ├── sync.ts       # Configuration sync
-│   └── mcp.ts        # MCP management
+│   ├── mcp.ts        # MCP management
+│   ├── skills.ts     # Skill installation and updates
+│   └── lock.ts       # Global install lock inspection
 ├── core/             # Core functionality
 │   ├── agentDetector.ts    # Agent detection
 │   ├── stackDetector.ts    # Stack analysis
+│   ├── installLock.ts      # Global install lock state
 │   ├── templateEngine.ts   # Template processing
 │   └── propagator.ts       # Config sync engine
 ├── registry/         # MCP registry

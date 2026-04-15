@@ -12,6 +12,7 @@ import { registerSkillsCommand } from './commands/skills.js';
 import { registerMcpCommand } from './commands/mcp.js';
 import { registerRulesCommand } from './commands/rules.js';
 import { registerPluginsCommand } from './commands/plugins.js';
+import { registerLockCommand } from './commands/lock.js';
 import { logger } from './utils/logger.js';
 
 const program = new Command();
@@ -27,6 +28,7 @@ registerMcpCommand(program);
 registerRulesCommand(program);
 registerPluginsCommand(program);
 registerConfigCommand(program);
+registerLockCommand(program);
 
 // Core commands (unchanged)
 program

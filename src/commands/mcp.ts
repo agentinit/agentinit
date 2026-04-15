@@ -10,6 +10,8 @@ import { AgentDetector } from '../core/agentDetector.js';
 import { DEFAULT_CONNECTION_TIMEOUT_MS } from '../constants/index.js';
 import type { MCPServerConfig, MCPTransformation, MCPVerificationResult } from '../types/index.js';
 import type { Agent } from '../agents/Agent.js';
+import { InstallLock, logLockWriteWarning } from '../core/installLock.js';
+import type { LockSource } from '../types/lockfile.js';
 
 interface ResolvedMcpTarget {
   agent: Agent;
@@ -323,6 +325,30 @@ function registerAddCommand(mcp: Command): void {
               logger.info(`  ${cyan(server.name)} (${typeLabel}): ${server.url}`);
             }
           });
+
+          // Record to global install lock
+          try {
+            const lock = new InstallLock();
+            const lockSource: LockSource = { type: 'local' };
+            for (const plan of plans) {
+              for (const server of plan.servers) {
+                await lock.recordMcp({
+                  action: 'install',
+                  name: server.name,
+                  projectPath: cwd,
+                  agents: [plan.agent.id],
+                  scope: plan.isGlobal ? 'global' : 'project',
+                  source: lockSource,
+                  configPath: plan.configPath,
+                  serverType: server.type as 'stdio' | 'http' | 'sse',
+                  ...(server.command ? { command: server.command } : {}),
+                  ...(server.url ? { url: server.url } : {}),
+                });
+              }
+            }
+          } catch (error) {
+            logLockWriteWarning('MCP servers were added successfully', error);
+          }
         }
       } catch (error) {
         spinner.fail('Failed to add MCP servers');
@@ -453,9 +479,20 @@ function registerRemoveCommand(mcp: Command): void {
 
         let removedCount = 0;
         let failedCount = 0;
+        const removedTargets: Array<{
+          agent: Agent;
+          isGlobal: boolean;
+          configPath: string;
+          server?: MCPServerConfig;
+        }> = [];
 
         for (const { agent, isGlobal: global } of targets) {
           try {
+            const configPath = global ? agent.getGlobalMcpPath() : agent.getNativeMcpPath(cwd);
+            const existingServers = global
+              ? await agent.getGlobalMCPServers().catch(() => [])
+              : await agent.getMCPServers(cwd).catch(() => []);
+            const existingServer = existingServers.find(server => server.name.toLowerCase() === name.toLowerCase());
             let removed: boolean;
             if (global) {
               removed = await agent.removeGlobalMCPServer(name);
@@ -465,6 +502,14 @@ function registerRemoveCommand(mcp: Command): void {
 
             if (removed) {
               removedCount++;
+              if (configPath) {
+                removedTargets.push({
+                  agent,
+                  isGlobal: global,
+                  configPath,
+                  ...(existingServer ? { server: existingServer } : {}),
+                });
+              }
               logger.info(`  ${green('-')} ${agent.name}: removed "${name}"`);
             } else {
               logger.info(`  ${yellow('~')} ${agent.name}: "${name}" not found`);
@@ -477,6 +522,27 @@ function registerRemoveCommand(mcp: Command): void {
 
         if (removedCount > 0) {
           spinner.succeed(`Removed "${name}" from ${removedCount} agent(s)`);
+
+          // Record to global install lock
+          try {
+            const lock = new InstallLock();
+            for (const { agent, isGlobal: global, configPath, server } of removedTargets) {
+              await lock.recordMcp({
+                action: 'remove',
+                name,
+                projectPath: cwd,
+                agents: [agent.id],
+                scope: global ? 'global' : 'project',
+                source: { type: 'local' },
+                configPath,
+                serverType: server?.type || 'stdio',
+                ...(server?.command ? { command: server.command } : {}),
+                ...(server?.url ? { url: server.url } : {}),
+              });
+            }
+          } catch (error) {
+            logLockWriteWarning('MCP servers were removed successfully', error);
+          }
         } else if (failedCount > 0) {
           spinner.fail(`Failed to remove "${name}"`);
         } else {
