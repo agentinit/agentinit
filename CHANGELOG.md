@@ -1,3 +1,15 @@
+# [1.20.0](https://github.com/agentinit/agentinit/compare/v1.19.0...v1.20.0) (2026-04-22)
+
+
+### Bug Fixes
+
+* **skills:** repair missing agent installs from canonical store ([c1b2c15](https://github.com/agentinit/agentinit/commit/c1b2c156880c96768cb29ccef659bca40b336cc0))
+
+
+### Features
+
+* **lock:** add install lock tracking and skill updates ([ae27369](https://github.com/agentinit/agentinit/commit/ae27369378028370675fc78a10497526e954df2a))
+
 # [1.19.0](https://github.com/agentinit/agentinit/compare/v1.18.2...v1.19.0) (2026-04-12)
 
 
