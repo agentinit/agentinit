@@ -720,7 +720,7 @@ export class SkillsManager {
       ...(options.global !== undefined ? { global: options.global } : {}),
       ...(options.copy !== undefined ? { copy: options.copy } : {}),
     });
-    return this.compareSkillSnapshot(skill, plan.canonicalPath || plan.path);
+    return this.compareSkillInstallStatus(skill, plan);
   }
 
   async installSkillForAgent(
@@ -938,6 +938,30 @@ export class SkillsManager {
     return existing === incoming ? 'unchanged' : 'changed';
   }
 
+  private async compareSkillInstallStatus(
+    skill: SkillInfo,
+    plan: SkillInstallResult,
+  ): Promise<'new' | 'unchanged' | 'changed'> {
+    const incoming = await this.getNewSkillSnapshot(skill);
+    if (incoming === null) return 'new';
+
+    const existingAtTarget = await this.readExistingSkillSnapshot(plan.path);
+    if (existingAtTarget !== null) {
+      return existingAtTarget === incoming ? 'unchanged' : 'changed';
+    }
+
+    if (!plan.canonicalPath || plan.canonicalPath === plan.path) {
+      return 'new';
+    }
+
+    const existingAtCanonical = await this.readExistingSkillSnapshot(plan.canonicalPath);
+    if (existingAtCanonical === null) {
+      return 'new';
+    }
+
+    return existingAtCanonical === incoming ? 'new' : 'changed';
+  }
+
   private async cleanAndCreateDirectory(path: string): Promise<void> {
     await fs.rm(path, { recursive: true, force: true }).catch(() => {});
     await fs.mkdir(path, { recursive: true });
@@ -999,7 +1023,7 @@ export class SkillsManager {
       const result: SkillsAddResult = { installed: [], updated: [], unchanged: [], skipped: [], warnings: context.warnings };
       const installableAgents: Agent[] = [];
 
-      // Cache comparison results by canonical path to avoid re-comparing for multiple agents
+      // Cache comparison results by install path to avoid re-comparing the same target
       const comparisonCache = new Map<string, 'new' | 'unchanged' | 'changed'>();
 
       // Collect pending updates to prompt user once for all of them
@@ -1078,11 +1102,11 @@ export class SkillsManager {
               ...(options.copy !== undefined ? { copy: options.copy } : {}),
             };
             const plan = await this.getInstallPlan(skill.name, agent, projectPath, installOptions);
-            const comparisonPath = plan.canonicalPath || plan.path;
+            const comparisonPath = plan.path;
 
             let comparison = comparisonCache.get(comparisonPath);
             if (comparison === undefined) {
-              comparison = await this.compareSkillSnapshot(skill, comparisonPath);
+              comparison = await this.compareSkillInstallStatus(skill, plan);
               comparisonCache.set(comparisonPath, comparison);
             }
 

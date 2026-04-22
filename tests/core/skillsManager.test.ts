@@ -967,6 +967,78 @@ describe('SkillsManager', () => {
   });
 
   describe('addFromSource skill comparison', () => {
+    it('treats a missing global agent path as new even when the shared store already matches', async () => {
+      const manager = new SkillsManager();
+      const projectDir = await mkdtemp(join(tmpdir(), 'agentinit-skill-project-'));
+      const sourceDir = await mkdtemp(join(tmpdir(), 'agentinit-skill-source-'));
+      tempDirs.push(projectDir, sourceDir);
+
+      const skillContent = '---\nname: my-skill\ndescription: test skill\n---\nSome content\n';
+
+      await mkdir(sourceDir, { recursive: true });
+      await writeFile(join(sourceDir, 'SKILL.md'), skillContent);
+      await writeFile(join(sourceDir, 'notes.txt'), 'Auxiliary content\n');
+
+      const canonicalDir = join(process.env.HOME!, '.agents/skills/my-skill');
+      await mkdir(canonicalDir, { recursive: true });
+      await writeFile(join(canonicalDir, 'SKILL.md'), skillContent);
+      await writeFile(join(canonicalDir, 'notes.txt'), 'Auxiliary content\n');
+
+      const status = await manager.previewInstallStatus(
+        {
+          name: 'my-skill',
+          description: 'test skill',
+          path: sourceDir,
+        },
+        projectDir,
+        {
+          global: true,
+          agent: new CodexCliAgent(),
+        },
+      );
+
+      expect(status).toBe('new');
+    });
+
+    it('installs a missing global agent symlink when the shared store already matches', async () => {
+      const manager = new SkillsManager();
+      const projectDir = await mkdtemp(join(tmpdir(), 'agentinit-skill-project-'));
+      const repoDir = await mkdtemp(join(tmpdir(), 'agentinit-skill-repo-'));
+      tempDirs.push(projectDir, repoDir);
+
+      const skillContent = '---\nname: my-skill\ndescription: test skill\n---\nSome content\n';
+
+      await mkdir(join(repoDir, 'my-skill'), { recursive: true });
+      await writeFile(join(repoDir, 'my-skill', 'SKILL.md'), skillContent);
+      await writeFile(join(repoDir, 'my-skill', 'notes.txt'), 'Auxiliary content\n');
+
+      const canonicalDir = join(process.env.HOME!, '.agents/skills/my-skill');
+      await mkdir(canonicalDir, { recursive: true });
+      await writeFile(join(canonicalDir, 'SKILL.md'), skillContent);
+      await writeFile(join(canonicalDir, 'notes.txt'), 'Auxiliary content\n');
+
+      vi.spyOn(manager, 'cloneRepo').mockResolvedValue(repoDir);
+
+      const result = await manager.addFromSource(TEST_GITHUB_SKILL_REPO, projectDir, {
+        global: true,
+        agents: ['codex'],
+      });
+
+      const codexPath = join(process.env.HOME!, '.codex/skills', 'my-skill');
+
+      expect(result.installed).toHaveLength(1);
+      expect(result.updated).toHaveLength(0);
+      expect(result.unchanged).toHaveLength(0);
+      expect(result.installed[0]).toMatchObject({
+        agent: 'codex',
+        path: codexPath,
+        canonicalPath: canonicalDir,
+        mode: 'symlink',
+      });
+      expect((await lstat(codexPath)).isSymbolicLink()).toBe(true);
+      expect(await realpath(codexPath)).toBe(await realpath(canonicalDir));
+    });
+
     it('reports unchanged when skill is already installed with identical content', async () => {
       const manager = new SkillsManager();
       const projectDir = await mkdtemp(join(tmpdir(), 'agentinit-skill-project-'));
