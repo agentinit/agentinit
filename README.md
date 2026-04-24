@@ -171,7 +171,7 @@ agentinit rules add --global --agent claude --template git,write_tests
 
 ### `agentinit skills`
 
-Install, list, update, and remove reusable agent skills from marketplaces, local paths, or GitHub repositories.
+Install, list, update, and remove reusable agent skills from marketplaces, local paths, or hosted Git repositories.
 
 **Examples:**
 ```bash
@@ -188,6 +188,12 @@ agentinit skills add ./skills
 
 # Install a skill stored in a repository subdirectory
 agentinit skills add owner/repo/path/to/skill
+agentinit skills add gitlab:group/repo//path/to/skill
+agentinit skills add bitbucket:workspace/repo/path/to/skill
+
+# Install from GitLab or Bitbucket
+agentinit skills add gitlab:group/repo
+agentinit skills add bitbucket:workspace/repo
 
 # Install marketplace-hosted skills explicitly
 agentinit skills add claude/skill-creator
@@ -211,6 +217,11 @@ agentinit skills add ./skills --copy
 # Install every bundled plugin from a multi-plugin Claude bundle
 agentinit skills add owner/repo --all
 
+# Control security scanning
+agentinit skills add owner/repo
+agentinit skills add owner/repo --no-scan
+agentinit skills add owner/repo --allow-risky
+
 # Review and clean up installed skills
 agentinit skills list
 agentinit skills list --agent agents
@@ -221,9 +232,9 @@ agentinit skills remove openai-docs
 
 If a GitHub or local Claude bundle contains multiple plugins, `agentinit skills add` prompts you to choose one or more bundled plugins to inspect or install. Press `Space` to select, `A` to select or deselect all, and `Enter` to confirm. Use `--all` to skip the prompt and install or inspect every bundled plugin. In non-interactive `--yes` mode, ambiguous multi-plugin bundles still fail unless `--all` is provided.
 
-Skills are installed into a canonical store by default (`.agents/skills/` for project, `~/.agents/skills/` for global), with agent-specific paths symlinked automatically. Bare skill names resolve from your configured default marketplace, falling back to the public catalog at `vercel-labs/agent-skills`. Use `./name` for local paths, `owner/repo` for GitHub repos, or `--from <marketplace>` for explicit marketplace sources.
+Skills are installed into a canonical store by default (`.agents/skills/` for project, `~/.agents/skills/` for global), with agent-specific paths symlinked automatically. Bare skill names resolve from your configured default marketplace, falling back to the public catalog at `vercel-labs/agent-skills`. Use `./name` for local paths, `owner/repo` for GitHub repos, `gitlab:group/repo` for GitLab repos, `gitlab:group/repo//path/to/skill` for GitLab subdirectories, `bitbucket:workspace/repo` for Bitbucket, or `--from <marketplace>` for explicit marketplace sources.
 
-When you re-run `agentinit skills add`, AgentInit now compares the installed skill payload with the source before overwriting anything. Unchanged skills are reported as already up to date. If an installed skill has changed, interactive runs ask for confirmation before replacing it, while `--yes` applies the update automatically.
+When you re-run `agentinit skills add`, AgentInit compares the installed skill payload with the source before overwriting anything. Unchanged skills are reported as already up to date. If an installed skill has changed, interactive runs ask for confirmation before replacing it, while `--yes` applies the update automatically. Installs are security-scanned by default; risky helper scripts are blocked, while risky Markdown guidance is surfaced as a warning. Use `--no-scan` to skip scanning or `--allow-risky` to proceed when high-risk executable patterns are detected.
 
 `agentinit skills update [name]` replays tracked project-scoped installs from their original source in the current project. Use `agentinit skills update <name> --everywhere` to update that skill across every tracked target, including global installs.
 

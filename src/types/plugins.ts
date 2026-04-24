@@ -25,7 +25,7 @@ export interface NormalizedPlugin {
  * Where a plugin came from
  */
 export interface PluginSource {
-  type: 'marketplace' | 'github' | 'local';
+  type: 'marketplace' | 'github' | 'gitlab' | 'bitbucket' | 'local';
   marketplace?: string | undefined;
   url?: string | undefined;
   path?: string | undefined;

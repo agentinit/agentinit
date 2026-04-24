@@ -2,7 +2,7 @@ export type LockEntryKind = 'skill' | 'mcp' | 'rules';
 export type LockAction = 'install' | 'update' | 'remove';
 
 export interface LockSource {
-  type: 'marketplace' | 'github' | 'local';
+  type: 'marketplace' | 'github' | 'gitlab' | 'bitbucket' | 'local';
   marketplace?: string;
   pluginName?: string;
   url?: string;

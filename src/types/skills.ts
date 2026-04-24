@@ -34,6 +34,8 @@ export interface SkillsAddOptions {
   skills?: string[];
   list?: boolean;
   copy?: boolean;
+  scan?: boolean;
+  allowRisky?: boolean;
   from?: string;
   pluginName?: string;
   yes?: boolean;
@@ -66,7 +68,7 @@ export interface SkillsRemoveResult {
 }
 
 export interface SkillSource {
-  type: 'marketplace' | 'github' | 'local';
+  type: 'marketplace' | 'github' | 'gitlab' | 'bitbucket' | 'local';
   marketplace?: string | undefined;
   pluginName?: string | undefined;
   url?: string | undefined;

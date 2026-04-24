@@ -124,4 +124,51 @@ describe('lock command', () => {
     expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('/tmp/stale-project'));
     expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('Dry run'));
   });
+
+  it('formats GitLab and Bitbucket sources with replayable identifiers', async () => {
+    vi.spyOn(InstallLock.prototype, 'getCurrentState').mockResolvedValue([
+      {
+        kind: 'skill',
+        action: 'install',
+        name: 'gitlab-skill',
+        projectPath: '/tmp/project-a',
+        agents: ['claude'],
+        scope: 'project',
+        source: { type: 'gitlab', owner: 'team/platform', repo: 'skills', subpath: 'frontend-design' },
+        metadata: {
+          kind: 'skill',
+          installPath: '/tmp/project-a/.claude/skills/gitlab-skill',
+          mode: 'symlink',
+        },
+        id: '1',
+        timestamp: new Date().toISOString(),
+      },
+      {
+        kind: 'skill',
+        action: 'install',
+        name: 'bitbucket-skill',
+        projectPath: '/tmp/project-b',
+        agents: ['claude'],
+        scope: 'project',
+        source: { type: 'bitbucket', owner: 'workspace', repo: 'skills', subpath: 'frontend-design' },
+        metadata: {
+          kind: 'skill',
+          installPath: '/tmp/project-b/.claude/skills/bitbucket-skill',
+          mode: 'symlink',
+        },
+        id: '2',
+        timestamp: new Date().toISOString(),
+      },
+    ]);
+
+    const infoSpy = vi.spyOn(logger, 'info').mockImplementation(() => {});
+
+    const program = new Command();
+    registerLockCommand(program);
+
+    await program.parseAsync(['lock', 'list'], { from: 'user' });
+
+    expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('gitlab:team/platform/skills//frontend-design'));
+    expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('bitbucket:workspace/skills/frontend-design'));
+  });
 });

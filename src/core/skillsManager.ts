@@ -16,6 +16,7 @@ import {
 import { expandTilde } from '../utils/paths.js';
 import { AgentManager } from './agentManager.js';
 import { getConfiguredDefaultMarketplaceId, getMarketplace, getMarketplaceIds } from './marketplaceRegistry.js';
+import { SkillSecurityScanner } from './skillSecurityScanner.js';
 import type { Agent } from '../agents/Agent.js';
 import type {
   SkillInfo,
@@ -62,6 +63,7 @@ type LoadedSkillsContext = {
 export class SkillsManager {
   private agentManager: AgentManager;
   private preparedSourceContexts = new Map<string, LoadedSkillsContext>();
+  private readonly skillScanner = new SkillSecurityScanner();
 
   constructor(agentManager?: AgentManager) {
     this.agentManager = agentManager || new AgentManager();
@@ -77,13 +79,18 @@ export class SkillsManager {
     }
 
     // Full GitHub URL
-    const githubUrlSource = this.parseGitHubHttpSource(source);
-    if (githubUrlSource) {
-      return githubUrlSource;
+    const httpSource = this.parseHttpRepositorySource(source);
+    if (httpSource) {
+      return httpSource;
     }
 
     // Full git URL
-    if (source.startsWith('git@') || source.endsWith('.git')) {
+    const sshSource = this.parseSshRepositorySource(source);
+    if (sshSource) {
+      return sshSource;
+    }
+
+    if (source.endsWith('.git')) {
       return { type: 'github', url: source };
     }
 
@@ -97,6 +104,16 @@ export class SkillsManager {
         marketplace: options.from,
         pluginName: source,
       };
+    }
+
+    const gitLabShorthandSource = this.parseGitLabShorthandSource(source);
+    if (gitLabShorthandSource) {
+      return gitLabShorthandSource;
+    }
+
+    const bitbucketShorthandSource = this.parseBitbucketShorthandSource(source);
+    if (bitbucketShorthandSource) {
+      return bitbucketShorthandSource;
     }
 
     const githubShorthandSource = this.parseGitHubShorthandSource(source);
@@ -217,6 +234,123 @@ export class SkillsManager {
     }
   }
 
+  private parseGitLabHttpSource(source: string): SkillSource | null {
+    if (!source.startsWith('https://gitlab.com/') && !source.startsWith('http://gitlab.com/')) {
+      return null;
+    }
+
+    try {
+      const parsedUrl = new URL(source);
+      const segments = parsedUrl.pathname.replace(/\/+$/, '').split('/').filter(Boolean);
+      const dashIndex = segments.indexOf('-');
+      const repoBoundary = dashIndex >= 0 ? dashIndex : segments.length;
+      if (repoBoundary < 2) {
+        return null;
+      }
+
+      const repo = segments[repoBoundary - 1];
+      const owner = segments.slice(0, repoBoundary - 1).join('/');
+      if (!owner || !repo) {
+        return null;
+      }
+
+      let subpath: string | undefined;
+      if (dashIndex >= 0) {
+        const marker = segments[dashIndex + 1];
+        if ((marker === 'tree' || marker === 'blob') && segments.length > dashIndex + 3) {
+          subpath = segments.slice(dashIndex + 3).join('/');
+        }
+      }
+
+      return {
+        type: 'gitlab',
+        url: `https://gitlab.com/${owner}/${repo}.git`,
+        owner,
+        repo,
+        ...(subpath ? { subpath } : {}),
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  private parseBitbucketHttpSource(source: string): SkillSource | null {
+    if (!source.startsWith('https://bitbucket.org/') && !source.startsWith('http://bitbucket.org/')) {
+      return null;
+    }
+
+    try {
+      const parsedUrl = new URL(source);
+      const segments = parsedUrl.pathname.replace(/\/+$/, '').split('/').filter(Boolean);
+      if (segments.length < 2) {
+        return null;
+      }
+
+      const [owner, repo, marker, _commitish, ...rest] = segments;
+      if (!owner || !repo) {
+        return null;
+      }
+
+      let subpath: string | undefined;
+      if (marker === 'src' && rest.length > 0) {
+        subpath = rest.join('/');
+      }
+
+      return {
+        type: 'bitbucket',
+        url: `https://bitbucket.org/${owner}/${repo}.git`,
+        owner,
+        repo,
+        ...(subpath ? { subpath } : {}),
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  private parseHttpRepositorySource(source: string): SkillSource | null {
+    return this.parseGitHubHttpSource(source)
+      || this.parseGitLabHttpSource(source)
+      || this.parseBitbucketHttpSource(source);
+  }
+
+  private parseSshRepositorySource(source: string): SkillSource | null {
+    const githubMatch = source.match(/^git@github\.com:([^/]+)\/([^/]+?)(?:\.git)?$/);
+    if (githubMatch) {
+      const [, owner, repo] = githubMatch;
+      return {
+        type: 'github',
+        url: `git@github.com:${owner}/${repo}.git`,
+        owner,
+        repo,
+      };
+    }
+
+    const gitlabMatch = source.match(/^git@gitlab\.com:(.+)\/([^/]+?)(?:\.git)?$/);
+    if (gitlabMatch) {
+      const [, owner, repo] = gitlabMatch;
+      return {
+        type: 'gitlab',
+        url: `git@gitlab.com:${owner}/${repo}.git`,
+        owner,
+        repo,
+      };
+    }
+
+    const bitbucketMatch = source.match(/^git@bitbucket\.org:([^/]+)\/([^/]+?)(?:\.git)?$/);
+    if (bitbucketMatch) {
+      const [, owner, repo] = bitbucketMatch;
+      return {
+        type: 'bitbucket',
+        url: `git@bitbucket.org:${owner}/${repo}.git`,
+        owner,
+        repo,
+      };
+    }
+
+    return null;
+  }
+
   private parseGitHubShorthandSource(source: string): SkillSource | null {
     const githubShorthandMatch = source.match(/^([a-zA-Z0-9._-]+)\/([a-zA-Z0-9._-]+)(?:\/(.+))?$/);
     if (!githubShorthandMatch) {
@@ -230,6 +364,68 @@ export class SkillsManager {
       owner,
       repo,
       ...(subpath ? { subpath } : {}),
+    };
+  }
+
+  private parseGitLabShorthandSource(source: string): SkillSource | null {
+    const normalized = source.startsWith('gitlab:')
+      ? source.slice('gitlab:'.length)
+      : source.startsWith('gitlab.com/')
+        ? source.slice('gitlab.com/'.length)
+        : null;
+
+    if (!normalized) {
+      return null;
+    }
+
+    const [repoSpec = normalized, subpathSpec] = normalized.split('//', 2);
+    const segments = repoSpec.split('/').filter(Boolean);
+    if (segments.length < 2) {
+      return null;
+    }
+
+    const repo = segments[segments.length - 1];
+    const owner = segments.slice(0, segments.length - 1).join('/');
+    if (!owner || !repo) {
+      return null;
+    }
+
+    return {
+      type: 'gitlab',
+      url: `https://gitlab.com/${owner}/${repo}.git`,
+      owner,
+      repo,
+      ...(subpathSpec ? { subpath: subpathSpec } : {}),
+    };
+  }
+
+  private parseBitbucketShorthandSource(source: string): SkillSource | null {
+    const normalized = source.startsWith('bitbucket:')
+      ? source.slice('bitbucket:'.length)
+      : source.startsWith('bitbucket.org/')
+        ? source.slice('bitbucket.org/'.length)
+        : null;
+
+    if (!normalized) {
+      return null;
+    }
+
+    const segments = normalized.split('/').filter(Boolean);
+    if (segments.length < 2) {
+      return null;
+    }
+
+    const [owner, repo, ...rest] = segments;
+    if (!owner || !repo) {
+      return null;
+    }
+
+    return {
+      type: 'bitbucket',
+      url: `https://bitbucket.org/${owner}/${repo}.git`,
+      owner,
+      repo,
+      ...(rest.length > 0 ? { subpath: rest.join('/') } : {}),
     };
   }
 
@@ -422,7 +618,7 @@ export class SkillsManager {
     sourceLabel: string,
   ): Promise<string> {
     const resolvedRepoPath = resolve(repoPath);
-    if (source.type !== 'github' || !source.subpath) {
+    if ((source.type !== 'github' && source.type !== 'gitlab' && source.type !== 'bitbucket') || !source.subpath) {
       return resolvedRepoPath;
     }
 
@@ -480,7 +676,7 @@ export class SkillsManager {
       }
 
       let repoPath: string;
-      if (resolved.type === 'github') {
+      if (resolved.type === 'github' || resolved.type === 'gitlab' || resolved.type === 'bitbucket') {
         if (!resolved.url) {
           throw new Error(`Invalid source: ${source}`);
         }
@@ -1008,6 +1204,41 @@ export class SkillsManager {
         skills = skills.filter(skill => names.has(skill.name.toLowerCase()));
       }
 
+      const result: SkillsAddResult = { installed: [], updated: [], unchanged: [], skipped: [], warnings: [...context.warnings] };
+
+      if (options.scan !== false) {
+        const scannedWarnings = new Set<string>();
+        const scannableSkills: SkillInfo[] = [];
+
+        for (const skill of skills) {
+          const scan = await this.skillScanner.scanSkill(skill);
+
+          if (scan.findings.length === 0) {
+            scannableSkills.push(skill);
+            continue;
+          }
+
+          if (scan.blocked && !options.allowRisky) {
+            result.skipped.push({
+              skill,
+              reason: this.skillScanner.formatBlockingReason(scan),
+            });
+            continue;
+          }
+
+          const summary = this.skillScanner.formatShortSummary(scan);
+          scannedWarnings.add(
+            scan.blocked
+              ? `Proceeding with "${skill.name}" despite high-risk findings: ${summary}`
+              : `Security warnings for "${skill.name}": ${summary}`
+          );
+          scannableSkills.push(skill);
+        }
+
+        skills = scannableSkills;
+        result.warnings.push(...scannedWarnings);
+      }
+
       const installToSharedStore = options.agents?.includes(SHARED_SKILLS_TARGET_ID) ?? false;
       const agents = await this.getTargetAgents(projectPath, options);
       if (agents.length === 0 && !installToSharedStore) {
@@ -1015,12 +1246,13 @@ export class SkillsManager {
           installed: [],
           updated: [],
           unchanged: [],
-          skipped: skills.map(skill => ({ skill, reason: 'No target agents found' })),
-          warnings: context.warnings,
+          skipped: [
+            ...result.skipped,
+            ...skills.map(skill => ({ skill, reason: 'No target agents found' })),
+          ],
+          warnings: result.warnings,
         };
       }
-
-      const result: SkillsAddResult = { installed: [], updated: [], unchanged: [], skipped: [], warnings: context.warnings };
       const installableAgents: Agent[] = [];
 
       // Cache comparison results by install path to avoid re-comparing the same target

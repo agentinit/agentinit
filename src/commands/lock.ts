@@ -3,6 +3,7 @@ import { resolve } from 'path';
 import { green, yellow, red, cyan, dim } from 'kleur/colors';
 import { logger } from '../utils/logger.js';
 import { InstallLock, getLockEntryTargetLabel } from '../core/installLock.js';
+import { formatLockSource } from '../utils/lockSource.js';
 import type { LockEntry, LockEntryKind, LockQueryOptions } from '../types/lockfile.js';
 
 function formatTimestamp(iso: string): string {
@@ -23,20 +24,7 @@ function formatKind(kind: LockEntryKind): string {
 }
 
 function formatSource(entry: LockEntry): string {
-  const src = entry.source;
-  if (src.type === 'marketplace' && src.marketplace) {
-    return `${src.marketplace}/${src.pluginName || ''}`;
-  }
-  if (src.type === 'github') {
-    if (src.owner && src.repo) {
-      return src.subpath ? `${src.owner}/${src.repo}/${src.subpath}` : `${src.owner}/${src.repo}`;
-    }
-    return src.url || 'github';
-  }
-  if (src.type === 'local' && src.path) {
-    return src.path;
-  }
-  return src.type;
+  return formatLockSource(entry.source);
 }
 
 export function registerLockCommand(program: Command): void {

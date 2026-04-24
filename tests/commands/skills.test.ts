@@ -493,6 +493,43 @@ describe('skills command', () => {
     expect(infoSpy).toHaveBeenCalledWith('  agentinit init');
   });
 
+  it('passes scan overrides through to the installer', async () => {
+    vi.spyOn(SkillsManager.prototype, 'prepareSource').mockResolvedValue({
+      skills: [],
+      warnings: [],
+    });
+    const addFromSourceSpy = vi.spyOn(SkillsManager.prototype, 'addFromSource').mockResolvedValue({
+      installed: [],
+      updated: [],
+      unchanged: [],
+      skipped: [],
+      warnings: [],
+    });
+
+    const program = new Command();
+    registerSkillsCommand(program);
+
+    await program.parseAsync([
+      'skills',
+      'add',
+      'gitlab:platform/skills',
+      '--agent',
+      'claude',
+      '--no-scan',
+      '--allow-risky',
+    ], { from: 'user' });
+
+    expect(addFromSourceSpy).toHaveBeenCalledWith(
+      'gitlab:platform/skills',
+      process.cwd(),
+      expect.objectContaining({
+        agents: ['claude'],
+        scan: false,
+        allowRisky: true,
+      }),
+    );
+  });
+
   it('fails without prompting when --yes hits a multi-plugin bundle source', async () => {
     const errorSpy = vi.spyOn(logger, 'error').mockImplementation(() => {});
     const bundleError = new MultipleBundlePluginsError('/tmp/test', [
@@ -921,6 +958,46 @@ describe('skills command', () => {
       'test/skills',
       '/tmp/non-existent-project-for-global-skill',
       expect.objectContaining({ agents: ['claude'], global: true, skills: ['shared-skill'], yes: true }),
+    );
+  });
+
+  it('reconstructs GitLab sources when updating tracked skills', async () => {
+    vi.spyOn(InstallLock.prototype, 'getCurrentState').mockResolvedValue([
+      {
+        kind: 'skill',
+        action: 'install',
+        name: 'shared-skill',
+        projectPath: process.cwd(),
+        agents: ['claude'],
+        scope: 'project',
+        source: { type: 'gitlab', owner: 'team/platform', repo: 'skills', subpath: 'shared-skill' },
+        metadata: {
+          kind: 'skill',
+          installPath: '/tmp/project/.claude/skills/shared-skill',
+          mode: 'symlink',
+        },
+        id: 'gitlab-1',
+        timestamp: new Date().toISOString(),
+      },
+    ]);
+
+    const addFromSourceSpy = vi.spyOn(SkillsManager.prototype, 'addFromSource').mockResolvedValue({
+      installed: [],
+      updated: [],
+      unchanged: [],
+      skipped: [],
+      warnings: [],
+    });
+
+    const program = new Command();
+    registerSkillsCommand(program);
+
+    await program.parseAsync(['skills', 'update', 'shared-skill'], { from: 'user' });
+
+    expect(addFromSourceSpy).toHaveBeenCalledWith(
+      'gitlab:team/platform/skills//shared-skill',
+      process.cwd(),
+      expect.objectContaining({ agents: ['claude'], skills: ['shared-skill'], yes: true }),
     );
   });
 });

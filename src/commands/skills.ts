@@ -12,6 +12,7 @@ import { getMarketplaceIds } from '../core/marketplaceRegistry.js';
 import { AgentManager } from '../core/agentManager.js';
 import { InstallLock, getLockEntryTargetLabel } from '../core/installLock.js';
 import { fileExists } from '../utils/fs.js';
+import { lockSourceToSpecifier } from '../utils/lockSource.js';
 import type { Agent } from '../agents/Agent.js';
 import type { LockEntry, LockSource } from '../types/lockfile.js';
 import {
@@ -52,7 +53,7 @@ export function registerSkillsCommand(program: Command): void {
   // --- skills add <source> ---
   skills
     .command('add <source>')
-    .description('Add skills from a marketplace, GitHub repo, or local path')
+    .description('Add skills from a marketplace, hosted Git repo, or local path')
     .option('--from <marketplace>', `Marketplace source override (available: ${marketplaceHelp})`)
     .option('-g, --global', 'Install skills globally')
     .option('-a, --agent <agents...>', 'Target specific agent(s)')
@@ -60,6 +61,8 @@ export function registerSkillsCommand(program: Command): void {
     .option('-l, --list', 'List available skills from the source without installing')
     .option('--all', 'Select all bundled plugins when the source contains multiple plugins')
     .option('--copy', 'Copy skill files instead of symlinking')
+    .option('--no-scan', 'Skip security scanning before installation')
+    .option('--allow-risky', 'Install even if scanning finds high-risk patterns')
     .option('-y, --yes', 'Skip prompts, auto-detect project-configured agents, and apply available skill updates')
     .action(async (source: string, options) => {
       logger.titleBox('AgentInit  Skills');
@@ -217,6 +220,8 @@ export function registerSkillsCommand(program: Command): void {
         ...(targetAgents !== undefined ? { agents: targetAgents } : {}),
         ...(selectedSkillNames !== undefined ? { skills: selectedSkillNames } : {}),
         ...(options.copy !== undefined ? { copy: options.copy } : {}),
+        ...(options.scan !== undefined ? { scan: options.scan } : {}),
+        ...(options.allowRisky !== undefined ? { allowRisky: options.allowRisky } : {}),
         ...(pluginName !== undefined ? { pluginName } : {}),
         ...(options.yes !== undefined ? { yes: options.yes } : {}),
         ...(confirmUpdate !== undefined ? { confirmUpdate } : {}),
@@ -600,24 +605,7 @@ export function registerSkillsCommand(program: Command): void {
 }
 
 function lockSourceToString(source: LockSource): { source: string; from?: string } | null {
-  if (source.type === 'marketplace' && source.marketplace && source.pluginName) {
-    return { source: source.pluginName, from: source.marketplace };
-  }
-  if (source.type === 'github') {
-    if (source.owner && source.repo) {
-      if (source.subpath) {
-        return { source: `${source.owner}/${source.repo}/${source.subpath}` };
-      }
-      return { source: `${source.owner}/${source.repo}` };
-    }
-    if (source.url) {
-      return { source: source.url };
-    }
-  }
-  if (source.type === 'local' && source.path) {
-    return { source: source.path };
-  }
-  return null;
+  return lockSourceToSpecifier(source);
 }
 
 async function resolveInteractiveSkillTargets(
