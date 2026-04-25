@@ -1,3 +1,11 @@
+## [1.20.1](https://github.com/agentinit/agentinit/compare/v1.20.0...v1.20.1) (2026-04-25)
+
+
+### Bug Fixes
+
+* harden skill source replay and scan enforcement ([cf0efa1](https://github.com/agentinit/agentinit/commit/cf0efa17009515e1a5835b7a9c81b675a84bc91c))
+* **skills:** preserve prefixes across installs and updates ([6a0c7b3](https://github.com/agentinit/agentinit/commit/6a0c7b3f4c16bf9ee8cb60a3a94b852755f412fa))
+
 # [1.20.0](https://github.com/agentinit/agentinit/compare/v1.19.0...v1.20.0) (2026-04-22)
 
 
