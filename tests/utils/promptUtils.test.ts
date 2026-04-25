@@ -7,24 +7,21 @@ const MultiselectPrompt = require('prompts/lib/elements/multiselect');
 
 describe('prompt utils', () => {
   it('treats uppercase A as toggle-all for multiselect prompts', () => {
-    enableUppercaseToggleAllForMultiselectPrompt();
-
     const toggleAll = vi.fn();
     const handleSpaceToggle = vi.fn();
     const bell = vi.fn();
+    const prompt = {
+      _: MultiselectPrompt.prototype._,
+      toggleAll,
+      handleSpaceToggle,
+      bell,
+      maxChoices: undefined,
+      cursor: 0,
+      value: [{ selected: false, disabled: false }],
+    };
 
-    MultiselectPrompt.prototype._.call(
-      {
-        toggleAll,
-        handleSpaceToggle,
-        bell,
-        maxChoices: undefined,
-        cursor: 0,
-        value: [{ selected: false, disabled: false }],
-      },
-      'A',
-      {},
-    );
+    enableUppercaseToggleAllForMultiselectPrompt(prompt);
+    prompt._('A', {});
 
     expect(toggleAll).toHaveBeenCalledOnce();
     expect(handleSpaceToggle).not.toHaveBeenCalled();
@@ -32,22 +29,19 @@ describe('prompt utils', () => {
   });
 
   it('dispatches custom hotkeys for multiselect prompts', async () => {
-    enableUppercaseToggleAllForMultiselectPrompt();
-
     const prefixHotkey = vi.fn();
     const bell = vi.fn();
     const render = vi.fn();
+    const prompt = {
+      _: MultiselectPrompt.prototype._,
+      __agentinitHotkeys: { p: prefixHotkey },
+      __agentinitHotkeyBusy: false,
+      bell,
+      render,
+    };
 
-    MultiselectPrompt.prototype._.call(
-      {
-        __agentinitHotkeys: { p: prefixHotkey },
-        __agentinitHotkeyBusy: false,
-        bell,
-        render,
-      },
-      'p',
-      {},
-    );
+    enableUppercaseToggleAllForMultiselectPrompt(prompt);
+    prompt._('p', {});
 
     await Promise.resolve();
     await Promise.resolve();
@@ -58,14 +52,13 @@ describe('prompt utils', () => {
   });
 
   it('allows hotkeys to close the multiselect with the current selection for follow-up prompts', async () => {
-    enableUppercaseToggleAllForMultiselectPrompt();
-
     const fire = vi.fn();
     const render = vi.fn();
     const write = vi.fn();
     const close = vi.fn();
 
     const prompt = {
+      _: MultiselectPrompt.prototype._,
       __agentinitHotkeys: {
         p: vi.fn(currentPrompt => {
           const typedPrompt = currentPrompt as {
@@ -92,7 +85,8 @@ describe('prompt utils', () => {
       out: { write },
     };
 
-    MultiselectPrompt.prototype._.call(prompt, 'p', {});
+    enableUppercaseToggleAllForMultiselectPrompt(prompt);
+    prompt._('p', {});
 
     await Promise.resolve();
     await Promise.resolve();
@@ -101,5 +95,31 @@ describe('prompt utils', () => {
     expect(close).toHaveBeenCalledOnce();
     expect(write).toHaveBeenCalledWith('\n');
     expect(render).toHaveBeenCalled();
+  });
+
+  it('is a no-op when called on an already-patched prompt', () => {
+    const toggleAll = vi.fn();
+    const prompt = {
+      _: MultiselectPrompt.prototype._,
+      toggleAll,
+      cursor: 0,
+      value: [{ selected: false, disabled: false }],
+    };
+
+    enableUppercaseToggleAllForMultiselectPrompt(prompt);
+    const patchedHandler = prompt._;
+
+    enableUppercaseToggleAllForMultiselectPrompt(prompt);
+
+    expect(prompt._).toBe(patchedHandler);
+  });
+
+  it('is a no-op when the prompt has no _ handler', () => {
+    const prompt = {
+      toggleAll: vi.fn(),
+      cursor: 0,
+    };
+
+    expect(() => enableUppercaseToggleAllForMultiselectPrompt(prompt)).not.toThrow();
   });
 });
