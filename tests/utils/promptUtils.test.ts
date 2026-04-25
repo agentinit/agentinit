@@ -118,6 +118,7 @@ describe('prompt utils', () => {
     const prompt = {
       toggleAll: vi.fn(),
       cursor: 0,
+      render: vi.fn(),
     };
 
     expect(() => enableUppercaseToggleAllForMultiselectPrompt(prompt)).not.toThrow();
