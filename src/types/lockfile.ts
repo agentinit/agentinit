@@ -5,6 +5,7 @@ export interface LockSource {
   type: 'marketplace' | 'github' | 'gitlab' | 'bitbucket' | 'local';
   marketplace?: string;
   pluginName?: string;
+  prefix?: string;
   url?: string;
   path?: string;
   owner?: string;

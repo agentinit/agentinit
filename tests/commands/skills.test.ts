@@ -458,6 +458,57 @@ describe('skills command', () => {
     expect(groupsPrompt?.choices.find((choice: Record<string, any>) => choice.title.startsWith('~/.codex/skills/ -> OpenAI Codex CLI'))?.description).toBe('Will install: playground');
   });
 
+  it('shows install status previews for prefixed --skill selections', async () => {
+    vi.spyOn(SkillsManager.prototype, 'prepareSource').mockResolvedValue({
+      skills: [
+        {
+          name: 'playground',
+          description: 'Interactive playground',
+          path: '/tmp/playground',
+        },
+        {
+          name: 'ideation',
+          description: 'Generate ideas',
+          path: '/tmp/ideation',
+        },
+      ],
+      warnings: [],
+    });
+    vi.spyOn(SkillsManager.prototype, 'previewInstallStatus').mockImplementation(async skill => (
+      skill.name === 'playground' ? 'unchanged' : 'new'
+    ));
+    vi.spyOn(SkillsManager.prototype, 'addFromSource').mockResolvedValue({
+      installed: [],
+      updated: [],
+      unchanged: [],
+      skipped: [],
+      warnings: [],
+    });
+
+    let groupsPrompt: Record<string, any> | undefined;
+    promptsMock
+      .mockResolvedValueOnce({ scope: 'global' })
+      .mockImplementationOnce(async prompt => {
+        groupsPrompt = prompt as Record<string, any>;
+        return { groups: [[SHARED_SKILLS_TARGET_ID]] };
+      });
+
+    const program = new Command();
+    registerSkillsCommand(program);
+
+    await program.parseAsync([
+      'skills',
+      'add',
+      TEST_GITHUB_SKILL_REPO,
+      '--prefix',
+      'marketing-',
+      '--skill',
+      'marketing-playground',
+    ], { from: 'user' });
+
+    expect(groupsPrompt?.choices[0]?.description).toBe('Already up to date: playground');
+  });
+
   it('shows actionable guidance when --yes leaves skills add with no target agents', async () => {
     const infoSpy = vi.spyOn(logger, 'info').mockImplementation(() => {});
     vi.spyOn(SkillsManager.prototype, 'prepareSource').mockResolvedValue({
@@ -493,7 +544,7 @@ describe('skills command', () => {
     expect(infoSpy).toHaveBeenCalledWith('  agentinit init');
   });
 
-  it('passes scan overrides through to the installer', async () => {
+  it('passes scan overrides and prefix through to the installer', async () => {
     vi.spyOn(SkillsManager.prototype, 'prepareSource').mockResolvedValue({
       skills: [],
       warnings: [],
@@ -515,6 +566,8 @@ describe('skills command', () => {
       'gitlab:platform/skills',
       '--agent',
       'claude',
+      '--prefix',
+      'marketing-',
       '--no-scan',
       '--allow-risky',
     ], { from: 'user' });
@@ -524,6 +577,7 @@ describe('skills command', () => {
       process.cwd(),
       expect.objectContaining({
         agents: ['claude'],
+        prefix: 'marketing-',
         scan: false,
         allowRisky: true,
       }),
@@ -998,6 +1052,51 @@ describe('skills command', () => {
       'gitlab:team/platform/skills//shared-skill',
       process.cwd(),
       expect.objectContaining({ agents: ['claude'], skills: ['shared-skill'], yes: true }),
+    );
+  });
+
+  it('passes tracked prefixes when updating skills', async () => {
+    vi.spyOn(InstallLock.prototype, 'getCurrentState').mockResolvedValue([
+      {
+        kind: 'skill',
+        action: 'install',
+        name: 'marketing-shared-skill',
+        projectPath: process.cwd(),
+        agents: ['claude'],
+        scope: 'project',
+        source: { type: 'github', owner: 'platform', repo: 'skills', prefix: 'marketing-' },
+        metadata: {
+          kind: 'skill',
+          installPath: '/tmp/project/.claude/skills/marketing-shared-skill',
+          mode: 'symlink',
+        },
+        id: 'github-1',
+        timestamp: new Date().toISOString(),
+      },
+    ]);
+
+    const addFromSourceSpy = vi.spyOn(SkillsManager.prototype, 'addFromSource').mockResolvedValue({
+      installed: [],
+      updated: [],
+      unchanged: [],
+      skipped: [],
+      warnings: [],
+    });
+
+    const program = new Command();
+    registerSkillsCommand(program);
+
+    await program.parseAsync(['skills', 'update', 'marketing-shared-skill'], { from: 'user' });
+
+    expect(addFromSourceSpy).toHaveBeenCalledWith(
+      'platform/skills',
+      process.cwd(),
+      expect.objectContaining({
+        agents: ['claude'],
+        skills: ['marketing-shared-skill'],
+        prefix: 'marketing-',
+        yes: true,
+      }),
     );
   });
 });

@@ -32,6 +32,7 @@ export interface SkillsAddOptions {
   global?: boolean;
   agents?: string[];
   skills?: string[];
+  prefix?: string;
   list?: boolean;
   copy?: boolean;
   scan?: boolean;

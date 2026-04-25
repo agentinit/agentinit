@@ -214,6 +214,9 @@ agentinit skills add owner/repo --global --agent agents
 # Force copied installs instead of canonical symlink installs
 agentinit skills add ./skills --copy
 
+# Prefix installed skill names for grouping
+agentinit skills add owner/repo --prefix marketing-
+
 # Install every bundled plugin from a multi-plugin Claude bundle
 agentinit skills add owner/repo --all
 
@@ -234,7 +237,7 @@ If a GitHub or local Claude bundle contains multiple plugins, `agentinit skills 
 
 Skills are installed into a canonical store by default (`.agents/skills/` for project, `~/.agents/skills/` for global), with agent-specific paths symlinked automatically. Bare skill names resolve from your configured default marketplace, falling back to the public catalog at `vercel-labs/agent-skills`. Use `./name` for local paths, `owner/repo` for GitHub repos, `gitlab:group/repo` for GitLab repos, `gitlab:group/repo//path/to/skill` for GitLab subdirectories, `bitbucket:workspace/repo` for Bitbucket, or `--from <marketplace>` for explicit marketplace sources.
 
-When you re-run `agentinit skills add`, AgentInit compares the installed skill payload with the source before overwriting anything. Unchanged skills are reported as already up to date. If an installed skill has changed, interactive runs ask for confirmation before replacing it, while `--yes` applies the update automatically. Installs are security-scanned by default; risky helper scripts are blocked, while risky Markdown guidance is surfaced as a warning. Use `--no-scan` to skip scanning or `--allow-risky` to proceed when high-risk executable patterns are detected.
+When you re-run `agentinit skills add`, AgentInit compares the installed skill payload with the source before overwriting anything. Unchanged skills are reported as already up to date. If an installed skill has changed, interactive runs ask for confirmation before replacing it, while `--yes` applies the update automatically. Use `--prefix <text>` to prepend installed skill names for grouping, or press `P` during the interactive skill picker to set it on the fly. Installs are security-scanned by default; risky helper scripts are blocked, while risky Markdown guidance is surfaced as a warning. Use `--no-scan` to skip scanning or `--allow-risky` to proceed when high-risk executable patterns are detected.
 
 `agentinit skills update [name]` replays tracked project-scoped installs from their original source in the current project. Use `agentinit skills update <name> --everywhere` to update that skill across every tracked target, including global installs.
 

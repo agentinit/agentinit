@@ -134,7 +134,7 @@ describe('lock command', () => {
         projectPath: '/tmp/project-a',
         agents: ['claude'],
         scope: 'project',
-        source: { type: 'gitlab', owner: 'team/platform', repo: 'skills', subpath: 'frontend-design' },
+        source: { type: 'gitlab', owner: 'team/platform', repo: 'skills', subpath: 'frontend-design', prefix: 'marketing-' },
         metadata: {
           kind: 'skill',
           installPath: '/tmp/project-a/.claude/skills/gitlab-skill',
@@ -168,7 +168,7 @@ describe('lock command', () => {
 
     await program.parseAsync(['lock', 'list'], { from: 'user' });
 
-    expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('gitlab:team/platform/skills//frontend-design'));
+    expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('gitlab:team/platform/skills//frontend-design [prefix: marketing-]'));
     expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('bitbucket:workspace/skills/frontend-design'));
   });
 });

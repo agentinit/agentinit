@@ -12,7 +12,7 @@ import { getMarketplaceIds } from '../core/marketplaceRegistry.js';
 import { AgentManager } from '../core/agentManager.js';
 import { InstallLock, getLockEntryTargetLabel } from '../core/installLock.js';
 import { fileExists } from '../utils/fs.js';
-import { lockSourceToSpecifier } from '../utils/lockSource.js';
+import { lockSourceToSpecifier, type LockSourceSpecifier } from '../utils/lockSource.js';
 import type { Agent } from '../agents/Agent.js';
 import type { LockEntry, LockSource } from '../types/lockfile.js';
 import {
@@ -41,7 +41,25 @@ interface SkillTargetSelection {
 
 interface InteractiveSkillSelection {
   skills?: string[];
+  prefix?: string;
   aborted?: boolean;
+}
+
+function normalizeSkillPrefix(prefix?: string): string {
+  return prefix?.trim() ?? '';
+}
+
+function matchesSelectedSkillName(skillName: string, selectedNames: Set<string>, prefix?: string): boolean {
+  if (selectedNames.has(skillName.toLowerCase())) {
+    return true;
+  }
+
+  const normalizedPrefix = normalizeSkillPrefix(prefix);
+  if (!normalizedPrefix) {
+    return false;
+  }
+
+  return selectedNames.has(`${normalizedPrefix}${skillName}`.toLowerCase());
 }
 
 export function registerSkillsCommand(program: Command): void {
@@ -61,6 +79,7 @@ export function registerSkillsCommand(program: Command): void {
     .option('-l, --list', 'List available skills from the source without installing')
     .option('--all', 'Select all bundled plugins when the source contains multiple plugins')
     .option('--copy', 'Copy skill files instead of symlinking')
+    .option('--prefix <prefix>', 'Prefix installed skill names')
     .option('--no-scan', 'Skip security scanning before installation')
     .option('--allow-risky', 'Install even if scanning finds high-risk patterns')
     .option('-y, --yes', 'Skip prompts, auto-detect project-configured agents, and apply available skill updates')
@@ -148,12 +167,13 @@ export function registerSkillsCommand(program: Command): void {
       let targetAgents = options.agent as string[] | undefined;
       let targetGlobal = options.global as boolean | undefined;
       let selectedSkillNames = options.skill as string[] | undefined;
+      let installPrefix = options.prefix as string | undefined;
 
       if (!options.yes && (!selectedSkillNames || selectedSkillNames.length === 0) && preparedSkills.length > 1) {
         if (selectedPluginNames && selectedPluginNames.length > 1) {
           logger.info('Multiple bundled plugins selected; installing all skills from each selected plugin. Use --skill to filter by skill name.');
         } else {
-          const skillSelection = await resolveInteractiveSkillSelection(preparedSkills);
+          const skillSelection = await resolveInteractiveSkillSelection(preparedSkills, installPrefix);
           if (skillSelection.aborted) {
             await skillsManager.discardPreparedSource(source, process.cwd(), {
               from: options.from,
@@ -162,6 +182,7 @@ export function registerSkillsCommand(program: Command): void {
           }
 
           selectedSkillNames = skillSelection.skills;
+          installPrefix = skillSelection.prefix;
         }
       }
 
@@ -170,7 +191,7 @@ export function registerSkillsCommand(program: Command): void {
           ? new Set(selectedSkillNames.map((name: string) => name.toLowerCase()))
           : undefined;
         const filteredPreviewSkills = selectedSkillNameSet
-          ? preparedSkills.filter(skill => selectedSkillNameSet.has(skill.name.toLowerCase()))
+          ? preparedSkills.filter(skill => matchesSelectedSkillName(skill.name, selectedSkillNameSet, installPrefix))
           : preparedSkills;
         const selection = await resolveInteractiveSkillTargets(
           skillsManager,
@@ -219,6 +240,7 @@ export function registerSkillsCommand(program: Command): void {
         ...(targetGlobal !== undefined ? { global: targetGlobal } : {}),
         ...(targetAgents !== undefined ? { agents: targetAgents } : {}),
         ...(selectedSkillNames !== undefined ? { skills: selectedSkillNames } : {}),
+        ...(installPrefix !== undefined ? { prefix: installPrefix } : {}),
         ...(options.copy !== undefined ? { copy: options.copy } : {}),
         ...(options.scan !== undefined ? { scan: options.scan } : {}),
         ...(options.allowRisky !== undefined ? { allowRisky: options.allowRisky } : {}),
@@ -441,6 +463,7 @@ export function registerSkillsCommand(program: Command): void {
               entry.projectPath,
               {
                 ...(sourceString.from ? { from: sourceString.from } : {}),
+                ...(sourceString.prefix ? { prefix: sourceString.prefix } : {}),
                 agents: entry.agents,
                 global: entry.scope === 'global',
                 skills: [name],
@@ -519,10 +542,11 @@ export function registerSkillsCommand(program: Command): void {
                 sourceString.source,
                 cwd,
                 {
-                  ...(sourceString.from ? { from: sourceString.from } : {}),
-                  agents: entry.agents,
-                  global: entry.scope === 'global',
-                  skills: [name],
+                ...(sourceString.from ? { from: sourceString.from } : {}),
+                ...(sourceString.prefix ? { prefix: sourceString.prefix } : {}),
+                agents: entry.agents,
+                global: entry.scope === 'global',
+                skills: [name],
                   yes: true,
                 },
               );
@@ -579,6 +603,7 @@ export function registerSkillsCommand(program: Command): void {
                 cwd,
                 {
                   ...(sourceString.from ? { from: sourceString.from } : {}),
+                  ...(sourceString.prefix ? { prefix: sourceString.prefix } : {}),
                   agents: entry.agents,
                   global: entry.scope === 'global',
                   skills: [entry.name],
@@ -604,7 +629,7 @@ export function registerSkillsCommand(program: Command): void {
     });
 }
 
-function lockSourceToString(source: LockSource): { source: string; from?: string } | null {
+function lockSourceToString(source: LockSource): LockSourceSpecifier | null {
   return lockSourceToSpecifier(source);
 }
 
@@ -713,25 +738,69 @@ async function resolveInteractiveSkillTargets(
   return selection;
 }
 
-async function resolveInteractiveSkillSelection(skills: SkillInfo[]): Promise<InteractiveSkillSelection> {
-  const response = await promptMultiselect<string>({
-    name: 'skills',
-    message: `Select skills to install (${skills.length} found):`,
-    min: 1,
-    choices: skills.map(skill => ({
-      title: skill.name,
-      value: skill.name,
-      description: skill.description,
-      selected: true,
-    })),
-  });
+function formatSkillSelectionHint(prefix: string): string {
+  return `Press Space to select, A to select or deselect all, p to edit prefix, then Enter to confirm. Prefix: "${prefix}"`;
+}
 
-  if (!response.skills || response.skills.length === 0) {
-    logger.info('No skills selected. Aborting.');
-    return { aborted: true };
+async function resolveInteractiveSkillSelection(
+  skills: SkillInfo[],
+  initialPrefix?: string,
+): Promise<InteractiveSkillSelection> {
+  let prefix = initialPrefix ?? '';
+  let selectedSkills = new Set(skills.map(skill => skill.name));
+
+  const promptForPrefix = async () => {
+    const response = await prompts({
+      type: 'text',
+      name: 'prefix',
+      message: 'Prefix to prepend to installed skill names:',
+      initial: prefix,
+    });
+
+    if (typeof response.prefix === 'string') {
+      prefix = response.prefix;
+    }
+  };
+
+  const requestPrefixEdit = (controls: { requestAction: (action: string) => void; closeWithCurrentSelection: () => boolean }) => {
+    controls.requestAction('edit-prefix');
+    controls.closeWithCurrentSelection();
+  };
+
+  while (true) {
+    const response = await promptMultiselect<string>({
+      name: 'skills',
+      message: `Select skills to install (${skills.length} found):`,
+      min: 1,
+      hint: () => formatSkillSelectionHint(prefix),
+      hotkeys: {
+        p: requestPrefixEdit,
+        P: requestPrefixEdit,
+      },
+      choices: skills.map(skill => ({
+        title: skill.name,
+        value: skill.name,
+        description: skill.description,
+        selected: selectedSkills.has(skill.name),
+      })),
+    });
+
+    if (response.skills && response.skills.length > 0) {
+      selectedSkills = new Set(response.skills);
+    }
+
+    if (response.__agentinitAction === 'edit-prefix') {
+      await promptForPrefix();
+      continue;
+    }
+
+    if (!response.skills || response.skills.length === 0) {
+      logger.info('No skills selected. Aborting.');
+      return { aborted: true };
+    }
+
+    return { skills: response.skills, prefix };
   }
-
-  return { skills: response.skills };
 }
 
 async function getDetectedSkillGroups(

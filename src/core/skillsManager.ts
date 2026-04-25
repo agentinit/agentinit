@@ -1048,6 +1048,94 @@ export class SkillsManager {
     };
   }
 
+  private normalizeSkillPrefix(prefix?: string): string {
+    const normalized = prefix?.trim() ?? '';
+
+    if (normalized.includes('/') || normalized.includes('\\')) {
+      throw new Error(`Invalid skill prefix: ${prefix}`);
+    }
+
+    return normalized;
+  }
+
+  private withSkillPrefix(skillName: string, prefix?: string): string {
+    const normalizedPrefix = this.normalizeSkillPrefix(prefix);
+    return normalizedPrefix ? `${normalizedPrefix}${skillName}` : skillName;
+  }
+
+  private async rewriteSkillFileName(filePath: string, skillName: string): Promise<void> {
+    const content = await fs.readFile(filePath, 'utf8');
+    const parsed = matter(content);
+    const nextContent = matter.stringify(parsed.content, {
+      ...parsed.data,
+      name: skillName,
+    });
+    await fs.writeFile(filePath, nextContent, 'utf8');
+  }
+
+  private async applyPrefixToSkills(
+    skills: SkillInfo[],
+    prefix?: string,
+  ): Promise<{ skills: SkillInfo[]; cleanup: () => Promise<void> }> {
+    const normalizedPrefix = this.normalizeSkillPrefix(prefix);
+    if (!normalizedPrefix) {
+      return { skills, cleanup: async () => {} };
+    }
+
+    const tempDirs: string[] = [];
+
+    try {
+      const prefixedSkills = await Promise.all(skills.map(async skill => {
+        const name = this.withSkillPrefix(skill.name, normalizedPrefix);
+
+        if (skill.generatedContent) {
+          return {
+            ...skill,
+            name,
+            generatedContent: matter.stringify(matter(skill.generatedContent).content, {
+              ...matter(skill.generatedContent).data,
+              name,
+            }),
+          };
+        }
+
+        const tempRoot = await fs.mkdtemp(join(tmpdir(), 'agentinit-prefixed-skill-'));
+        const tempSkillPath = join(tempRoot, basename(skill.path));
+        tempDirs.push(tempRoot);
+
+        await this.copyDir(skill.path, tempSkillPath);
+
+        const skillMdPath = join(tempSkillPath, 'SKILL.md');
+        const skillMdPathLower = join(tempSkillPath, 'skill.md');
+        const skillFile = (await fileExists(skillMdPath)) ? skillMdPath
+          : (await fileExists(skillMdPathLower)) ? skillMdPathLower
+          : null;
+
+        if (!skillFile) {
+          throw new Error(`Skill "${skill.name}" is missing SKILL.md`);
+        }
+
+        await this.rewriteSkillFileName(skillFile, name);
+
+        return {
+          ...skill,
+          name,
+          path: tempSkillPath,
+        };
+      }));
+
+      return {
+        skills: prefixedSkills,
+        cleanup: async () => {
+          await Promise.all(tempDirs.map(dir => fs.rm(dir, { recursive: true, force: true }).catch(() => {})));
+        },
+      };
+    } catch (error) {
+      await Promise.all(tempDirs.map(dir => fs.rm(dir, { recursive: true, force: true }).catch(() => {})));
+      throw error;
+    }
+  }
+
   private normalizeSkillName(skillName: string): string {
     const normalized = skillName.trim();
 
@@ -1187,11 +1275,13 @@ export class SkillsManager {
     projectPath: string,
     options: SkillsAddOptions = {}
   ): Promise<SkillsAddResult> {
+    const normalizedPrefix = this.normalizeSkillPrefix(options.prefix);
     const context = this.takePreparedSourceContext(source, projectPath, options.from)
       || await this.loadDiscoveredSkillsContext(source, projectPath, {
         ...(options.from !== undefined ? { from: options.from } : {}),
         ...(options.pluginName !== undefined ? { pluginName: options.pluginName } : {}),
       });
+    let prefixedCleanup = async () => {};
     try {
       let skills = context.skills;
 
@@ -1201,8 +1291,15 @@ export class SkillsManager {
 
       if (options.skills && options.skills.length > 0) {
         const names = new Set(options.skills.map(skill => skill.toLowerCase()));
-        skills = skills.filter(skill => names.has(skill.name.toLowerCase()));
+        skills = skills.filter(skill =>
+          names.has(skill.name.toLowerCase())
+          || names.has(this.withSkillPrefix(skill.name, normalizedPrefix).toLowerCase())
+        );
       }
+
+      const prefixed = await this.applyPrefixToSkills(skills, normalizedPrefix);
+      skills = prefixed.skills;
+      prefixedCleanup = prefixed.cleanup;
 
       const result: SkillsAddResult = { installed: [], updated: [], unchanged: [], skipped: [], warnings: [...context.warnings] };
 
@@ -1447,6 +1544,7 @@ export class SkillsManager {
           type: resolvedSource.type,
           ...(resolvedSource.marketplace ? { marketplace: resolvedSource.marketplace } : {}),
           ...(resolvedSource.pluginName ? { pluginName: resolvedSource.pluginName } : {}),
+          ...(normalizedPrefix ? { prefix: normalizedPrefix } : {}),
           ...(resolvedSource.url ? { url: resolvedSource.url } : {}),
           ...(resolvedSource.path ? { path: resolve(projectPath, expandTilde(resolvedSource.path)) } : {}),
           ...(resolvedSource.owner ? { owner: resolvedSource.owner } : {}),
@@ -1484,6 +1582,7 @@ export class SkillsManager {
 
       return result;
     } finally {
+      await prefixedCleanup();
       await context.cleanup();
     }
   }

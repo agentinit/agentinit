@@ -1297,6 +1297,134 @@ describe('SkillsManager', () => {
       expect(result.installed[0]?.skill.name).toBe('my-skill');
     });
 
+    it('installs prefixed skills with rewritten SKILL.md names', async () => {
+      const manager = new SkillsManager();
+      const projectDir = await mkdtemp(join(tmpdir(), 'agentinit-skill-project-'));
+      const repoDir = await mkdtemp(join(tmpdir(), 'agentinit-skill-repo-'));
+      tempDirs.push(projectDir, repoDir);
+
+      await mkdir(join(repoDir, 'my-skill', 'assets'), { recursive: true });
+      await writeFile(join(repoDir, 'my-skill', 'SKILL.md'), '---\nname: my-skill\ndescription: test skill\n---\nContent\n');
+      await writeFile(join(repoDir, 'my-skill', 'assets', 'guide.txt'), 'Guide\n');
+
+      vi.spyOn(manager, 'cloneRepo').mockResolvedValue(repoDir);
+
+      const result = await manager.addFromSource(TEST_GITHUB_SKILL_REPO, projectDir, {
+        agents: ['codex'],
+        prefix: 'marketing-',
+      });
+
+      const canonicalDir = join(projectDir, '.agents/skills', 'marketing-my-skill');
+
+      expect(result.installed).toHaveLength(1);
+      expect(result.installed[0]?.skill.name).toBe('marketing-my-skill');
+      expect(await readFile(join(canonicalDir, 'SKILL.md'), 'utf8')).toContain('name: marketing-my-skill');
+      expect(await readFile(join(canonicalDir, 'assets', 'guide.txt'), 'utf8')).toContain('Guide');
+
+      const listed = await manager.listInstalled(projectDir, { agents: ['codex'] });
+      expect(listed.some(skill => skill.name === 'marketing-my-skill')).toBe(true);
+    });
+
+    it('rewrites generated skill content when installing prefixed skills', async () => {
+      const manager = new SkillsManager();
+      const projectDir = await mkdtemp(join(tmpdir(), 'agentinit-skill-project-'));
+      tempDirs.push(projectDir);
+
+      vi.spyOn(manager as any, 'loadDiscoveredSkillsContext').mockResolvedValue({
+        skills: [
+          {
+            name: 'my-skill',
+            description: 'test skill',
+            path: '/tmp/generated-skill',
+            generatedContent: '---\nname: my-skill\ndescription: test skill\n---\nGenerated content\n',
+          },
+        ],
+        warnings: [],
+        cleanup: async () => {},
+      });
+
+      const result = await manager.addFromSource(TEST_GITHUB_SKILL_REPO, projectDir, {
+        agents: ['codex'],
+        prefix: 'marketing-',
+      });
+
+      const canonicalDir = join(projectDir, '.agents/skills', 'marketing-my-skill');
+
+      expect(result.installed).toHaveLength(1);
+      expect(result.installed[0]?.skill.name).toBe('marketing-my-skill');
+      expect(await readFile(join(canonicalDir, 'SKILL.md'), 'utf8')).toContain('name: marketing-my-skill');
+      expect(await readFile(join(canonicalDir, 'SKILL.md'), 'utf8')).toContain('Generated content');
+    });
+
+    it('trims prefixed skill names before rewriting and recording them', async () => {
+      const manager = new SkillsManager();
+      const projectDir = await mkdtemp(join(tmpdir(), 'agentinit-skill-project-'));
+      const repoDir = await mkdtemp(join(tmpdir(), 'agentinit-skill-repo-'));
+      tempDirs.push(projectDir, repoDir);
+
+      await mkdir(join(repoDir, 'my-skill'), { recursive: true });
+      await writeFile(join(repoDir, 'my-skill', 'SKILL.md'), '---\nname: my-skill\ndescription: test skill\n---\nContent\n');
+
+      vi.spyOn(manager, 'cloneRepo').mockResolvedValue(repoDir);
+
+      const result = await manager.addFromSource(TEST_GITHUB_SKILL_REPO, projectDir, {
+        agents: ['codex'],
+        prefix: '  marketing-  ',
+      });
+
+      const canonicalDir = join(projectDir, '.agents/skills', 'marketing-my-skill');
+
+      expect(result.installed).toHaveLength(1);
+      expect(result.installed[0]?.skill.name).toBe('marketing-my-skill');
+      expect(await readFile(join(canonicalDir, 'SKILL.md'), 'utf8')).toContain('name: marketing-my-skill');
+      expect(await readFile(join(canonicalDir, 'SKILL.md'), 'utf8')).not.toContain('name:   marketing-  my-skill');
+    });
+
+    it('rejects prefixes that would create nested install paths', async () => {
+      const manager = new SkillsManager();
+      const projectDir = await mkdtemp(join(tmpdir(), 'agentinit-skill-project-'));
+      const repoDir = await mkdtemp(join(tmpdir(), 'agentinit-skill-repo-'));
+      tempDirs.push(projectDir, repoDir);
+
+      await mkdir(join(repoDir, 'my-skill'), { recursive: true });
+      await writeFile(join(repoDir, 'my-skill', 'SKILL.md'), '---\nname: my-skill\ndescription: test skill\n---\nContent\n');
+
+      vi.spyOn(manager, 'cloneRepo').mockResolvedValue(repoDir);
+
+      await expect(manager.addFromSource(TEST_GITHUB_SKILL_REPO, projectDir, {
+        agents: ['codex'],
+        prefix: '../marketing-',
+      })).rejects.toThrow('Invalid skill prefix');
+    });
+
+    it('detects unchanged prefixed skills using the rewritten snapshot', async () => {
+      const manager = new SkillsManager();
+      const projectDir = await mkdtemp(join(tmpdir(), 'agentinit-skill-project-'));
+      const repoDir = await mkdtemp(join(tmpdir(), 'agentinit-skill-repo-'));
+      tempDirs.push(projectDir, repoDir);
+
+      await mkdir(join(repoDir, 'my-skill', 'assets'), { recursive: true });
+      await writeFile(join(repoDir, 'my-skill', 'SKILL.md'), '---\nname: my-skill\ndescription: test skill\n---\nContent\n');
+      await writeFile(join(repoDir, 'my-skill', 'assets', 'guide.txt'), 'Guide\n');
+
+      const canonicalDir = join(projectDir, '.agents/skills', 'marketing-my-skill');
+      await mkdir(join(canonicalDir, 'assets'), { recursive: true });
+      await writeFile(join(canonicalDir, 'SKILL.md'), '---\nname: marketing-my-skill\ndescription: test skill\n---\nContent\n');
+      await writeFile(join(canonicalDir, 'assets', 'guide.txt'), 'Guide\n');
+
+      vi.spyOn(manager, 'cloneRepo').mockResolvedValue(repoDir);
+
+      const result = await manager.addFromSource(TEST_GITHUB_SKILL_REPO, projectDir, {
+        agents: ['codex'],
+        prefix: 'marketing-',
+      });
+
+      expect(result.installed).toHaveLength(0);
+      expect(result.updated).toHaveLength(0);
+      expect(result.unchanged).toHaveLength(1);
+      expect(result.unchanged[0]?.skill.name).toBe('marketing-my-skill');
+    });
+
     it('updates skill when content differs and yes is true', async () => {
       const manager = new SkillsManager();
       const projectDir = await mkdtemp(join(tmpdir(), 'agentinit-skill-project-'));

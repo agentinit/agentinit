@@ -23,7 +23,29 @@ type PromptMultiselectOptions<T> = {
   min?: number;
   choices: MultiselectChoice<T>[];
   instructions?: boolean;
-  hint?: string;
+  hint?: string | (() => string);
+  cursor?: number;
+  onRenderPrompt?: (prompt: unknown) => void;
+  hotkeys?: Record<string, (controls: PromptHotkeyControls, input: string, key: unknown) => void | Promise<void>>;
+};
+
+type PromptMultiselectResult<T> = Record<string, T[] | undefined> & {
+  __agentinitAction?: string;
+};
+
+type PromptHotkeyControls = {
+  prompt: unknown;
+  requestAction: (action: string) => void;
+  closeWithCurrentSelection: () => boolean;
+};
+
+type PromptRuntime = {
+  aborted?: boolean;
+  close?: () => void;
+  done?: boolean;
+  fire?: () => void;
+  out?: { write: (value: string) => void };
+  render?: () => void;
 };
 
 type BundlePluginEntry = {
@@ -42,6 +64,10 @@ export function enableUppercaseToggleAllForMultiselectPrompt(): void {
     const MultiselectPrompt = require('prompts/lib/elements/multiselect');
     const prototype = MultiselectPrompt?.prototype as {
       _?: (input: string, key: unknown) => unknown;
+      hint?: string;
+      render?: () => void;
+      __agentinitHotkeys?: Record<string, (prompt: unknown, input: string, key: unknown) => void | Promise<void>>;
+      __agentinitHotkeyBusy?: boolean;
       __agentinitUppercaseToggleAllPatched?: boolean;
     } | undefined;
 
@@ -51,7 +77,25 @@ export function enableUppercaseToggleAllForMultiselectPrompt(): void {
 
     const originalHandler = prototype._;
     prototype._ = function agentinitMultiselectHandler(input: string, key: unknown): unknown {
-      return originalHandler.call(this, input === 'A' ? 'a' : input, key);
+      if (this.__agentinitHotkeyBusy) {
+        return;
+      }
+
+      const normalizedInput = input === 'A' ? 'a' : input;
+      const hotkeyHandler = this.__agentinitHotkeys?.[normalizedInput] || this.__agentinitHotkeys?.[input];
+
+      if (hotkeyHandler) {
+        this.__agentinitHotkeyBusy = true;
+        void Promise.resolve(hotkeyHandler(this, normalizedInput, key)).finally(() => {
+          this.__agentinitHotkeyBusy = false;
+          if (typeof this.render === 'function') {
+            this.render();
+          }
+        });
+        return;
+      }
+
+      return originalHandler.call(this, normalizedInput, key);
     };
 
     Object.defineProperty(prototype, '__agentinitUppercaseToggleAllPatched', {
@@ -67,15 +111,73 @@ export function enableUppercaseToggleAllForMultiselectPrompt(): void {
 
 export async function promptMultiselect<T>(
   options: PromptMultiselectOptions<T>,
-): Promise<Record<string, T[] | undefined>> {
+): Promise<PromptMultiselectResult<T>> {
   enableUppercaseToggleAllForMultiselectPrompt();
 
-  return prompts({
+  const userOnRender = options.onRenderPrompt;
+  const hint = options.hint;
+  let requestedAction: string | undefined;
+  let promptInstance: {
+    __agentinitHotkeys?: Record<string, (prompt: unknown, input: string, key: unknown) => void | Promise<void>>;
+    hint: string;
+  } | undefined;
+  const closeWithCurrentSelection = (prompt: PromptRuntime): boolean => {
+    if (typeof prompt.close !== 'function') {
+      return false;
+    }
+
+    prompt.done = true;
+    prompt.aborted = false;
+    prompt.fire?.();
+    prompt.render?.();
+    prompt.out?.write('\n');
+    prompt.close();
+    return true;
+  };
+  const hotkeys = options.hotkeys
+    ? Object.fromEntries(
+        Object.entries(options.hotkeys).map(([key, handler]) => [
+          key,
+          (prompt: unknown, input: string, pressedKey: unknown) => handler(
+            {
+              prompt,
+              requestAction: action => {
+                requestedAction = action;
+              },
+              closeWithCurrentSelection: () => closeWithCurrentSelection(prompt as PromptRuntime),
+            },
+            input,
+            pressedKey,
+          ),
+        ]),
+      )
+    : undefined;
+
+  const response = await prompts({
     ...options,
     type: 'multiselect',
     instructions: options.instructions ?? false,
-    hint: options.hint ?? MULTISELECT_TOGGLE_ALL_HINT,
-  }) as Promise<Record<string, T[] | undefined>>;
+    hint: typeof hint === 'function' ? hint() : hint ?? MULTISELECT_TOGGLE_ALL_HINT,
+    onRender(this: {
+      __agentinitHotkeys?: Record<string, (prompt: unknown, input: string, key: unknown) => void | Promise<void>>;
+      hint: string;
+    }) {
+      promptInstance = this;
+      if (hotkeys) {
+        this.__agentinitHotkeys = hotkeys;
+      } else {
+        delete this.__agentinitHotkeys;
+      }
+      this.hint = typeof hint === 'function' ? hint() : hint ?? MULTISELECT_TOGGLE_ALL_HINT;
+      userOnRender?.(this);
+    },
+  }) as PromptMultiselectResult<T>;
+
+  if (requestedAction) {
+    response.__agentinitAction = requestedAction;
+  }
+
+  return response;
 }
 
 export async function selectBundlePlugins(
