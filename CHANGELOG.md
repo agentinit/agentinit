@@ -1,3 +1,10 @@
+## [1.20.2](https://github.com/agentinit/agentinit/compare/v1.20.1...v1.20.2) (2026-04-25)
+
+
+### Bug Fixes
+
+* **tests:** add missing property to satisfy type check ([3df22b2](https://github.com/agentinit/agentinit/commit/3df22b2a5e4387c7793a7d6f39f19cc89dcf4973))
+
 ## [1.20.1](https://github.com/agentinit/agentinit/compare/v1.20.0...v1.20.1) (2026-04-25)
 
 
