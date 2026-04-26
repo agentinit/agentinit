@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mkdir, mkdtemp, rm } from 'fs/promises';
 import { tmpdir } from 'os';
-import { join, resolve } from 'path';
+import { join } from 'path';
 import { HermesAgent } from '../../src/agents/HermesAgent.js';
 
 describe('HermesAgent', () => {
@@ -53,8 +53,8 @@ describe('HermesAgent', () => {
     await expect(agent.detectPresence('/tmp/project')).resolves.toBeNull();
   });
 
-  it('returns the shared project skills dir and dedicated global skills dir', () => {
-    expect(agent.getSkillsDir('/tmp/project')).toBe(resolve('/tmp/project', '.agents/skills/'));
+  it('always returns the global skills dir regardless of scope', () => {
+    expect(agent.getSkillsDir('/tmp/project')).toBe(join(homeDir, '.hermes/skills/'));
     expect(agent.getSkillsDir('/tmp/project', true)).toBe(join(homeDir, '.hermes/skills/'));
   });
 });

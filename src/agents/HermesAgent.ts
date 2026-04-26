@@ -1,6 +1,7 @@
 import { Agent } from './Agent.js';
 import { fileExists } from '../utils/fs.js';
 import { expandTilde } from '../utils/paths.js';
+import { homedir } from 'os';
 import type { AgentDefinition, AgentDetectionResult, MCPServerConfig } from '../types/index.js';
 import type { AppliedRules, RuleSection } from '../types/rules.js';
 
@@ -75,5 +76,14 @@ export class HermesAgent extends Agent {
 
   generateRulesContent(_sections: RuleSection[]): string {
     return '';
+  }
+
+  /**
+   * Hermes is a global-only agent — always route skill installs to the
+   * global skills directory regardless of the --global flag.
+   */
+  override getSkillsDir(_projectPath: string, _global?: boolean): string | null {
+    if (!this.definition.skillPaths) return null;
+    return this.definition.skillPaths.global.replace('~', homedir());
   }
 }

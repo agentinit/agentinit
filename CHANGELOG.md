@@ -1,3 +1,10 @@
+# [1.21.0](https://github.com/agentinit/agentinit/compare/v1.20.2...v1.21.0) (2026-04-26)
+
+
+### Features
+
+* **cli:** add 'skill' alias to skills command ([130757f](https://github.com/agentinit/agentinit/commit/130757fa7ea923b451c5c2d0d2cbc950a36dfe8b))
+
 ## [1.20.2](https://github.com/agentinit/agentinit/compare/v1.20.1...v1.20.2) (2026-04-25)
 
 
