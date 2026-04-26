@@ -66,6 +66,7 @@ export function registerSkillsCommand(program: Command): void {
   const marketplaceHelp = getMarketplaceIds().join(', ');
   const skills = program
     .command('skills')
+    .alias('skill')
     .description('Manage agent skills');
 
   // --- skills add <source> ---
