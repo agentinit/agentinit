@@ -1,3 +1,16 @@
+# [1.23.0](https://github.com/agentinit/agentinit/compare/v1.22.1...v1.23.0) (2026-04-28)
+
+
+### Bug Fixes
+
+* **agent:** expose effective settings scope ([7d71c9a](https://github.com/agentinit/agentinit/commit/7d71c9ad60761dc0623e7d2611da1e7d8ca6b050))
+
+
+### Features
+
+* **agent:** add registry-backed Claude settings commands ([b28ce3a](https://github.com/agentinit/agentinit/commit/b28ce3ac8f8fc9d7d08dcdd4318a3fd1b3cf558c))
+* **agent:** default omitted scope to global ([033fd26](https://github.com/agentinit/agentinit/commit/033fd26649ea67b585b205965198271d4ee15865))
+
 ## [1.22.1](https://github.com/agentinit/agentinit/compare/v1.22.0...v1.22.1) (2026-04-28)
 
 
