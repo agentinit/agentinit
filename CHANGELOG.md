@@ -72,6 +72,7 @@
 
 ### Bug Fixes
 
+* **agent:** default omitted settings scopes to global with config and env overrides
 * **agent:** keep raw command-executing Claude settings out of the public settings command
 * **agent:** separate JSON output from JSON value parsing
 * **skills:** compare installed skill payloads before prompting for updates

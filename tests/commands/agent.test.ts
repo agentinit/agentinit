@@ -4,6 +4,7 @@ import { join } from 'path';
 import { Command } from 'commander';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { registerAgentCommand } from '../../src/commands/agent.js';
+import { writeUserConfig } from '../../src/core/userConfig.js';
 import { logger } from '../../src/utils/logger.js';
 
 describe('agent command', () => {
@@ -11,6 +12,7 @@ describe('agent command', () => {
   const originalHome = process.env.HOME;
   const originalCwd = process.cwd();
   const originalExitCode = process.exitCode;
+  const originalAgentSettingsScope = process.env.AGENTINIT_AGENT_DEFAULT_SCOPE;
 
   beforeEach(async () => {
     const homeDir = await mkdtemp(join(tmpdir(), 'agentinit-agent-cmd-home-'));
@@ -29,6 +31,12 @@ describe('agent command', () => {
       delete process.env.HOME;
     } else {
       process.env.HOME = originalHome;
+    }
+
+    if (originalAgentSettingsScope === undefined) {
+      delete process.env.AGENTINIT_AGENT_DEFAULT_SCOPE;
+    } else {
+      process.env.AGENTINIT_AGENT_DEFAULT_SCOPE = originalAgentSettingsScope;
     }
 
     await Promise.all(tempDirs.map(dir => rm(dir, { recursive: true, force: true })));
@@ -58,6 +66,52 @@ describe('agent command', () => {
       permissions: {
         defaultMode: 'acceptEdits',
       },
+    });
+  });
+
+  it('defaults omitted scope flags to global for settings and hooks', async () => {
+    silenceLogger();
+
+    await runAgent(['agent', 'set', 'claude', 'env', '{"AGENTINIT_TEST":"1"}', '--value-json']);
+    await runAgent(['agent', 'hook', 'add', 'claude', 'after-tool-use', '--command', 'npm run lint']);
+
+    await expect(readFile(join(process.env.HOME!, '.claude', 'settings.json'), 'utf8').then(JSON.parse)).resolves.toEqual({
+      env: {
+        AGENTINIT_TEST: '1',
+      },
+      hooks: {
+        PostToolUse: [
+          {
+            hooks: [
+              {
+                type: 'command',
+                command: 'npm run lint',
+              },
+            ],
+          },
+        ],
+      },
+    });
+  });
+
+  it('uses configured or environment default scope when no scope flag is provided', async () => {
+    silenceLogger();
+
+    await writeUserConfig({
+      defaultAgentSettingsScope: 'project',
+      customMarketplaces: [],
+      verifiedGithubRepos: [],
+    });
+
+    await runAgent(['agent', 'set', 'claude', 'model', 'sonnet']);
+    await expect(readFile(join(process.cwd(), '.claude', 'settings.json'), 'utf8').then(JSON.parse)).resolves.toEqual({
+      model: 'sonnet',
+    });
+
+    process.env.AGENTINIT_AGENT_DEFAULT_SCOPE = 'local';
+    await runAgent(['agent', 'set', 'claude', 'effortLevel', 'high']);
+    await expect(readFile(join(process.cwd(), '.claude', 'settings.local.json'), 'utf8').then(JSON.parse)).resolves.toEqual({
+      effortLevel: 'high',
     });
   });
 

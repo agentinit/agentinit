@@ -11,6 +11,7 @@ describe('config command', () => {
   const tempDirs: string[] = [];
   const originalHome = process.env.HOME;
   const originalExitCode = process.exitCode;
+  const originalAgentSettingsScope = process.env.AGENTINIT_AGENT_DEFAULT_SCOPE;
 
   beforeEach(async () => {
     const homeDir = await mkdtemp(join(tmpdir(), 'agentinit-config-home-'));
@@ -26,6 +27,12 @@ describe('config command', () => {
       delete process.env.HOME;
     } else {
       process.env.HOME = originalHome;
+    }
+
+    if (originalAgentSettingsScope === undefined) {
+      delete process.env.AGENTINIT_AGENT_DEFAULT_SCOPE;
+    } else {
+      process.env.AGENTINIT_AGENT_DEFAULT_SCOPE = originalAgentSettingsScope;
     }
 
     await Promise.all(tempDirs.map(dir => rm(dir, { recursive: true, force: true })));
@@ -121,6 +128,23 @@ describe('config command', () => {
     expect((await readUserConfig()).verifiedGithubRepos).toEqual([]);
   });
 
+  it('sets, shows, and clears the default agent settings scope', async () => {
+    silenceLogger();
+    const infoSpy = vi.spyOn(logger, 'info').mockImplementation(() => {});
+
+    await runConfig(['config', 'agent-settings', 'scope', 'project']);
+    expect((await readUserConfig()).defaultAgentSettingsScope).toBe('project');
+
+    process.env.AGENTINIT_AGENT_DEFAULT_SCOPE = 'local';
+    await runConfig(['config', 'agent-settings', 'scope']);
+    expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('Effective default agent settings scope:'));
+    expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('Configured in user config:'));
+    expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('Environment override:'));
+
+    await runConfig(['config', 'agent-settings', 'clear-scope']);
+    expect((await readUserConfig()).defaultAgentSettingsScope).toBeUndefined();
+  });
+
   it('sets a non-zero exit code for invalid marketplace operations', async () => {
     silenceLogger();
 
@@ -137,6 +161,14 @@ describe('config command', () => {
     silenceLogger();
 
     await runConfig(['config', 'verified-repos', 'remove', 'openai/codex-plugin-cc']);
+
+    expect(process.exitCode).toBe(1);
+  });
+
+  it('sets a non-zero exit code for invalid agent settings scope operations', async () => {
+    silenceLogger();
+
+    await runConfig(['config', 'agent-settings', 'scope', 'workspace']);
 
     expect(process.exitCode).toBe(1);
   });

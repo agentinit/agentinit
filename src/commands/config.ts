@@ -3,8 +3,10 @@ import { cyan, dim, green } from '../utils/colors.js';
 import { logger } from '../utils/logger.js';
 import { MARKETPLACES, getConfiguredDefaultMarketplaceId, getMarketplace, getMarketplaceIds } from '../core/marketplaceRegistry.js';
 import {
+  getEffectiveAgentSettingsDefaultScopeSync,
   getBuiltInVerifiedGithubRepos,
   normalizeGitHubRepoRef,
+  normalizeAgentSettingsDefaultScope,
   normalizeMarketplaceIdentifier,
   normalizeMarketplaceName,
   normalizeMarketplaceRepoUrl,
@@ -181,6 +183,62 @@ export function registerConfigCommand(program: Command): void {
       delete configState.defaultMarketplace;
       await writeUserConfig(sortConfig(configState));
       logger.success('Cleared the configured default marketplace.');
+    });
+
+  const agentSettings = config
+    .command('agent-settings')
+    .description('Manage AgentInit defaults for agent settings commands');
+
+  agentSettings
+    .command('scope [scope]')
+    .description('Get or set the default scope used by `agentinit agent` when no scope flag is provided')
+    .action(async (scopeArg: string | undefined) => {
+      logger.titleBox('AgentInit  Configuration');
+
+      try {
+        if (!scopeArg) {
+          const configState = await readUserConfig();
+          const configuredScope = configState.defaultAgentSettingsScope;
+          const effectiveScope = getEffectiveAgentSettingsDefaultScopeSync();
+
+          logger.info(`Effective default agent settings scope: ${cyan(effectiveScope)}`);
+          if (configuredScope) {
+            logger.info(`Configured in user config: ${cyan(configuredScope)}`);
+          } else {
+            logger.info('No user-configured agent settings scope. Built-in default is global.');
+          }
+          if (process.env.AGENTINIT_AGENT_DEFAULT_SCOPE) {
+            logger.info(`Environment override: ${cyan(process.env.AGENTINIT_AGENT_DEFAULT_SCOPE)}`);
+          }
+          return;
+        }
+
+        const scope = normalizeAgentSettingsDefaultScope(scopeArg);
+        const configState = await readUserConfig();
+        configState.defaultAgentSettingsScope = scope;
+        await writeUserConfig(sortConfig(configState));
+
+        logger.success(`Set default agent settings scope to ${green(scope)}.`);
+      } catch (error) {
+        failConfigCommand(error);
+      }
+    });
+
+  agentSettings
+    .command('clear-scope')
+    .description('Clear the user-configured default scope used by `agentinit agent`')
+    .action(async () => {
+      logger.titleBox('AgentInit  Configuration');
+
+      const configState = await readUserConfig();
+      if (!configState.defaultAgentSettingsScope) {
+        logger.info('No user-configured agent settings scope to clear.');
+        return;
+      }
+
+      delete configState.defaultAgentSettingsScope;
+      await writeUserConfig(sortConfig(configState));
+      logger.success('Cleared the user-configured default agent settings scope.');
     });
 
   const verifiedRepos = config

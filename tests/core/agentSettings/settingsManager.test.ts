@@ -3,10 +3,12 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { AgentSettingsManager } from '../../../src/core/agentSettings/settingsManager.js';
+import { writeUserConfig } from '../../../src/core/userConfig.js';
 
 describe('AgentSettingsManager', () => {
   const tempDirs: string[] = [];
   const originalHome = process.env.HOME;
+  const originalAgentSettingsScope = process.env.AGENTINIT_AGENT_DEFAULT_SCOPE;
   let projectPath: string;
 
   beforeEach(async () => {
@@ -23,6 +25,12 @@ describe('AgentSettingsManager', () => {
       process.env.HOME = originalHome;
     }
 
+    if (originalAgentSettingsScope === undefined) {
+      delete process.env.AGENTINIT_AGENT_DEFAULT_SCOPE;
+    } else {
+      process.env.AGENTINIT_AGENT_DEFAULT_SCOPE = originalAgentSettingsScope;
+    }
+
     await Promise.all(tempDirs.map(dir => rm(dir, { recursive: true, force: true })));
     tempDirs.length = 0;
   });
@@ -35,12 +43,12 @@ describe('AgentSettingsManager', () => {
     return JSON.parse(await readFile(join(process.env.HOME!, '.claude', 'settings.json'), 'utf8'));
   }
 
-  it('sets nested Claude settings in project scope by default', async () => {
+  it('sets nested Claude settings in global scope by default', async () => {
     const manager = new AgentSettingsManager();
 
     await manager.set('claude', 'permissions.defaultMode', 'acceptEdits', { projectPath });
 
-    await expect(readProjectSettings()).resolves.toEqual({
+    await expect(readGlobalSettings()).resolves.toEqual({
       permissions: {
         defaultMode: 'acceptEdits',
       },
@@ -61,14 +69,32 @@ describe('AgentSettingsManager', () => {
     await expect(readGlobalSettings()).resolves.toMatchObject({
       alwaysThinkingEnabled: true,
       effortLevel: 'high',
-    });
-    await expect(readProjectSettings()).resolves.toMatchObject({
-      env: {
-        AGENTINIT_TEST: '1',
-      },
       permissions: {
         allow: ['Bash(npm run test *)'],
       },
+      env: {
+        AGENTINIT_TEST: '1',
+      },
+    });
+  });
+
+  it('respects configured and environment default scopes when no explicit scope is provided', async () => {
+    const manager = new AgentSettingsManager();
+
+    await writeUserConfig({
+      defaultAgentSettingsScope: 'project',
+      customMarketplaces: [],
+      verifiedGithubRepos: [],
+    });
+    await manager.set('claude', 'model', 'sonnet', { projectPath });
+    await expect(readProjectSettings()).resolves.toEqual({
+      model: 'sonnet',
+    });
+
+    process.env.AGENTINIT_AGENT_DEFAULT_SCOPE = 'local';
+    await manager.set('claude', 'effortLevel', 'high', { projectPath });
+    await expect(readFile(join(projectPath, '.claude', 'settings.local.json'), 'utf8').then(JSON.parse)).resolves.toEqual({
+      effortLevel: 'high',
     });
   });
 
@@ -89,7 +115,7 @@ describe('AgentSettingsManager', () => {
     await manager.set('claude', 'permissions.defaultMode', 'plan', { projectPath });
     await manager.unset('claude', 'permissions.defaultMode', { projectPath });
 
-    await expect(readProjectSettings()).resolves.toEqual({});
+    await expect(readGlobalSettings()).resolves.toEqual({});
   });
 
   it('does not write when dry-run is enabled', async () => {
@@ -101,7 +127,7 @@ describe('AgentSettingsManager', () => {
     });
 
     expect(result.dryRun).toBe(true);
-    await expect(readProjectSettings()).rejects.toThrow();
+    await expect(readGlobalSettings()).rejects.toThrow();
   });
 
   it('rejects raw command-executing and managed Claude settings', async () => {
@@ -126,7 +152,7 @@ describe('AgentSettingsManager', () => {
       name: 'lint-after-edit',
     });
 
-    await expect(readProjectSettings()).resolves.toEqual({
+    await expect(readGlobalSettings()).resolves.toEqual({
       hooks: {
         PostToolUse: [
           {
@@ -158,7 +184,7 @@ describe('AgentSettingsManager', () => {
 
     await manager.removeHook('claude', 'PostToolUse', 'lint-after-edit', { projectPath, matcher: 'Edit|Write' });
 
-    await expect(readProjectSettings()).resolves.toEqual({});
+    await expect(readGlobalSettings()).resolves.toEqual({});
   });
 
   it('preserves unrelated hooks when adding and removing hooks', async () => {
@@ -168,7 +194,7 @@ describe('AgentSettingsManager', () => {
     await manager.addHook('claude', 'post-tool-use', 'echo post', { projectPath });
     await manager.removeHook('claude', 'post-tool-use', 'echo post', { projectPath });
 
-    await expect(readProjectSettings()).resolves.toEqual({
+    await expect(readGlobalSettings()).resolves.toEqual({
       hooks: {
         PreToolUse: [
           {
@@ -187,8 +213,8 @@ describe('AgentSettingsManager', () => {
 
   it('preserves unknown hook fields while appending new hooks', async () => {
     const manager = new AgentSettingsManager();
-    const settingsPath = join(projectPath, '.claude', 'settings.json');
-    await mkdir(join(projectPath, '.claude'), { recursive: true });
+    const settingsPath = join(process.env.HOME!, '.claude', 'settings.json');
+    await mkdir(join(process.env.HOME!, '.claude'), { recursive: true });
     await writeFile(settingsPath, JSON.stringify({
       hooks: {
         PostToolUse: [
@@ -209,7 +235,7 @@ describe('AgentSettingsManager', () => {
 
     await manager.addHook('claude', 'post-tool-use', 'echo next', { projectPath, matcher: 'Edit' });
 
-    await expect(readProjectSettings()).resolves.toEqual({
+    await expect(readGlobalSettings()).resolves.toEqual({
       hooks: {
         PostToolUse: [
           {
@@ -234,8 +260,8 @@ describe('AgentSettingsManager', () => {
 
   it('preserves existing non-command hook types while adding and removing command hooks', async () => {
     const manager = new AgentSettingsManager();
-    const settingsPath = join(projectPath, '.claude', 'settings.json');
-    await mkdir(join(projectPath, '.claude'), { recursive: true });
+    const settingsPath = join(process.env.HOME!, '.claude', 'settings.json');
+    await mkdir(join(process.env.HOME!, '.claude'), { recursive: true });
     await writeFile(settingsPath, JSON.stringify({
       hooks: {
         PostToolUse: [
@@ -277,7 +303,7 @@ describe('AgentSettingsManager', () => {
     await manager.addHook('claude', 'post-tool-use', 'echo next', { projectPath, matcher: 'Edit' });
     await manager.removeHook('claude', 'post-tool-use', 'existing-command', { projectPath, matcher: 'Edit' });
 
-    await expect(readProjectSettings()).resolves.toEqual({
+    await expect(readGlobalSettings()).resolves.toEqual({
       hooks: {
         PostToolUse: [
           {

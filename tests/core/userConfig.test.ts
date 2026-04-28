@@ -1,9 +1,10 @@
-import { mkdtemp, rm } from 'fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   createDefaultUserConfig,
+  getEffectiveAgentSettingsDefaultScopeSync,
   getUserConfigPath,
   isVerifiedGitHubRepoSync,
   readUserConfig,
@@ -14,6 +15,7 @@ import {
 describe('userConfig', () => {
   const tempDirs: string[] = [];
   const originalHome = process.env.HOME;
+  const originalAgentSettingsScope = process.env.AGENTINIT_AGENT_DEFAULT_SCOPE;
 
   beforeEach(async () => {
     const homeDir = await mkdtemp(join(tmpdir(), 'agentinit-user-config-home-'));
@@ -28,6 +30,12 @@ describe('userConfig', () => {
       process.env.HOME = originalHome;
     }
 
+    if (originalAgentSettingsScope === undefined) {
+      delete process.env.AGENTINIT_AGENT_DEFAULT_SCOPE;
+    } else {
+      process.env.AGENTINIT_AGENT_DEFAULT_SCOPE = originalAgentSettingsScope;
+    }
+
     await Promise.all(tempDirs.map(dir => rm(dir, { recursive: true, force: true })));
     tempDirs.length = 0;
   });
@@ -39,8 +47,10 @@ describe('userConfig', () => {
   });
 
   it('normalizes and deduplicates persisted config entries', async () => {
-    await writeUserConfig({
+    await mkdir(join(process.env.HOME!, '.agentinit'), { recursive: true });
+    await writeFile(getUserConfigPath(), `${JSON.stringify({
       defaultMarketplace: ' ClaUDe ',
+      defaultAgentSettingsScope: ' Project ',
       customMarketplaces: [
         {
           identifier: 'Acme',
@@ -54,10 +64,11 @@ describe('userConfig', () => {
         },
       ],
       verifiedGithubRepos: ['Acme/Private-Plugin', 'acme/private-plugin'],
-    });
+    }, null, 2)}\n`);
 
     await expect(readUserConfig()).resolves.toEqual({
       defaultMarketplace: 'claude',
+      defaultAgentSettingsScope: 'project',
       customMarketplaces: [
         {
           identifier: 'acme',
@@ -78,5 +89,28 @@ describe('userConfig', () => {
     expect(isVerifiedGitHubRepoSync('openai', 'codex-plugin-cc')).toBe(true);
     expect(isVerifiedGitHubRepoSync('acme', 'private-plugin')).toBe(true);
     expect(isVerifiedGitHubRepoSync('acme', 'other-plugin')).toBe(false);
+  });
+
+  it('defaults omitted agent settings scope to global and lets env override user config', async () => {
+    await writeUserConfig({
+      defaultAgentSettingsScope: 'project',
+      customMarketplaces: [],
+      verifiedGithubRepos: [],
+    });
+
+    expect(getEffectiveAgentSettingsDefaultScopeSync()).toBe('project');
+
+    process.env.AGENTINIT_AGENT_DEFAULT_SCOPE = 'local';
+    expect(getEffectiveAgentSettingsDefaultScopeSync()).toBe('local');
+
+    process.env.AGENTINIT_AGENT_DEFAULT_SCOPE = 'invalid';
+    expect(getEffectiveAgentSettingsDefaultScopeSync()).toBe('project');
+
+    delete process.env.AGENTINIT_AGENT_DEFAULT_SCOPE;
+    await writeUserConfig({
+      customMarketplaces: [],
+      verifiedGithubRepos: [],
+    });
+    expect(getEffectiveAgentSettingsDefaultScopeSync()).toBe('global');
   });
 });

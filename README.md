@@ -388,6 +388,8 @@ Verified GitHub repos must be exact `owner/repo` entries. They only affect how A
 
 Manage registry-backed native agent settings. The initial implementation supports safe Claude Code settings and typed hook operations; command-executing settings such as status lines, sandbox overrides, and AgentInit-managed plugin state are intentionally not exposed as raw settings.
 
+When you omit `--global`, `--project`, and `--local`, `agentinit agent` now defaults to `global`. You can override that default with `AGENTINIT_AGENT_DEFAULT_SCOPE=global|project|local` or persist a user preference with `agentinit config agent-settings scope <scope>`.
+
 **Examples:**
 ```bash
 # Review supported agents and settings
@@ -395,22 +397,25 @@ agentinit agent list
 agentinit agent schema claude --json
 
 # Set typed Claude settings
-agentinit agent set claude model sonnet --global
+agentinit agent set claude model sonnet
 agentinit agent set claude permissions.defaultMode acceptEdits --project
-agentinit agent set claude env '{"AGENTINIT_TEST":"1"}' --project --value-json
+agentinit agent set claude env '{"AGENTINIT_TEST":"1"}' --value-json
 
 # Add and inspect Claude hooks without replacing the whole hooks object
-agentinit agent hook add claude after-tool-use --command "npm run lint" --matcher "Edit|Write" --name lint-after-edit --project
-agentinit agent hook list claude post-tool-use --project --json
-agentinit agent hook remove claude post-tool-use lint-after-edit --matcher "Edit|Write" --project
+agentinit agent hook add claude after-tool-use --command "npm run lint" --matcher "Edit|Write" --name lint-after-edit
+agentinit agent hook list claude post-tool-use --json
+agentinit agent hook remove claude post-tool-use lint-after-edit --matcher "Edit|Write"
 
 # Read settings in human or JSON form
-agentinit agent get claude model --global
-agentinit agent get claude model --global --json
+agentinit agent get claude model
+agentinit agent get claude model --json
 
 # Preview or remove a setting
-agentinit agent set claude effortLevel high --global --dry-run
-agentinit agent unset claude effortLevel --global
+agentinit agent set claude effortLevel high --dry-run
+agentinit agent unset claude effortLevel
+
+# Persist a different default scope if you want repo-local behavior
+agentinit config agent-settings scope project
 ```
 
 Use `--value-json` when the value itself is JSON. Use `--json` when the command output should be machine-readable.

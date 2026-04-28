@@ -10,8 +10,11 @@ export interface CustomMarketplaceConfig {
   repoUrl: string;
 }
 
+export type AgentSettingsDefaultScope = 'global' | 'project' | 'local';
+
 export interface AgentInitUserConfig {
   defaultMarketplace?: string | undefined;
+  defaultAgentSettingsScope?: AgentSettingsDefaultScope | undefined;
   customMarketplaces: CustomMarketplaceConfig[];
   verifiedGithubRepos: string[];
 }
@@ -21,6 +24,7 @@ const GITHUB_REPO_PATTERN = /^([A-Za-z0-9._-]+)\/([A-Za-z0-9._-]+)$/;
 const GIT_REPO_URL_PATTERN = /^(https?:\/\/|ssh:\/\/|git@).+/;
 
 export const BUILTIN_VERIFIED_GITHUB_REPOS = ['openai/codex-plugin-cc'] as const;
+const AGENT_SETTINGS_SCOPES = new Set<AgentSettingsDefaultScope>(['global', 'project', 'local']);
 
 export function getUserConfigPath(): string {
   return join(homedir(), '.agentinit', 'config.json');
@@ -31,6 +35,15 @@ export function createDefaultUserConfig(): AgentInitUserConfig {
     customMarketplaces: [],
     verifiedGithubRepos: [],
   };
+}
+
+export function normalizeAgentSettingsDefaultScope(scope: string): AgentSettingsDefaultScope {
+  const normalized = scope.trim().toLowerCase() as AgentSettingsDefaultScope;
+  if (!AGENT_SETTINGS_SCOPES.has(normalized)) {
+    throw new Error('Invalid agent settings default scope. Use global, project, or local.');
+  }
+
+  return normalized;
 }
 
 export function normalizeMarketplaceIdentifier(identifier: string): string {
@@ -141,8 +154,18 @@ export function sanitizeUserConfig(raw: unknown): AgentInitUserConfig {
     }
   }
 
+  let defaultAgentSettingsScope: AgentSettingsDefaultScope | undefined;
+  if (typeof parsed.defaultAgentSettingsScope === 'string') {
+    try {
+      defaultAgentSettingsScope = normalizeAgentSettingsDefaultScope(parsed.defaultAgentSettingsScope);
+    } catch {
+      defaultAgentSettingsScope = undefined;
+    }
+  }
+
   return {
     ...(defaultMarketplace ? { defaultMarketplace } : {}),
+    ...(defaultAgentSettingsScope ? { defaultAgentSettingsScope } : {}),
     customMarketplaces,
     verifiedGithubRepos,
   };
@@ -179,6 +202,23 @@ export async function writeUserConfig(config: AgentInitUserConfig): Promise<void
 
 export function getBuiltInVerifiedGithubRepos(): string[] {
   return [...BUILTIN_VERIFIED_GITHUB_REPOS];
+}
+
+export function getConfiguredAgentSettingsDefaultScopeSync(): AgentSettingsDefaultScope | undefined {
+  return readUserConfigSync().defaultAgentSettingsScope;
+}
+
+export function getEffectiveAgentSettingsDefaultScopeSync(): AgentSettingsDefaultScope {
+  const envScope = process.env.AGENTINIT_AGENT_DEFAULT_SCOPE;
+  if (typeof envScope === 'string') {
+    try {
+      return normalizeAgentSettingsDefaultScope(envScope);
+    } catch {
+      // Ignore invalid environment overrides and fall back to persisted config.
+    }
+  }
+
+  return getConfiguredAgentSettingsDefaultScopeSync() ?? 'global';
 }
 
 export function getEffectiveVerifiedGithubReposSync(): string[] {

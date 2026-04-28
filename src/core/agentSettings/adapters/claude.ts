@@ -20,7 +20,7 @@ function setting(
     description,
     valueType,
     scopes: options.scopes ?? ALL_SCOPES,
-    defaultScope: options.defaultScope ?? 'project',
+    defaultScope: options.defaultScope ?? 'global',
     category: options.category ?? 'settings',
     risk: options.risk ?? 'safe',
   };

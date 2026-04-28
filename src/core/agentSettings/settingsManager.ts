@@ -1,4 +1,5 @@
 import { readFileIfExists, writeFile } from '../../utils/fs.js';
+import { getEffectiveAgentSettingsDefaultScopeSync } from '../userConfig.js';
 import { parseAgentSettingValue } from './valueParser.js';
 import { getAgentSettingDefinition, getAgentSettingsAdapter, getAgentSettingsAdapters, toSchemaEntry } from './registry.js';
 import type {
@@ -219,7 +220,7 @@ function resolveProjectPath(projectPath?: string): string {
 }
 
 function resolveScope(definition: AgentSettingDefinition, scope?: AgentSettingsScope): AgentSettingsScope {
-  const resolvedScope = scope ?? definition.defaultScope;
+  const resolvedScope = scope ?? getEffectiveAgentSettingsDefaultScopeSync();
   if (!definition.scopes.includes(resolvedScope)) {
     throw new Error(`"${definition.key}" does not support ${resolvedScope} scope. Supported scopes: ${definition.scopes.join(', ')}.`);
   }
@@ -267,7 +268,7 @@ export class AgentSettingsManager {
     }
 
     if (!key) {
-      const scope = options.scope ?? 'project';
+      const scope = options.scope ?? getEffectiveAgentSettingsDefaultScopeSync();
       const path = adapter.getSettingsPath(scope, resolveProjectPath(options.projectPath));
       return await readJsonObject(path);
     }
@@ -363,7 +364,7 @@ export class AgentSettingsManager {
       throw new Error(`Agent ${agent} does not support hook management.`);
     }
 
-    const scope = options.scope ?? 'project';
+    const scope = options.scope ?? getEffectiveAgentSettingsDefaultScopeSync();
     const path = adapter.getSettingsPath(scope, resolveProjectPath(options.projectPath));
     const config = await readJsonObject(path);
 
@@ -401,7 +402,7 @@ export class AgentSettingsManager {
     }
 
     const hookEvent = normalizeHookEvent(event);
-    const scope = options.scope ?? 'project';
+    const scope = options.scope ?? getEffectiveAgentSettingsDefaultScopeSync();
     const path = adapter.getSettingsPath(scope, resolveProjectPath(options.projectPath));
     const config = await readJsonObject(path);
     const hook = buildHookCommand(command, options.name);
@@ -449,7 +450,7 @@ export class AgentSettingsManager {
     }
 
     const hookEvent = normalizeHookEvent(event);
-    const scope = options.scope ?? 'project';
+    const scope = options.scope ?? getEffectiveAgentSettingsDefaultScopeSync();
     const path = adapter.getSettingsPath(scope, resolveProjectPath(options.projectPath));
     const config = await readJsonObject(path);
     const matchers = getHookMatchers(config, hookEvent);
