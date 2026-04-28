@@ -384,6 +384,37 @@ Custom marketplaces use the standard AgentInit repository layout: `skills`, `mcp
 
 Verified GitHub repos must be exact `owner/repo` entries. They only affect how AgentInit labels marketplace-to-GitHub fallback sources; they do not bypass install parsing or other safety checks.
 
+### `agentinit agent`
+
+Manage registry-backed native agent settings. The initial implementation supports safe Claude Code settings and typed hook operations; command-executing settings such as status lines, sandbox overrides, and AgentInit-managed plugin state are intentionally not exposed as raw settings.
+
+**Examples:**
+```bash
+# Review supported agents and settings
+agentinit agent list
+agentinit agent schema claude --json
+
+# Set typed Claude settings
+agentinit agent set claude model sonnet --global
+agentinit agent set claude permissions.defaultMode acceptEdits --project
+agentinit agent set claude env '{"AGENTINIT_TEST":"1"}' --project --value-json
+
+# Add and inspect Claude hooks without replacing the whole hooks object
+agentinit agent hook add claude after-tool-use --command "npm run lint" --matcher "Edit|Write" --name lint-after-edit --project
+agentinit agent hook list claude post-tool-use --project --json
+agentinit agent hook remove claude post-tool-use lint-after-edit --matcher "Edit|Write" --project
+
+# Read settings in human or JSON form
+agentinit agent get claude model --global
+agentinit agent get claude model --global --json
+
+# Preview or remove a setting
+agentinit agent set claude effortLevel high --global --dry-run
+agentinit agent unset claude effortLevel --global
+```
+
+Use `--value-json` when the value itself is JSON. Use `--json` when the command output should be machine-readable.
+
 ### `agentinit revert`
 
 Revert files and backups managed by `agentinit apply` or `agentinit sync`.

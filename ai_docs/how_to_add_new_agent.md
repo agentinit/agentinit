@@ -18,6 +18,7 @@ AgentInit uses a plugin-based architecture with:
 - Detection files
 - Which files are truly agent-specific vs shared standards like `AGENTS.md`
 - Whether any config files are shared with other agents (for example `.mcp.json`) and therefore unsafe for auto-detection
+- Whether the agent has safe, persisted native settings that belong in `agentinit agent`
 
 ### 2. Create Agent Class
 
@@ -105,6 +106,12 @@ export class YourAgent extends Agent {
   }
 }
 ```
+
+### 3. Add an Agent Settings Adapter When Needed
+
+If the target agent has user-editable native settings, add a registry-backed adapter under `src/core/agentSettings/adapters/` and register it in `src/core/agentSettings/registry.ts`.
+
+Only expose stable, safe settings keys through the public registry. Do not expose raw command-executing settings such as arbitrary hooks, status lines, sandbox overrides, or AgentInit-managed state as generic `agentinit agent set` keys.
 
 ### 3. Optional Filtering/Transformation
 

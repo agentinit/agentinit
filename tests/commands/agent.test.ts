@@ -1,0 +1,198 @@
+import { mkdtemp, readFile, rm } from 'fs/promises';
+import { tmpdir } from 'os';
+import { join } from 'path';
+import { Command } from 'commander';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { registerAgentCommand } from '../../src/commands/agent.js';
+import { logger } from '../../src/utils/logger.js';
+
+describe('agent command', () => {
+  const tempDirs: string[] = [];
+  const originalHome = process.env.HOME;
+  const originalCwd = process.cwd();
+  const originalExitCode = process.exitCode;
+
+  beforeEach(async () => {
+    const homeDir = await mkdtemp(join(tmpdir(), 'agentinit-agent-cmd-home-'));
+    const projectDir = await mkdtemp(join(tmpdir(), 'agentinit-agent-cmd-project-'));
+    tempDirs.push(homeDir, projectDir);
+    process.env.HOME = homeDir;
+    process.chdir(projectDir);
+  });
+
+  afterEach(async () => {
+    vi.restoreAllMocks();
+    process.chdir(originalCwd);
+    process.exitCode = originalExitCode;
+
+    if (originalHome === undefined) {
+      delete process.env.HOME;
+    } else {
+      process.env.HOME = originalHome;
+    }
+
+    await Promise.all(tempDirs.map(dir => rm(dir, { recursive: true, force: true })));
+    tempDirs.length = 0;
+  });
+
+  async function runAgent(args: string[]): Promise<void> {
+    const program = new Command();
+    registerAgentCommand(program);
+    await program.parseAsync(args, { from: 'user' });
+  }
+
+  function silenceLogger() {
+    vi.spyOn(logger, 'titleBox').mockImplementation(() => {});
+    vi.spyOn(logger, 'tree').mockImplementation(() => {});
+    vi.spyOn(logger, 'info').mockImplementation(() => {});
+    vi.spyOn(logger, 'success').mockImplementation(() => {});
+    vi.spyOn(logger, 'error').mockImplementation(() => {});
+  }
+
+  it('sets a Claude setting through the CLI', async () => {
+    silenceLogger();
+
+    await runAgent(['agent', 'set', 'claude', 'permissions.defaultMode', 'acceptEdits', '--project']);
+
+    await expect(readFile(join(process.cwd(), '.claude', 'settings.json'), 'utf8').then(JSON.parse)).resolves.toEqual({
+      permissions: {
+        defaultMode: 'acceptEdits',
+      },
+    });
+  });
+
+  it('parses setting values with --value-json and prints machine-readable set output with --json', async () => {
+    silenceLogger();
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await runAgent(['agent', 'set', 'claude', 'env', '{"AGENTINIT_TEST":"1"}', '--project', '--value-json', '--json']);
+
+    const result = JSON.parse(logSpy.mock.calls[0]![0]);
+    expect(result).toMatchObject({
+      agent: 'claude',
+      key: 'env',
+      scope: 'project',
+      value: {
+        AGENTINIT_TEST: '1',
+      },
+      dryRun: false,
+    });
+    await expect(readFile(join(process.cwd(), '.claude', 'settings.json'), 'utf8').then(JSON.parse)).resolves.toEqual({
+      env: {
+        AGENTINIT_TEST: '1',
+      },
+    });
+  });
+
+  it('prints valid JSON for get --json including missing values', async () => {
+    silenceLogger();
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await runAgent(['agent', 'set', 'claude', 'model', 'sonnet', '--global']);
+    await runAgent(['agent', 'get', 'claude', 'model', '--global', '--json']);
+    await runAgent(['agent', 'get', 'claude', 'effortLevel', '--global', '--json']);
+
+    expect(JSON.parse(logSpy.mock.calls[0]![0])).toBe('sonnet');
+    expect(JSON.parse(logSpy.mock.calls[1]![0])).toBeNull();
+  });
+
+  it('prints valid JSON for full-file reads with get --json', async () => {
+    silenceLogger();
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await runAgent(['agent', 'set', 'claude', 'env', '{"AGENTINIT_TEST":"1"}', '--project', '--value-json']);
+    await runAgent(['agent', 'get', 'claude', '--project', '--json']);
+
+    expect(JSON.parse(logSpy.mock.calls[0]![0])).toEqual({
+      env: {
+        AGENTINIT_TEST: '1',
+      },
+    });
+  });
+
+  it('prints schema json', async () => {
+    silenceLogger();
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await runAgent(['agent', 'schema', 'claude', '--json']);
+
+    const schema = JSON.parse(logSpy.mock.calls[0]![0]);
+    expect(schema.agent).toBe('claude');
+    expect(schema.settings.some((setting: { key: string }) => setting.key === 'effortLevel')).toBe(true);
+  });
+
+  it('sets exit code for invalid keys', async () => {
+    silenceLogger();
+
+    await runAgent(['agent', 'set', 'claude', 'allowedMcpServers', 'github']);
+
+    expect(process.exitCode).toBe(1);
+  });
+
+  it('keeps raw security-sensitive settings out of the public command surface', async () => {
+    silenceLogger();
+
+    await runAgent(['agent', 'set', 'claude', 'hooks', '{"PreToolUse":[]}', '--value-json']);
+    expect(process.exitCode).toBe(1);
+
+    process.exitCode = undefined;
+
+    await runAgent(['agent', 'set', 'claude', 'permissions.defaultMode', 'bypassPermissions']);
+    expect(process.exitCode).toBe(1);
+  });
+
+  it('adds and removes Claude hooks through typed hook commands', async () => {
+    silenceLogger();
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await runAgent([
+      'agent',
+      'hook',
+      'add',
+      'claude',
+      'after-tool-use',
+      '--command',
+      'npm run lint',
+      '--matcher',
+      'Edit|Write',
+      '--name',
+      'lint-after-edit',
+      '--project',
+      '--json',
+    ]);
+
+    const addResult = JSON.parse(logSpy.mock.calls[0]![0]);
+    expect(addResult).toMatchObject({
+      agent: 'claude',
+      event: 'PostToolUse',
+      scope: 'project',
+      hook: {
+        type: 'command',
+        command: 'npm run lint',
+        name: 'lint-after-edit',
+      },
+    });
+    await expect(readFile(join(process.cwd(), '.claude', 'settings.json'), 'utf8').then(JSON.parse)).resolves.toEqual({
+      hooks: {
+        PostToolUse: [
+          {
+            matcher: 'Edit|Write',
+            hooks: [
+              {
+                type: 'command',
+                command: 'npm run lint',
+                name: 'lint-after-edit',
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    await runAgent(['agent', 'hook', 'remove', 'claude', 'post-tool-use', 'lint-after-edit', '--matcher', 'Edit|Write', '--project', '--json']);
+
+    const removeResult = JSON.parse(logSpy.mock.calls[1]![0]);
+    expect(removeResult.removed).toBe(1);
+    await expect(readFile(join(process.cwd(), '.claude', 'settings.json'), 'utf8').then(JSON.parse)).resolves.toEqual({});
+  });
+});

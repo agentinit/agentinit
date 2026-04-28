@@ -72,11 +72,15 @@
 
 ### Bug Fixes
 
+* **agent:** keep raw command-executing Claude settings out of the public settings command
+* **agent:** separate JSON output from JSON value parsing
 * **skills:** compare installed skill payloads before prompting for updates
 * **lock:** treat global installs as shared targets and warn when lock persistence fails
 
 ### Features
 
+* **agent:** add typed Claude hook add, list, and remove commands
+* **agent:** add registry-backed Claude settings command MVP
 * **lock:** add lock inspection commands and tracked skill updates
 
 # [1.18.0](https://github.com/agentinit/agentinit/compare/v1.17.2...v1.18.0) (2026-04-04)
