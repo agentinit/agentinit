@@ -149,6 +149,7 @@ export interface AgentDefinition {
     project: string;
     global: string;
   };
+  skillsConfigScope?: 'project' | 'global-only';
   projectStandards?: {
     rules?: 'claude' | 'agents';
     skills?: 'claude' | 'agents';

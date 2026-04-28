@@ -256,7 +256,7 @@
 
 * support the `openai` marketplace for skills and plugin installs
 * add OpenClaw as a skills target with shared project installs via `.agents/skills/` and dedicated global installs via `~/.openclaw/skills/`
-* add Hermes as a skills target with shared project installs via `.agents/skills/` and dedicated global installs via `~/.hermes/skills/`
+* add Hermes as a global-only skills target via `~/.hermes/skills/`
 * warn and fall back to GitHub repos for marketplace misses, marking allowlisted repos like `openai/codex-plugin-cc` as verified
 * install Claude Code-native plugin payloads during `plugins install` when Claude-only components are detected and Claude Code is targeted, registering native marketplace metadata under `~/.claude/plugins`
 

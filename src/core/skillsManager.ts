@@ -877,7 +877,7 @@ export class SkillsManager {
     }
 
     const canonicalPath = this.resolveInstallPath(
-      this.getCanonicalSkillsDir(projectPath, options.global ?? false),
+      this.getCanonicalSkillsDir(projectPath, agent.getSkillsScope(options.global) === 'global'),
       normalizedSkillName,
     );
 
@@ -1559,12 +1559,15 @@ export class SkillsManager {
           for (const entry of entries) {
             const hashPath = entry.canonicalPath || entry.path;
             const contentHash = await hashDirectory(hashPath);
+            const agent = this.agentManager.getAgentById(entry.agent);
+            const scope = agent?.getSkillsScope(options.global)
+              ?? (options.global ? 'global' : 'project');
             await lock.recordSkill({
               action,
               name: entry.skill.name,
               projectPath: resolve(projectPath),
               agents: [entry.agent],
-              scope: options.global ? 'global' : 'project',
+              scope,
               source: lockSource,
               installPath: entry.path,
               mode: entry.mode,
@@ -1608,7 +1611,7 @@ export class SkillsManager {
       // Check both project and global scopes
       const scopes: Array<{ scope: 'project' | 'global'; dir: string | null }> = [];
 
-      if (!options.global) {
+      if (!options.global && agent.getSkillsScope(false) === 'project') {
         scopes.push({ scope: 'project', dir: agent.getSkillsDir(projectPath, false) });
       }
       scopes.push({ scope: 'global', dir: agent.getSkillsDir(projectPath, true) });

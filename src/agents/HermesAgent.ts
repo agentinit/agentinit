@@ -29,6 +29,7 @@ export class HermesAgent extends Agent {
         project: '.agents/skills/',
         global: '~/.hermes/skills/',
       },
+      skillsConfigScope: 'global-only',
       projectStandards: {
         skills: 'agents',
       },

@@ -265,10 +265,19 @@ export abstract class Agent {
    */
   getSkillsDir(projectPath: string, global?: boolean): string | null {
     if (!this.definition.skillPaths) return null;
-    if (global) {
+    if (this.getSkillsScope(global) === 'global') {
       return this.definition.skillPaths.global.replace('~', homedir());
     }
     return resolve(projectPath, this.definition.skillPaths.project);
+  }
+
+  /**
+   * Return the effective skills install scope for this agent.
+   */
+  getSkillsScope(global?: boolean): 'project' | 'global' {
+    return global || this.definition.skillsConfigScope === 'global-only'
+      ? 'global'
+      : 'project';
   }
 
   /**
