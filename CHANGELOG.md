@@ -1,3 +1,10 @@
+# [1.22.0](https://github.com/agentinit/agentinit/compare/v1.21.0...v1.22.0) (2026-04-28)
+
+
+### Features
+
+* **skills:** resolve bundled plugins from skill names ([74a8698](https://github.com/agentinit/agentinit/commit/74a8698021b70bbfa602c0c39283b6dfd46276d4))
+
 # [1.21.0](https://github.com/agentinit/agentinit/compare/v1.20.2...v1.21.0) (2026-04-26)
 
 
