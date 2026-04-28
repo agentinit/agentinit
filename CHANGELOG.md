@@ -1,3 +1,10 @@
+## [1.22.1](https://github.com/agentinit/agentinit/compare/v1.22.0...v1.22.1) (2026-04-28)
+
+
+### Bug Fixes
+
+* **skills:** honor global-only Hermes installs ([5ad8120](https://github.com/agentinit/agentinit/commit/5ad8120e63afbb74ced6180a80d2cff761cb3fae))
+
 # [1.22.0](https://github.com/agentinit/agentinit/compare/v1.21.0...v1.22.0) (2026-04-28)
 
 
