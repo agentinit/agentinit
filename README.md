@@ -394,6 +394,7 @@ Verified GitHub repos must be exact `owner/repo` entries. They only affect how A
 Manage registry-backed native agent settings. The initial implementation supports safe Claude Code settings and typed hook operations; command-executing settings such as status lines, sandbox overrides, and AgentInit-managed plugin state are intentionally not exposed as raw settings.
 
 When you omit `--global`, `--project`, and `--local`, `agentinit agent` now defaults to `global`. You can override that default with `AGENTINIT_AGENT_DEFAULT_SCOPE=global|project|local` or persist a user preference with `agentinit config agent-settings scope <scope>`. This also applies to hook commands, so pass `--project` or `--local` when a hook should stay repo-scoped.
+See [docs/agent-command-reference.md](docs/agent-command-reference.md) for the full command reference and examples.
 
 **Examples:**
 ```bash
@@ -412,7 +413,6 @@ agentinit agent hook list claude post-tool-use --json
 agentinit agent hook remove claude post-tool-use lint-after-edit --matcher "Edit|Write"
 
 # Read settings in human or JSON form
-agentinit agent get claude model
 agentinit agent get claude model --json
 
 # Preview or remove a setting
