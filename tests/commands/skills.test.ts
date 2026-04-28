@@ -787,6 +787,275 @@ describe('skills command', () => {
     );
   });
 
+  it('resolves the bundle plugin from --skill without prompting', async () => {
+    const entries = [
+      { name: 'tanstack-start', source: './plugins/tanstack-start' },
+      { name: 'tanstack-query', source: './plugins/tanstack-query' },
+    ];
+    const bundleError = new MultipleBundlePluginsError('/tmp/test', entries);
+
+    const prepareSourceSpy = vi.spyOn(SkillsManager.prototype, 'prepareSource');
+    prepareSourceSpy.mockRejectedValueOnce(bundleError);
+    prepareSourceSpy.mockResolvedValueOnce({
+      skills: [
+        {
+          name: 'tanstack-start',
+          description: 'TanStack Start',
+          path: '/tmp/tanstack-start',
+        },
+      ],
+      warnings: [],
+    });
+
+    const discoverSourceSpy = vi.spyOn(SkillsManager.prototype, 'discoverFromSource');
+    discoverSourceSpy
+      .mockResolvedValueOnce({
+        skills: [
+          {
+            name: 'tanstack-start',
+            description: 'TanStack Start',
+            path: '/tmp/tanstack-start',
+          },
+        ],
+        warnings: [],
+      })
+      .mockResolvedValueOnce({
+        skills: [],
+        warnings: [],
+      });
+
+    const addFromSourceSpy = vi.spyOn(SkillsManager.prototype, 'addFromSource').mockResolvedValue({
+      installed: [],
+      updated: [],
+      unchanged: [],
+      skipped: [],
+      warnings: [],
+    });
+
+    const program = new Command();
+    registerSkillsCommand(program);
+
+    await program.parseAsync([
+      'skills',
+      'add',
+      TEST_GITHUB_SKILL_SOURCE,
+      '--skill',
+      'tanstack-start',
+      '--agent',
+      'claude',
+    ], { from: 'user' });
+
+    expect(promptsMock).not.toHaveBeenCalled();
+    expect(discoverSourceSpy).toHaveBeenCalledTimes(2);
+    expect(discoverSourceSpy).toHaveBeenNthCalledWith(
+      1,
+      TEST_GITHUB_SKILL_SOURCE,
+      expect.any(String),
+      expect.objectContaining({ pluginName: 'tanstack-start' }),
+    );
+    expect(discoverSourceSpy).toHaveBeenNthCalledWith(
+      2,
+      TEST_GITHUB_SKILL_SOURCE,
+      expect.any(String),
+      expect.objectContaining({ pluginName: 'tanstack-query' }),
+    );
+    expect(prepareSourceSpy).toHaveBeenCalledTimes(2);
+    expect(prepareSourceSpy).toHaveBeenLastCalledWith(
+      TEST_GITHUB_SKILL_SOURCE,
+      expect.any(String),
+      expect.objectContaining({ pluginName: 'tanstack-start' }),
+    );
+    expect(addFromSourceSpy).toHaveBeenCalledWith(
+      TEST_GITHUB_SKILL_SOURCE,
+      expect.any(String),
+      expect.objectContaining({
+        pluginName: 'tanstack-start',
+        agents: ['claude'],
+        skills: ['tanstack-start'],
+      }),
+    );
+  });
+
+  it('resolves multiple bundled plugins from prefixed --skill names without prompting', async () => {
+    const entries = [
+      { name: 'alpha', source: './plugins/alpha' },
+      { name: 'beta', source: './plugins/beta' },
+    ];
+    const bundleError = new MultipleBundlePluginsError('/tmp/test', entries);
+
+    const prepareSourceSpy = vi.spyOn(SkillsManager.prototype, 'prepareSource');
+    prepareSourceSpy.mockRejectedValueOnce(bundleError);
+    prepareSourceSpy
+      .mockResolvedValueOnce({
+        skills: [
+          {
+            name: 'alpha-skill',
+            description: 'Alpha skill',
+            path: '/tmp/alpha-skill',
+          },
+        ],
+        warnings: [],
+      })
+      .mockResolvedValueOnce({
+        skills: [
+          {
+            name: 'beta-skill',
+            description: 'Beta skill',
+            path: '/tmp/beta-skill',
+          },
+        ],
+        warnings: [],
+      });
+
+    const discoverSourceSpy = vi.spyOn(SkillsManager.prototype, 'discoverFromSource');
+    discoverSourceSpy
+      .mockResolvedValueOnce({
+        skills: [
+          {
+            name: 'alpha-skill',
+            description: 'Alpha skill',
+            path: '/tmp/alpha-skill',
+          },
+        ],
+        warnings: [],
+      })
+      .mockResolvedValueOnce({
+        skills: [
+          {
+            name: 'beta-skill',
+            description: 'Beta skill',
+            path: '/tmp/beta-skill',
+          },
+        ],
+        warnings: [],
+      })
+      .mockResolvedValueOnce({
+        skills: [
+          {
+            name: 'beta-skill',
+            description: 'Beta skill',
+            path: '/tmp/beta-skill',
+          },
+        ],
+        warnings: [],
+      });
+
+    const addFromSourceSpy = vi.spyOn(SkillsManager.prototype, 'addFromSource');
+    addFromSourceSpy
+      .mockResolvedValueOnce({ installed: [], updated: [], unchanged: [], skipped: [], warnings: [] })
+      .mockResolvedValueOnce({ installed: [], updated: [], unchanged: [], skipped: [], warnings: [] });
+
+    const program = new Command();
+    registerSkillsCommand(program);
+
+    await program.parseAsync([
+      'skills',
+      'add',
+      TEST_GITHUB_SKILL_SOURCE,
+      '--skill',
+      'marketing-alpha-skill',
+      'marketing-beta-skill',
+      '--prefix',
+      'marketing-',
+      '--agent',
+      'claude',
+    ], { from: 'user' });
+
+    expect(promptsMock).not.toHaveBeenCalled();
+    expect(prepareSourceSpy).toHaveBeenCalledTimes(3);
+    expect(prepareSourceSpy).toHaveBeenNthCalledWith(
+      2,
+      TEST_GITHUB_SKILL_SOURCE,
+      expect.any(String),
+      expect.objectContaining({ pluginName: 'alpha' }),
+    );
+    expect(prepareSourceSpy).toHaveBeenNthCalledWith(
+      3,
+      TEST_GITHUB_SKILL_SOURCE,
+      expect.any(String),
+      expect.objectContaining({ pluginName: 'beta' }),
+    );
+    expect(discoverSourceSpy).toHaveBeenCalledTimes(3);
+    expect(addFromSourceSpy).toHaveBeenNthCalledWith(
+      1,
+      TEST_GITHUB_SKILL_SOURCE,
+      expect.any(String),
+      expect.objectContaining({
+        pluginName: 'alpha',
+        agents: ['claude'],
+        skills: ['marketing-alpha-skill', 'marketing-beta-skill'],
+        prefix: 'marketing-',
+      }),
+    );
+    expect(addFromSourceSpy).toHaveBeenNthCalledWith(
+      2,
+      TEST_GITHUB_SKILL_SOURCE,
+      expect.any(String),
+      expect.objectContaining({
+        pluginName: 'beta',
+        agents: ['claude'],
+        skills: ['marketing-alpha-skill', 'marketing-beta-skill'],
+        prefix: 'marketing-',
+      }),
+    );
+  });
+
+  it('fails with a clear error when --yes and --skill remain ambiguous across bundled plugins', async () => {
+    const errorSpy = vi.spyOn(logger, 'error').mockImplementation(() => {});
+    const entries = [
+      { name: 'alpha', source: './plugins/alpha' },
+      { name: 'beta', source: './plugins/beta' },
+    ];
+    const bundleError = new MultipleBundlePluginsError('/tmp/test', entries);
+
+    vi.spyOn(SkillsManager.prototype, 'prepareSource').mockRejectedValueOnce(bundleError);
+    const discoverSourceSpy = vi.spyOn(SkillsManager.prototype, 'discoverFromSource');
+    discoverSourceSpy
+      .mockResolvedValueOnce({
+        skills: [
+          {
+            name: 'shared-skill',
+            description: 'Shared skill',
+            path: '/tmp/alpha-shared-skill',
+          },
+        ],
+        warnings: [],
+      })
+      .mockResolvedValueOnce({
+        skills: [
+          {
+            name: 'shared-skill',
+            description: 'Shared skill',
+            path: '/tmp/beta-shared-skill',
+          },
+        ],
+        warnings: [],
+      });
+    const addSpy = vi.spyOn(SkillsManager.prototype, 'addFromSource');
+
+    const program = new Command();
+    registerSkillsCommand(program);
+
+    await program.parseAsync([
+      'skills',
+      'add',
+      TEST_GITHUB_SKILL_SOURCE,
+      '--skill',
+      'shared-skill',
+      '--yes',
+      '--agent',
+      'claude',
+    ], { from: 'user' });
+
+    expect(promptsMock).not.toHaveBeenCalled();
+    expect(discoverSourceSpy).toHaveBeenCalledTimes(2);
+    expect(spinner.fail).toHaveBeenCalledWith('Failed to verify skill source');
+    expect(errorSpy).toHaveBeenCalledWith(
+      'Error: Could not resolve bundled plugins from --skill in non-interactive mode (ambiguous skill name: shared-skill). Use --all, remove --yes to choose plugins interactively, or provide skill names that map to a unique bundled plugin.',
+    );
+    expect(addSpy).not.toHaveBeenCalled();
+  });
+
   it('installs all selected bundle plugins for skills add and shows the selection hint', async () => {
     const infoSpy = vi.spyOn(logger, 'info').mockImplementation(() => {});
     const entries = [
@@ -800,6 +1069,10 @@ describe('skills command', () => {
     prepareSourceSpy
       .mockResolvedValueOnce({ skills: [], warnings: [] })
       .mockResolvedValueOnce({ skills: [], warnings: [] });
+    vi.spyOn(SkillsManager.prototype, 'discoverFromSource').mockResolvedValueOnce({
+      skills: [],
+      warnings: [],
+    });
 
     promptsMock.mockResolvedValueOnce({ plugins: ['alpha', 'beta'] });
 
@@ -842,6 +1115,10 @@ describe('skills command', () => {
     prepareSourceSpy
       .mockResolvedValueOnce({ skills: [], warnings: [] })
       .mockResolvedValueOnce({ skills: [], warnings: [] });
+    vi.spyOn(SkillsManager.prototype, 'discoverFromSource').mockResolvedValueOnce({
+      skills: [],
+      warnings: [],
+    });
 
     const addFromSourceSpy = vi.spyOn(SkillsManager.prototype, 'addFromSource');
     addFromSourceSpy

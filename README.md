@@ -1,19 +1,60 @@
 # AgentInit
 
-> A CLI tool for managing and configuring AI coding agents
+> Keep your AI coding agents in sync from one `agents.md` file.
 
-Unified CLI for configuring AI coding agents across editors and tools.
+[![npm version](https://img.shields.io/npm/v/agentinit)](https://www.npmjs.com/package/agentinit)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Node >=18](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen)](package.json)
+
+AgentInit is a CLI for teams and solo developers who use more than one coding agent and are tired of repeating the same setup in different formats. Define your standards once in `agents.md`, generate the files each tool expects, install shared skills and MCPs, and keep the whole setup manageable over time.
+
+It works with Claude Code, Cursor, Windsurf, Copilot, Codex CLI, Gemini CLI, RooCode, Zed, Droid, and more.
+
+## Why AgentInit?
+
+Most agent setups drift fast.
+
+You tweak `CLAUDE.md`, forget to update `.cursorrules`, install a skill in one tool but not another, and a week later every environment behaves a little differently. AgentInit gives you one source of truth for instructions, one CLI for setup, and one place to manage skills, rules, and MCP servers.
+
+Use it when you want to:
+
+- keep multiple agent tools aligned without manual copy-paste
+- bootstrap new projects with stack-aware guidance
+- install shared skills and MCP servers in a consistent way
+- apply changes safely with previews, backups, and reverts
+- make your agent setup easier to onboard, review, and maintain
+
+## Table of Contents
+
+- [Features](#features)
+- [Quick Start](#quick-start)
+- [Commands](#commands)
+- [How It Works](#how-it-works)
+- [Project Structure](#project-structure)
+- [Configuration](#configuration)
+- [Stack Detection](#stack-detection)
+- [MCP Registry](#mcp-registry)
+- [Library API](#library-api)
+- [Development](#development)
+- [Contributing](#contributing)
+- [License](#license)
 
 ## Features
 
-- **Universal Agent Configuration**: Unified `agents.md` file that syncs with all major AI coding agents
-- **Smart Stack Detection**: Automatically detects project language, framework, and tools
-- **Bidirectional Sync**: Keep agent configurations in sync across Claude, Cursor, Windsurf, and more
-- **MCP Management**: Configure, inspect, and verify Model Context Protocol servers
-- **Rules Templates**: Apply coding best practices with predefined rule templates (Git, testing, docs, linting)
-- **Plugin Marketplace**: Install portable skills and MCP bundles from built-in or custom marketplaces
-- **Project Templates**: Pre-built templates for web apps, CLI tools, libraries, and more
-- **Stack-Aware Guidance**: Customized instructions based on your technology stack
+- **One source of truth**: Write and maintain shared instructions in `agents.md`
+- **Multi-agent sync**: Generate the right files for Claude, Cursor, Windsurf, Copilot, Codex CLI, and other supported tools
+- **Stack-aware project setup**: Detect your language, framework, package manager, and test tooling to generate more useful defaults
+- **Skills, plugins, and MCPs**: Install reusable capabilities from local paths, Git repositories, or marketplaces
+- **Operational safety**: Preview changes, create backups, revert managed files, and track installs with a lockfile
+- **Shared standards support**: Use `AGENTS.md` where supported and alias `CLAUDE.md` when you want a shared canonical rules file
+
+## How It Works
+
+1. Run `agentinit init` to generate an `agents.md` file for your project.
+2. Customize the instructions, standards, and sub-agent roles you want all tools to follow.
+3. Run `agentinit sync` or `agentinit apply` to write tool-specific files, install project-owned skills, and keep generated artifacts in sync.
+
+If you already have agent files in a repo, start with `agentinit detect` to inspect what AgentInit can work with before you standardize it.
 
 ## Quick Start
 
@@ -27,21 +68,37 @@ npm install -g agentinit
 ### Basic Usage
 
 ```bash
-# Initialize agent configuration for your project
+# Initialize a shared agent configuration
 agentinit init
 
-# Detect current project stack and existing configurations
+# Review what AgentInit detects in the current repo
 agentinit detect
 
-# Sync agents.md with agent-specific files
+# Sync agents.md into agent-specific files
 agentinit sync
 
-# Apply project-owned agent files, skills, and ignore management
+# Apply synced files, project-owned skills, and managed ignore entries
 agentinit apply
 
 # Add and verify an MCP server
 agentinit mcp add --verify \
   --mcp-stdio everything "npx -y @modelcontextprotocol/server-everything"
+```
+
+### A Typical Flow
+
+```bash
+# 1. Generate a starting point
+agentinit init --template cli
+
+# 2. Edit agents.md with your standards
+
+# 3. Write the files each agent expects
+agentinit apply
+
+# 4. Add shared skills or MCP servers
+agentinit skills add openai-docs --agent claude
+agentinit mcp verify --all
 ```
 
 ### Output Controls
@@ -233,13 +290,13 @@ agentinit skills update openai-docs --everywhere
 agentinit skills remove openai-docs
 ```
 
-If a GitHub or local Claude bundle contains multiple plugins, `agentinit skills add` prompts you to choose one or more bundled plugins to inspect or install. Press `Space` to select, `A` to select or deselect all, and `Enter` to confirm. Use `--all` to skip the prompt and install or inspect every bundled plugin. In non-interactive `--yes` mode, ambiguous multi-plugin bundles still fail unless `--all` is provided.
+Skills are installed into a canonical store (`.agents/skills/` for project, `~/.agents/skills/` for global) with agent-specific paths symlinked automatically. Bare skill names resolve from your default marketplace or fall back to the public catalog at `vercel-labs/agent-skills`. Supports GitHub, GitLab, Bitbucket, local paths, and marketplace sources.
 
-Skills are installed into a canonical store by default (`.agents/skills/` for project, `~/.agents/skills/` for global), with agent-specific paths symlinked automatically. Bare skill names resolve from your configured default marketplace, falling back to the public catalog at `vercel-labs/agent-skills`. Use `./name` for local paths, `owner/repo` for GitHub repos, `gitlab:group/repo` for GitLab repos, `gitlab:group/repo//path/to/skill` for GitLab subdirectories, `bitbucket:workspace/repo` for Bitbucket, or `--from <marketplace>` for explicit marketplace sources.
+If a GitHub or local Claude bundle contains multiple plugins, `agentinit skills add` prompts you to choose one or more bundled plugins to inspect or install. Use `--all` to skip the prompt and install or inspect every bundled plugin. In non-interactive `--yes` mode, AgentInit can also auto-resolve bundled plugins from `--skill` when those skill names map uniquely; ambiguous selections still fail with guidance.
 
-When you re-run `agentinit skills add`, AgentInit compares the installed skill payload with the source before overwriting anything. Unchanged skills are reported as already up to date. If an installed skill has changed, interactive runs ask for confirmation before replacing it, while `--yes` applies the update automatically. Use `--prefix <text>` to prepend installed skill names for grouping, or press `P` during the interactive skill picker to set it on the fly. Installs are security-scanned by default; risky helper scripts are blocked, while risky Markdown guidance is surfaced as a warning. Use `--no-scan` to skip scanning or `--allow-risky` to proceed when high-risk executable patterns are detected.
+Re-running `agentinit skills add` compares the source with the installed version and asks for confirmation before overwriting changed skills. Installs are security-scanned by default; use `--no-scan` to skip or `--allow-risky` to proceed with high-risk patterns.
 
-`agentinit skills update [name]` replays tracked project-scoped installs from their original source in the current project. Use `agentinit skills update <name> --everywhere` to update that skill across every tracked target, including global installs.
+`agentinit skills update [name]` replays tracked installs from their original source. Use `agentinit skills update <name> --everywhere` to update that skill across every tracked target in the global lockfile.
 
 ### `agentinit lock`
 
@@ -297,9 +354,9 @@ agentinit plugins list
 agentinit plugins remove code-review
 ```
 
-Bare plugin names resolve through your configured default marketplace. Built-in marketplaces include `claude` and `openai`; add custom ones with `agentinit config marketplaces add`. For Claude-format plugins, native bundles are installed into `~/.claude/plugins` alongside portable skill and MCP installs.
+Plugins install into `~/.claude/plugins` (for Claude-format bundles) or the canonical skill store. Built-in marketplaces include `claude` and `openai`.
 
-If a GitHub or local Claude bundle contains multiple plugins, `agentinit plugins install` prompts you to choose one or more bundled plugins to inspect or install. Press `Space` to select, `A` to select or deselect all, and `Enter` to confirm. Use `--all` to skip the prompt and install or inspect every bundled plugin. In non-interactive `--yes` mode, ambiguous multi-plugin bundles still fail unless `--all` is provided.
+If a GitHub or local Claude bundle contains multiple plugins, `agentinit plugins install` prompts you to choose which bundled plugins to inspect or install. Use `--all` to skip the prompt. In non-interactive `--yes` mode, ambiguous multi-plugin bundles still fail unless `--all` is provided.
 
 ### `agentinit config`
 
@@ -377,7 +434,7 @@ This is a TypeScript project using Next.js...
 - Write clean, maintainable code...
 
 ### Testing Strategy
-- Write unit tests using Jest...
+- Write unit tests using vitest...
 
 ## Agent Instructions
 ### General Behavior
@@ -515,10 +572,10 @@ bun install
 bun run build
 
 # Run locally
-node dist/index.js --help
+node dist/cli.js --help
 ```
 
-### Project Structure
+### Source Structure
 
 ```
 src/
@@ -535,14 +592,13 @@ src/
 │   ├── installLock.ts      # Global install lock state
 │   ├── templateEngine.ts   # Template processing
 │   └── propagator.ts       # Config sync engine
-├── registry/         # MCP registry
 ├── utils/            # Utilities
 └── types/            # TypeScript definitions
 ```
 
 ## Contributing
 
-We welcome contributions! Please see our [contributing guidelines](CONTRIBUTING.md) for details.
+Issues and pull requests are welcome. Open an issue if you want to discuss a new agent, marketplace behavior, or MCP workflow before making a larger change.
 
 ## License
 
@@ -550,6 +606,4 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ## Links
 
-- [Documentation](https://docs.agentinit.dev)
-- [MCP Registry](https://registry.agentinit.dev)
 - [GitHub Issues](https://github.com/agentinit/agentinit/issues)

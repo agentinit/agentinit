@@ -45,21 +45,179 @@ interface InteractiveSkillSelection {
   aborted?: boolean;
 }
 
+interface BundlePluginEntry {
+  name: string;
+  source: string;
+  description?: string;
+}
+
+interface BundlePluginResolution {
+  pluginNames: string[] | null;
+  ambiguousSkillNames: string[];
+  unresolvedSkillNames: string[];
+  hadDiscoveryError: boolean;
+}
+
 function normalizeSkillPrefix(prefix?: string): string {
   return prefix?.trim() ?? '';
 }
 
-function matchesSelectedSkillName(skillName: string, selectedNames: Set<string>, prefix?: string): boolean {
-  if (selectedNames.has(skillName.toLowerCase())) {
+function matchesSelectedSkillValue(skillName: string, selectedName: string, prefix?: string): boolean {
+  const normalizedSkillName = skillName.trim().toLowerCase();
+  const normalizedSelectedName = selectedName.trim().toLowerCase();
+  if (!normalizedSelectedName) {
+    return false;
+  }
+
+  if (normalizedSelectedName === normalizedSkillName) {
     return true;
   }
 
-  const normalizedPrefix = normalizeSkillPrefix(prefix);
+  const normalizedPrefix = normalizeSkillPrefix(prefix).toLowerCase();
   if (!normalizedPrefix) {
     return false;
   }
 
-  return selectedNames.has(`${normalizedPrefix}${skillName}`.toLowerCase());
+  return normalizedSelectedName === `${normalizedPrefix}${normalizedSkillName}`;
+}
+
+function matchesSelectedSkillName(skillName: string, selectedNames: Set<string>, prefix?: string): boolean {
+  return [...selectedNames].some(selectedName => matchesSelectedSkillValue(skillName, selectedName, prefix));
+}
+
+async function resolveBundlePluginsForSelectedSkills(
+  skillsManager: SkillsManager,
+  source: string,
+  projectPath: string,
+  entries: BundlePluginEntry[],
+  selectedSkillNames: string[],
+  prefix?: string,
+  options: { from?: string } = {},
+): Promise<BundlePluginResolution> {
+  const requestedSkillNames = Array.from(new Set(
+    selectedSkillNames
+      .map(name => name.trim().toLowerCase())
+      .filter(Boolean),
+  ));
+
+  if (requestedSkillNames.length === 0) {
+    return {
+      pluginNames: null,
+      ambiguousSkillNames: [],
+      unresolvedSkillNames: [],
+      hadDiscoveryError: false,
+    };
+  }
+
+  const matchedPluginNamesBySkill = new Map<string, Set<string>>();
+  const matchedSkills = new Map<string, SkillInfo>();
+  const prioritizedEntries = [
+    ...entries.filter(entry => requestedSkillNames.some(skillName => matchesSelectedSkillValue(entry.name, skillName, prefix))),
+    ...entries.filter(entry => !requestedSkillNames.some(skillName => matchesSelectedSkillValue(entry.name, skillName, prefix))),
+  ];
+
+  for (const entry of prioritizedEntries) {
+    let discoveredSkills: SkillInfo[];
+    try {
+      const discovered = await skillsManager.discoverFromSource(source, projectPath, {
+        ...(options.from !== undefined ? { from: options.from } : {}),
+        pluginName: entry.name,
+      });
+      discoveredSkills = discovered.skills;
+    } catch {
+      return {
+        pluginNames: null,
+        ambiguousSkillNames: [],
+        unresolvedSkillNames: requestedSkillNames,
+        hadDiscoveryError: true,
+      };
+    }
+
+    for (const skill of discoveredSkills) {
+      for (const requestedSkillName of requestedSkillNames) {
+        if (!matchesSelectedSkillValue(skill.name, requestedSkillName, prefix)) {
+          continue;
+        }
+
+        const existingPluginNames = matchedPluginNamesBySkill.get(requestedSkillName) || new Set<string>();
+        existingPluginNames.add(entry.name);
+        matchedPluginNamesBySkill.set(requestedSkillName, existingPluginNames);
+        matchedSkills.set(`${entry.name}:${skill.path}:${skill.name}`, skill);
+      }
+    }
+  }
+
+  const unresolvedSkillNames = requestedSkillNames.filter(skillName => !matchedPluginNamesBySkill.has(skillName));
+  const ambiguousSkillNames = requestedSkillNames.filter(skillName => {
+    const pluginNames = matchedPluginNamesBySkill.get(skillName);
+    return !!pluginNames && pluginNames.size > 1;
+  });
+
+  if (unresolvedSkillNames.length > 0 || ambiguousSkillNames.length > 0) {
+    return {
+      pluginNames: null,
+      ambiguousSkillNames,
+      unresolvedSkillNames,
+      hadDiscoveryError: false,
+    };
+  }
+
+  const selectedPluginNames = new Set<string>();
+  for (const requestedSkillName of requestedSkillNames) {
+    for (const pluginName of matchedPluginNamesBySkill.get(requestedSkillName) || []) {
+      selectedPluginNames.add(pluginName);
+    }
+  }
+
+  return {
+    pluginNames: entries
+      .filter(entry => selectedPluginNames.has(entry.name))
+      .map(entry => entry.name),
+    ambiguousSkillNames: [],
+    unresolvedSkillNames: [],
+    hadDiscoveryError: false,
+  };
+}
+
+async function collectBundlePluginSkills(
+  skillsManager: SkillsManager,
+  source: string,
+  projectPath: string,
+  pluginNames: string[],
+  options: { from?: string } = {},
+  preparedPlugin?: { name: string; skills: SkillInfo[] },
+): Promise<SkillInfo[]> {
+  const collectedSkills = new Map<string, SkillInfo>();
+
+  for (const pluginName of pluginNames) {
+    const pluginSkills = preparedPlugin?.name === pluginName
+      ? preparedPlugin.skills
+      : (await skillsManager.discoverFromSource(source, projectPath, {
+        ...(options.from !== undefined ? { from: options.from } : {}),
+        pluginName,
+      })).skills;
+
+    for (const skill of pluginSkills) {
+      collectedSkills.set(`${pluginName}:${skill.path}:${skill.name}`, skill);
+    }
+  }
+
+  return [...collectedSkills.values()];
+}
+
+function formatBundlePluginResolutionError(resolution: BundlePluginResolution): string {
+  const details: string[] = [];
+
+  if (resolution.ambiguousSkillNames.length > 0) {
+    details.push(`ambiguous skill name${resolution.ambiguousSkillNames.length === 1 ? '' : 's'}: ${resolution.ambiguousSkillNames.join(', ')}`);
+  }
+
+  if (resolution.unresolvedSkillNames.length > 0) {
+    details.push(`unknown skill name${resolution.unresolvedSkillNames.length === 1 ? '' : 's'}: ${resolution.unresolvedSkillNames.join(', ')}`);
+  }
+
+  const suffix = details.length > 0 ? ` (${details.join('; ')})` : '';
+  return `Error: Could not resolve bundled plugins from --skill in non-interactive mode${suffix}. Use --all, remove --yes to choose plugins interactively, or provide skill names that map to a unique bundled plugin.`;
 }
 
 export function registerSkillsCommand(program: Command): void {
@@ -87,14 +245,19 @@ export function registerSkillsCommand(program: Command): void {
     .action(async (source: string, options) => {
       logger.titleBox('AgentInit  Skills');
 
+      const projectPath = process.cwd();
       const agentManager = new AgentManager();
       const skillsManager = new SkillsManager(agentManager);
+      let targetAgents = options.agent as string[] | undefined;
+      let targetGlobal = options.global as boolean | undefined;
+      let selectedSkillNames = options.skill as string[] | undefined;
+      let installPrefix = options.prefix as string | undefined;
 
       // If --list, discover and display skills from source, then return
       if (options.list) {
         const spinner = ora('Discovering skills...').start();
         try {
-          const result = await skillsManager.discoverFromSource(source, process.cwd(), {
+          const result = await skillsManager.discoverFromSource(source, projectPath, {
             from: options.from,
           });
           spinner.stop();
@@ -109,7 +272,7 @@ export function registerSkillsCommand(program: Command): void {
             for (const pluginName of selected) {
               const retrySpinner = ora(`Discovering skills from ${pluginName}...`).start();
               try {
-                const result = await skillsManager.discoverFromSource(source, process.cwd(), {
+                const result = await skillsManager.discoverFromSource(source, projectPath, {
                   from: options.from,
                   pluginName,
                 });
@@ -132,26 +295,65 @@ export function registerSkillsCommand(program: Command): void {
       let selectedPluginNames: string[] | undefined;
       let preparedSkills: SkillInfo[] = [];
       try {
-        const prepared = await skillsManager.prepareSource(source, process.cwd(), {
+        const prepared = await skillsManager.prepareSource(source, projectPath, {
           from: options.from,
         });
         preparedSkills = prepared.skills;
         verifySpinner.stop();
       } catch (error) {
-        if (error instanceof MultipleBundlePluginsError && (options.all || !options.yes)) {
+        if (error instanceof MultipleBundlePluginsError) {
           verifySpinner.stop();
-          const selected = await selectBundlePlugins(error.entries, 'install', { selectAll: options.all });
-          if (!selected) {
+          const bundleResolution = selectedSkillNames && selectedSkillNames.length > 0
+            ? await resolveBundlePluginsForSelectedSkills(
+              skillsManager,
+              source,
+              projectPath,
+              error.entries,
+              selectedSkillNames,
+              installPrefix,
+              { from: options.from },
+            )
+            : null;
+          let pluginSelection = bundleResolution?.pluginNames ?? null;
+
+          if (!pluginSelection && (options.all || !options.yes)) {
+            pluginSelection = await selectBundlePlugins(error.entries, 'install', { selectAll: options.all });
+            if (!pluginSelection) {
+              return;
+            }
+          }
+
+          if (!pluginSelection) {
+            verifySpinner.fail('Failed to verify skill source');
+            if (options.yes && bundleResolution && !bundleResolution.hadDiscoveryError) {
+              logger.error(formatBundlePluginResolutionError(bundleResolution));
+            } else {
+              logger.error(`Error: ${error.message}`);
+            }
             return;
           }
-          selectedPluginNames = selected;
+          selectedPluginNames = pluginSelection;
           const retrySpinner = ora('Verifying skill source...').start();
           try {
-            const prepared = await skillsManager.prepareSource(source, process.cwd(), {
+            const prepared = await skillsManager.prepareSource(source, projectPath, {
               from: options.from,
               ...(selectedPluginNames[0] ? { pluginName: selectedPluginNames[0] } : {}),
             });
-            preparedSkills = prepared.skills;
+            preparedSkills = selectedPluginNames.length > 1
+              ? await collectBundlePluginSkills(
+                skillsManager,
+                source,
+                projectPath,
+                selectedPluginNames,
+                { from: options.from },
+                selectedPluginNames[0]
+                  ? {
+                    name: selectedPluginNames[0],
+                    skills: prepared.skills,
+                  }
+                  : undefined,
+              )
+              : prepared.skills;
             retrySpinner.stop();
           } catch (retryError) {
             retrySpinner.fail('Failed to verify skill source');
@@ -165,18 +367,13 @@ export function registerSkillsCommand(program: Command): void {
         }
       }
 
-      let targetAgents = options.agent as string[] | undefined;
-      let targetGlobal = options.global as boolean | undefined;
-      let selectedSkillNames = options.skill as string[] | undefined;
-      let installPrefix = options.prefix as string | undefined;
-
       if (!options.yes && (!selectedSkillNames || selectedSkillNames.length === 0) && preparedSkills.length > 1) {
         if (selectedPluginNames && selectedPluginNames.length > 1) {
           logger.info('Multiple bundled plugins selected; installing all skills from each selected plugin. Use --skill to filter by skill name.');
         } else {
           const skillSelection = await resolveInteractiveSkillSelection(preparedSkills, installPrefix);
           if (skillSelection.aborted) {
-            await skillsManager.discardPreparedSource(source, process.cwd(), {
+            await skillsManager.discardPreparedSource(source, projectPath, {
               from: options.from,
             });
             return;
@@ -198,7 +395,7 @@ export function registerSkillsCommand(program: Command): void {
           skillsManager,
           agentManager,
           source,
-          process.cwd(),
+          projectPath,
           {
             from: options.from,
             global: options.global,
@@ -208,7 +405,7 @@ export function registerSkillsCommand(program: Command): void {
         );
 
         if (selection?.aborted) {
-          await skillsManager.discardPreparedSource(source, process.cwd(), {
+          await skillsManager.discardPreparedSource(source, projectPath, {
             from: options.from,
           });
           return;
@@ -255,7 +452,7 @@ export function registerSkillsCommand(program: Command): void {
         const spinner = ora(pluginName ? `Installing skills from ${pluginName}...` : 'Installing skills...').start();
         try {
           if (pluginName && pluginName !== selectedPluginNames?.[0]) {
-            await skillsManager.prepareSource(source, process.cwd(), {
+            await skillsManager.prepareSource(source, projectPath, {
               from: options.from,
               pluginName,
             });
