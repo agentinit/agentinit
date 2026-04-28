@@ -172,6 +172,7 @@ describe('agent command', () => {
 
     const schema = JSON.parse(logSpy.mock.calls[0]![0]);
     expect(schema.agent).toBe('claude');
+    expect(schema.effectiveDefaultScope).toBe('global');
     expect(schema.settings.some((setting: { key: string }) => setting.key === 'effortLevel')).toBe(true);
   });
 

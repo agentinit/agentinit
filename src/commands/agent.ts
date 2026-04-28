@@ -344,6 +344,7 @@ export function registerAgentCommand(program: Command): void {
         }
 
         logger.titleBox(`AgentInit  ${schema.displayName} Schema`);
+        logger.info(`Default omitted scope: ${cyan(schema.effectiveDefaultScope)}`);
         for (const setting of schema.settings) {
           const flags = [
             setting.valueType,

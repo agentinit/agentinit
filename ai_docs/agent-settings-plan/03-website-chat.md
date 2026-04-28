@@ -50,7 +50,7 @@ type AgentSettingsAction = {
   agent: string;
   key?: string;
   value?: string;
-  scope?: 'project' | 'global';
+  scope?: 'global' | 'project' | 'local';
 };
 ```
 
@@ -60,7 +60,7 @@ The backend must validate every action against registry/schema data:
 
 - Agent exists.
 - Key exists for that agent.
-- Scope is supported.
+- Scope is supported. If scope is omitted, AgentInit resolves the effective default from env, user config, then the built-in global default.
 - Value is valid for the setting.
 - Security-sensitive settings use approved presets.
 - Requests for custom hooks must render typed `agentinit agent hook add ... --command ...` commands only after the user explicitly provides or approves the command.
@@ -81,6 +81,8 @@ Render hooks as typed hook commands, not as raw JSON:
 render(hookAction) =>
   `agentinit agent hook add ${agent} ${event} --command ${shellQuote(command)} ${matcherFlag} ${scopeFlag}`
 ```
+
+Only include `scopeFlag` when the user explicitly requests global, project, or local scope. For hooks, ask before omitting scope when the requested behavior could affect every Claude project.
 
 Do not let the LLM produce shell directly.
 

@@ -12,6 +12,7 @@ import type {
   AgentHookRemoveOptions,
   AgentHookWriteResult,
   AgentSettingReadOptions,
+  AgentSettingsSchema,
   AgentSettingsScope,
   AgentSettingSetOptions,
   AgentSettingsWriteResult,
@@ -248,7 +249,7 @@ export class AgentSettingsManager {
     return getAgentSettingsAdapters().map(adapter => adapter.agent);
   }
 
-  getSchema(agent: string) {
+  getSchema(agent: string): AgentSettingsSchema {
     const adapter = getAgentSettingsAdapter(agent);
     if (!adapter) {
       throw new Error(`Unsupported agent settings adapter: ${agent}. Supported: ${this.getSupportedAgents().join(', ')}`);
@@ -257,6 +258,7 @@ export class AgentSettingsManager {
     return {
       agent: adapter.agent,
       displayName: adapter.displayName,
+      effectiveDefaultScope: getEffectiveAgentSettingsDefaultScopeSync(),
       settings: adapter.definitions.map(toSchemaEntry),
     };
   }

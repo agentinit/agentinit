@@ -374,6 +374,11 @@ agentinit config marketplaces add acme https://github.com/acme/marketplace.git -
 agentinit config marketplaces default claude
 agentinit config marketplaces clear-default
 
+# Manage the default scope used by `agentinit agent` when no scope flag is provided
+agentinit config agent-settings scope
+agentinit config agent-settings scope project
+agentinit config agent-settings clear-scope
+
 # Manage exact verified GitHub fallback repos
 agentinit config verified-repos list
 agentinit config verified-repos add acme/private-plugin
@@ -388,7 +393,7 @@ Verified GitHub repos must be exact `owner/repo` entries. They only affect how A
 
 Manage registry-backed native agent settings. The initial implementation supports safe Claude Code settings and typed hook operations; command-executing settings such as status lines, sandbox overrides, and AgentInit-managed plugin state are intentionally not exposed as raw settings.
 
-When you omit `--global`, `--project`, and `--local`, `agentinit agent` now defaults to `global`. You can override that default with `AGENTINIT_AGENT_DEFAULT_SCOPE=global|project|local` or persist a user preference with `agentinit config agent-settings scope <scope>`.
+When you omit `--global`, `--project`, and `--local`, `agentinit agent` now defaults to `global`. You can override that default with `AGENTINIT_AGENT_DEFAULT_SCOPE=global|project|local` or persist a user preference with `agentinit config agent-settings scope <scope>`. This also applies to hook commands, so pass `--project` or `--local` when a hook should stay repo-scoped.
 
 **Examples:**
 ```bash

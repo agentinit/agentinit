@@ -145,6 +145,19 @@ describe('config command', () => {
     expect((await readUserConfig()).defaultAgentSettingsScope).toBeUndefined();
   });
 
+  it('reports invalid environment default agent settings scope overrides as ignored', async () => {
+    silenceLogger();
+    const infoSpy = vi.spyOn(logger, 'info').mockImplementation(() => {});
+
+    await runConfig(['config', 'agent-settings', 'scope', 'project']);
+    process.env.AGENTINIT_AGENT_DEFAULT_SCOPE = 'workspace';
+    await runConfig(['config', 'agent-settings', 'scope']);
+
+    expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('Effective default agent settings scope:'));
+    expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('Invalid environment override ignored:'));
+    expect(infoSpy).not.toHaveBeenCalledWith(expect.stringContaining('Environment override:'));
+  });
+
   it('sets a non-zero exit code for invalid marketplace operations', async () => {
     silenceLogger();
 

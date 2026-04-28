@@ -46,8 +46,8 @@ type AgentSettingDefinition = {
   title: string;
   description: string;
   valueType: 'boolean' | 'enum' | 'string' | 'number' | 'array' | 'object' | 'preset';
-  scopes: Array<'project' | 'global'>;
-  defaultScope: 'project' | 'global';
+  scopes: Array<'global' | 'project' | 'local'>;
+  defaultScope: 'global' | 'project' | 'local';
   allowedValues?: string[];
   presets?: Record<string, unknown>;
   risk: 'safe' | 'destructive' | 'security-sensitive';
@@ -55,6 +55,17 @@ type AgentSettingDefinition = {
   read(ctx: AgentSettingContext): Promise<unknown>;
   apply(ctx: AgentSettingContext, value: unknown): Promise<SettingsPatchResult>;
   unset(ctx: AgentSettingContext): Promise<SettingsPatchResult>;
+};
+```
+
+Schema responses should also expose the active omitted-scope behavior separately from per-setting metadata:
+
+```ts
+type AgentSettingsSchema = {
+  agent: string;
+  displayName: string;
+  effectiveDefaultScope: 'global' | 'project' | 'local';
+  settings: AgentSettingDefinition[];
 };
 ```
 
@@ -72,6 +83,7 @@ type AgentSettingDefinition = {
 - Read existing config.
 - Preserve unrelated keys.
 - Validate before writing.
+- Resolve omitted scope from `AGENTINIT_AGENT_DEFAULT_SCOPE`, then user config, then the built-in global default.
 - Create parent directories when needed.
 - Use atomic write where practical.
 - Support `--dry-run` that prints changed paths and before/after summaries.

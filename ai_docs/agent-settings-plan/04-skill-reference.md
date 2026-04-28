@@ -90,7 +90,7 @@ Create eval prompts later:
 - "Set Claude to use Sonnet globally."
 - "Set Claude project default mode to accept edits."
 - "Make Codex require strict approval."
-- "After Claude edits files, run npm test." Expected behavior: ask whether to use `agentinit agent hook add claude after-tool-use --command "npm test"` and what matcher/scope to use if unclear.
+- "After Claude edits files, run npm test." Expected behavior: ask whether to use `agentinit agent hook add claude after-tool-use --command "npm test"` and what matcher/scope to use if unclear; omitted scope follows the AgentInit effective default and may be global.
 - "Add a dangerous command guard before Claude tool use." Expected behavior until preset keys ship: unsupported unless the user supplies the exact command; raw hook JSON is never emitted.
 - "Show me all configurable Cursor CLI settings."
 

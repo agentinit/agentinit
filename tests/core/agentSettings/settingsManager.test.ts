@@ -98,6 +98,22 @@ describe('AgentSettingsManager', () => {
     });
   });
 
+  it('exposes the effective default scope in the schema', async () => {
+    const manager = new AgentSettingsManager();
+
+    expect(manager.getSchema('claude').effectiveDefaultScope).toBe('global');
+
+    await writeUserConfig({
+      defaultAgentSettingsScope: 'project',
+      customMarketplaces: [],
+      verifiedGithubRepos: [],
+    });
+    expect(manager.getSchema('claude').effectiveDefaultScope).toBe('project');
+
+    process.env.AGENTINIT_AGENT_DEFAULT_SCOPE = 'local';
+    expect(manager.getSchema('claude').effectiveDefaultScope).toBe('local');
+  });
+
   it('rejects unsupported scopes for personal risky settings', async () => {
     const manager = new AgentSettingsManager();
 

@@ -33,8 +33,8 @@ type DiscoveredSetting = {
   description: string;
   valueType: 'boolean' | 'enum' | 'string' | 'number' | 'array' | 'object' | 'preset';
   allowedValues?: string[];
-  scopes: Array<'project' | 'global'>;
-  defaultScope: 'project' | 'global';
+  scopes: Array<'global' | 'project' | 'local'>;
+  defaultScope: 'global' | 'project' | 'local';
   configFiles: string[];
   nativePath: string;
   writeStrategy: 'json-patch' | 'toml-patch' | 'yaml-patch' | 'file-template' | 'command';
@@ -48,7 +48,7 @@ type DiscoveredSetting = {
 
 - Prefer official docs and source code.
 - Record exact config file paths.
-- Record whether a setting is project-scoped, global-scoped, or both.
+- Record whether a setting is global-scoped, project-scoped, local-scoped, or a combination.
 - Record merge semantics: replace, append, map merge, ordered list, or generated file.
 - Mark settings that execute commands or alter approval/sandbox behavior as `security-sensitive`.
 

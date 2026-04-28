@@ -31,6 +31,13 @@ export interface AgentSettingSchemaEntry extends Omit<AgentSettingDefinition, 'n
   nativePath: string;
 }
 
+export interface AgentSettingsSchema {
+  agent: string;
+  displayName: string;
+  effectiveDefaultScope: AgentSettingsScope;
+  settings: AgentSettingSchemaEntry[];
+}
+
 export interface AgentSettingSetOptions {
   scope?: AgentSettingsScope;
   parseJson?: boolean;

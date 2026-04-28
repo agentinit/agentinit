@@ -207,8 +207,12 @@ export function registerConfigCommand(program: Command): void {
           } else {
             logger.info('No user-configured agent settings scope. Built-in default is global.');
           }
-          if (process.env.AGENTINIT_AGENT_DEFAULT_SCOPE) {
-            logger.info(`Environment override: ${cyan(process.env.AGENTINIT_AGENT_DEFAULT_SCOPE)}`);
+          if (process.env.AGENTINIT_AGENT_DEFAULT_SCOPE !== undefined) {
+            try {
+              logger.info(`Environment override: ${cyan(normalizeAgentSettingsDefaultScope(process.env.AGENTINIT_AGENT_DEFAULT_SCOPE))}`);
+            } catch {
+              logger.info(`Invalid environment override ignored: ${cyan(process.env.AGENTINIT_AGENT_DEFAULT_SCOPE)}`);
+            }
           }
           return;
         }
