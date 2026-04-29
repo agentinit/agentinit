@@ -60,8 +60,8 @@ description: Use when a user asks to configure runtime behavior for Claude, Code
 Use `agentinit agent` as the public interface.
 
 Prefer:
-agentinit agent set <agent> <key> <value> [--global|--project]
-agentinit agent hook add <agent> <event> --command <command> [--matcher <matcher>] [--global|--project]
+agentinit agent set <agent> <key> <value> [--global|--project|--local when supported]
+agentinit agent hook add <agent> <event> --command <command> [--matcher <matcher>] [--global|--project|--local when supported]
 agentinit agent api-key approve claude --env <name>
 
 Do not invent setting keys. If uncertain, inspect:

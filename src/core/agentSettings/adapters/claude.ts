@@ -1,10 +1,20 @@
 import { join } from 'path';
 import { expandTilde } from '../../../utils/paths.js';
-import type { AgentSettingsAdapter, AgentSettingDefinition, AgentSettingsScope } from '../types.js';
+import type { AgentHookEvent, AgentSettingsAdapter, AgentSettingDefinition, AgentSettingsScope } from '../types.js';
 
 const ALL_SCOPES: AgentSettingsScope[] = ['global', 'project', 'local'];
 const PERSONAL_SCOPES: AgentSettingsScope[] = ['global', 'local'];
 const GLOBAL_CONFIG_SCOPES: AgentSettingsScope[] = ['global'];
+const CLAUDE_HOOK_EVENTS: AgentHookEvent[] = [
+  'PreToolUse',
+  'PostToolUse',
+  'PostToolUseFailure',
+  'Notification',
+  'PermissionRequest',
+  'Stop',
+  'SessionStart',
+  'SessionEnd',
+];
 
 const THEME_VALUES = ['auto', 'dark', 'light', 'light-daltonized', 'dark-daltonized', 'light-ansi', 'dark-ansi'];
 const NOTIFICATION_CHANNELS = ['auto', 'iterm2', 'iterm2_with_bell', 'terminal_bell', 'kitty', 'ghostty', 'notifications_disabled'];
@@ -64,6 +74,8 @@ function globalConfigSetting(
 export const claudeSettingsAdapter: AgentSettingsAdapter = {
   agent: 'claude',
   displayName: 'Claude Code',
+  hookEvents: CLAUDE_HOOK_EVENTS,
+  hookScopes: ALL_SCOPES,
   definitions: [
     globalConfigSetting('theme', 'enum', 'Theme', 'Claude Code UI color theme.', {
       allowedValues: THEME_VALUES,

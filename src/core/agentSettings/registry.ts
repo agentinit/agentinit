@@ -1,8 +1,10 @@
 import { claudeSettingsAdapter } from './adapters/claude.js';
+import { codexSettingsAdapter } from './adapters/codex.js';
 import type { AgentSettingsAdapter, AgentSettingDefinition, AgentSettingSchemaEntry } from './types.js';
 
 const ADAPTERS: AgentSettingsAdapter[] = [
   claudeSettingsAdapter,
+  codexSettingsAdapter,
 ];
 
 export function getAgentSettingsAdapters(): AgentSettingsAdapter[] {

@@ -1,6 +1,7 @@
 import { mkdtemp, readFile, rm } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
+import * as TOML from '@iarna/toml';
 import { Command } from 'commander';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { registerAgentCommand } from '../../src/commands/agent.js';
@@ -136,6 +137,36 @@ describe('agent command', () => {
     await expect(readFile(join(process.env.HOME!, '.claude.json'), 'utf8').then(JSON.parse)).resolves.toEqual({
       theme: 'dark',
       taskCompleteNotifEnabled: true,
+    });
+  });
+
+  it('sets Codex TOML settings and hooks through the CLI', async () => {
+    silenceLogger();
+
+    await runAgent(['agent', 'set', 'codex', 'features.codex_hooks', 'true']);
+    await runAgent(['agent', 'set', 'codex', 'web_search', 'cached']);
+    await runAgent(['agent', 'hook', 'add', 'codex', 'pre-tool-use', '--command', 'npm run lint', '--matcher', '^Bash$', '--project']);
+
+    await expect(readFile(join(process.env.HOME!, '.codex', 'config.toml'), 'utf8').then(content => TOML.parse(content))).resolves.toMatchObject({
+      features: {
+        codex_hooks: true,
+      },
+      web_search: 'cached',
+    });
+    await expect(readFile(join(process.cwd(), '.codex', 'config.toml'), 'utf8').then(content => TOML.parse(content))).resolves.toMatchObject({
+      hooks: {
+        PreToolUse: [
+          {
+            matcher: '^Bash$',
+            hooks: [
+              {
+                type: 'command',
+                command: 'npm run lint',
+              },
+            ],
+          },
+        ],
+      },
     });
   });
 

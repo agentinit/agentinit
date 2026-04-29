@@ -1,23 +1,31 @@
 # `agentinit agent` Reference
 
-`agentinit agent` manages registry-backed native agent settings. The current implementation supports `claude` settings and typed Claude hook operations.
+`agentinit agent` manages registry-backed native agent settings. The current implementation supports `claude` and `codex` settings, plus typed hook operations for both agents.
 
-When you omit `--global`, `--project`, and `--local`, `agentinit agent` defaults to `global`. You can override that default with `AGENTINIT_AGENT_DEFAULT_SCOPE=global|project|local` or persist a user preference with `agentinit config agent-settings scope <scope>`.
+When you omit `--global`, `--project`, and `--local`, `agentinit agent` defaults to `global`. You can override that default with `AGENTINIT_AGENT_DEFAULT_SCOPE=global|project|local` or persist a user preference with `agentinit config agent-settings scope <scope>`. Individual agents may support only a subset of scopes; Codex supports `--global` and `--project`.
 
 ## Command Surface
 
 ```bash
 agentinit agent list
 agentinit agent list claude
+agentinit agent list codex
 agentinit agent schema claude [--json]
+agentinit agent schema codex [--json]
 
 agentinit agent get claude [key] [--global|--project|--local] [--json]
 agentinit agent set claude <key> <value> [--global|--project|--local] [--value-json] [--json] [--dry-run]
 agentinit agent unset claude <key> [--global|--project|--local] [--json] [--dry-run]
+agentinit agent get codex [key] [--global|--project] [--json]
+agentinit agent set codex <key> <value> [--global|--project] [--value-json] [--json] [--dry-run]
+agentinit agent unset codex <key> [--global|--project] [--json] [--dry-run]
 
 agentinit agent hook add claude <event> --command "<shell command>" [--matcher <matcher>] [--name <name>] [--global|--project|--local] [--json] [--dry-run]
 agentinit agent hook list claude [event] [--global|--project|--local] [--json]
 agentinit agent hook remove claude <event> <command-or-name> [--matcher <matcher>] [--global|--project|--local] [--json] [--dry-run]
+agentinit agent hook add codex <event> --command "<shell command>" [--matcher <matcher>] [--name <name>] [--global|--project] [--json] [--dry-run]
+agentinit agent hook list codex [event] [--global|--project] [--json]
+agentinit agent hook remove codex <event> <command-or-name> [--matcher <matcher>] [--global|--project] [--json] [--dry-run]
 
 agentinit agent api-key approve claude (--env <name>|--key <key>) [--json] [--dry-run]
 agentinit agent api-key reject claude (--env <name>|--key <key>) [--json] [--dry-run]
@@ -85,6 +93,33 @@ agentinit agent api-key status claude (--env <name>|--key <key>) [--json]
 - `disabledMcpjsonServers`
 - `skipDangerousModePermissionPrompt`
 
+## Supported Codex Setting Keys
+
+Codex settings are written to `~/.codex/config.toml` for `--global` and `.codex/config.toml` for `--project`.
+
+- `model`
+- `model_provider`
+- `model_reasoning_effort`
+- `approval_policy`
+- `sandbox_mode`
+- `web_search`
+- `notify`
+- `instructions`
+- `model_instructions_file`
+- `features.apps`
+- `features.codex_hooks`
+- `features.fast_mode`
+- `features.memories`
+- `features.multi_agent`
+- `features.personality`
+- `features.shell_snapshot`
+- `features.shell_tool`
+- `features.unified_exec`
+- `features.undo`
+- `features.web_search`
+- `features.web_search_cached`
+- `features.web_search_request`
+
 ## Hook Events
 
 - `PreToolUse`
@@ -98,6 +133,8 @@ agentinit agent api-key status claude (--env <name>|--key <key>) [--json]
 
 Accepted aliases include `before-tool-use`, `after-tool-use`, `post-tool-use-failure`, `permission-request`, `session-start`, and `session-end`.
 
+Codex supports `PreToolUse`, `PermissionRequest`, `PostToolUse`, `SessionStart`, `UserPromptSubmit`, and `Stop`. Accepted Codex aliases include `pre-tool-use`, `post-tool-use`, `permission-request`, `session-start`, and `user-prompt-submit`.
+
 ## Examples
 
 Inspect supported agents and settings:
@@ -105,8 +142,11 @@ Inspect supported agents and settings:
 ```bash
 agentinit agent list
 agentinit agent list claude
+agentinit agent list codex
 agentinit agent schema claude
+agentinit agent schema codex
 agentinit agent schema claude --json
+agentinit agent schema codex --json
 ```
 
 Read settings in human or JSON form:
@@ -118,6 +158,10 @@ agentinit agent get claude model
 agentinit agent get claude model --json
 agentinit agent get claude env --project --json
 agentinit agent get claude permissions.allow --project --json
+agentinit agent get codex
+agentinit agent get codex --project
+agentinit agent get codex features.codex_hooks
+agentinit agent get codex web_search --json
 ```
 
 Global full reads include regular `~/.claude/settings.json` values plus registered AgentInit-managed `~/.claude.json` settings. Internal Claude global config state such as `projects`, auth records, caches, and usage counters is not exposed.
@@ -131,6 +175,9 @@ agentinit agent set claude plansDirectory .claude/plans --project
 agentinit agent set claude language spanish
 agentinit agent set claude outputStyle concise
 agentinit agent set claude teammateDefaultModel sonnet
+agentinit agent set codex model gpt-5.4
+agentinit agent set codex model_provider openai
+agentinit agent set codex model_instructions_file AGENTS.md --project
 ```
 
 Set booleans:
@@ -164,6 +211,16 @@ agentinit agent set claude spinnerTipsEnabled off
 agentinit agent set claude enableAllProjectMcpServers true --project
 agentinit agent set claude skipDangerousModePermissionPrompt true
 agentinit agent set claude useAutoModeDuringPlan true --local
+agentinit agent set codex features.apps false
+agentinit agent set codex features.codex_hooks true
+agentinit agent set codex features.fast_mode true
+agentinit agent set codex features.memories false
+agentinit agent set codex features.multi_agent true
+agentinit agent set codex features.personality true
+agentinit agent set codex features.shell_snapshot true
+agentinit agent set codex features.shell_tool true
+agentinit agent set codex features.unified_exec true
+agentinit agent set codex features.undo false
 ```
 
 Set enums:
@@ -180,6 +237,10 @@ agentinit agent set claude permissions.defaultMode dontAsk --local
 agentinit agent set claude permissions.disableBypassPermissionsMode disable
 agentinit agent set claude autoUpdatesChannel stable
 agentinit agent set claude defaultView chat --local
+agentinit agent set codex model_reasoning_effort high
+agentinit agent set codex approval_policy on-request --project
+agentinit agent set codex sandbox_mode workspace-write --project
+agentinit agent set codex web_search live
 ```
 
 Set numbers:
@@ -199,6 +260,7 @@ agentinit agent set claude worktree.symlinkDirectories '["node_modules",".env.lo
 agentinit agent set claude worktree.sparsePaths '["src","tests","package.json"]' --project --value-json
 agentinit agent set claude enabledMcpjsonServers '["github","playwright"]' --project --value-json
 agentinit agent set claude disabledMcpjsonServers '["dangerous-server"]' --project --value-json
+agentinit agent set codex notify '["terminal-notifier","-message","Codex finished"]' --value-json
 ```
 
 Set objects:
@@ -225,6 +287,18 @@ agentinit agent hook remove claude post-tool-use test-after-edit --matcher "Edit
 agentinit agent hook remove claude post-tool-use "npm run lint"
 ```
 
+Add and inspect Codex hooks in `config.toml`:
+
+```bash
+agentinit agent set codex features.codex_hooks true
+agentinit agent hook add codex pre-tool-use --command "npm run lint" --matcher "^Bash$" --project
+agentinit agent hook add codex post-tool-use --command "npm test" --matcher "^Bash$" --name test-after-bash --project
+agentinit agent hook add codex user-prompt-submit --command "scripts/check-prompt.sh" --project
+agentinit agent hook list codex --project
+agentinit agent hook list codex pre-tool-use --project --json
+agentinit agent hook remove codex post-tool-use test-after-bash --matcher "^Bash$" --project
+```
+
 Manage Claude custom API key trust responses:
 
 ```bash
@@ -242,6 +316,7 @@ Preview writes without changing files:
 agentinit agent set claude effortLevel high --dry-run
 agentinit agent unset claude includeGitInstructions --dry-run
 agentinit agent hook add claude after-tool-use --command "npm test" --project --dry-run
+agentinit agent hook add codex pre-tool-use --command "npm test" --project --dry-run
 agentinit agent api-key approve claude --env ANTHROPIC_API_KEY --dry-run
 ```
 
@@ -252,6 +327,7 @@ agentinit agent set claude model sonnet --json
 agentinit agent get claude model --json
 agentinit agent unset claude effortLevel --json
 agentinit agent hook list claude post-tool-use --project --json
+agentinit agent hook list codex pre-tool-use --project --json
 agentinit agent api-key status claude --env ANTHROPIC_API_KEY --json
 ```
 

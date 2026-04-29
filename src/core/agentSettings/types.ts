@@ -5,6 +5,7 @@ export type AgentSettingValueType = 'string' | 'boolean' | 'number' | 'enum' | '
 export type AgentSettingRisk = 'safe' | 'risky' | 'security-sensitive' | 'deprecated';
 
 export type AgentSettingStore = 'settings' | 'globalConfig';
+export type AgentSettingsFormat = 'json' | 'toml';
 
 export interface AgentSettingDefinition {
   agent: string;
@@ -26,7 +27,10 @@ export interface AgentSettingDefinition {
 export interface AgentSettingsAdapter {
   agent: string;
   displayName: string;
+  format?: AgentSettingsFormat;
   definitions: AgentSettingDefinition[];
+  hookEvents?: AgentHookEvent[];
+  hookScopes?: AgentSettingsScope[];
   getSettingsPath(scope: AgentSettingsScope, projectPath: string, definition?: AgentSettingDefinition): string;
 }
 
@@ -71,7 +75,8 @@ export type AgentHookEvent =
   | 'PermissionRequest'
   | 'Stop'
   | 'SessionStart'
-  | 'SessionEnd';
+  | 'SessionEnd'
+  | 'UserPromptSubmit';
 
 export interface AgentHookAddOptions {
   scope?: AgentSettingsScope;

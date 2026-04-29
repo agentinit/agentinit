@@ -22,7 +22,7 @@ export class CodexCliAgent extends Agent {
           sse: false   // Supported via transformation
         },
         rules: true,
-        hooks: false,
+        hooks: true,
         commands: false,
         subagents: false,
         statusline: false,

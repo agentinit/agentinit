@@ -25,7 +25,7 @@ describe('CodexCliAgent', () => {
       expect(agent.capabilities.mcp.http).toBe(false);
       expect(agent.capabilities.mcp.sse).toBe(false);
       expect(agent.capabilities.rules).toBe(true);
-      expect(agent.capabilities.hooks).toBe(false);
+      expect(agent.capabilities.hooks).toBe(true);
       expect(agent.capabilities.commands).toBe(false);
       expect(agent.capabilities.subagents).toBe(false);
       expect(agent.capabilities.statusline).toBe(false);

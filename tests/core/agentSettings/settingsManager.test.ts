@@ -1,6 +1,7 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
+import * as TOML from '@iarna/toml';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { AgentSettingsManager } from '../../../src/core/agentSettings/settingsManager.js';
 import { writeUserConfig } from '../../../src/core/userConfig.js';
@@ -47,6 +48,14 @@ describe('AgentSettingsManager', () => {
     return JSON.parse(await readFile(join(process.env.HOME!, '.claude.json'), 'utf8'));
   }
 
+  async function readCodexGlobalSettings() {
+    return TOML.parse(await readFile(join(process.env.HOME!, '.codex', 'config.toml'), 'utf8'));
+  }
+
+  async function readCodexProjectSettings() {
+    return TOML.parse(await readFile(join(projectPath, '.codex', 'config.toml'), 'utf8'));
+  }
+
   it('sets nested Claude settings in global scope by default', async () => {
     const manager = new AgentSettingsManager();
 
@@ -57,6 +66,54 @@ describe('AgentSettingsManager', () => {
         defaultMode: 'acceptEdits',
       },
     });
+  });
+
+  it('sets Codex TOML settings and feature flags', async () => {
+    const manager = new AgentSettingsManager();
+
+    await manager.set('codex', 'model_reasoning_effort', 'high', { projectPath });
+    await manager.set('codex', 'web_search', 'live', { projectPath });
+    await manager.set('codex', 'features.codex_hooks', 'true', { projectPath });
+
+    await expect(readCodexGlobalSettings()).resolves.toMatchObject({
+      model_reasoning_effort: 'high',
+      web_search: 'live',
+      features: {
+        codex_hooks: true,
+      },
+    });
+  });
+
+  it('writes Codex project TOML settings when requested', async () => {
+    const manager = new AgentSettingsManager();
+
+    await manager.set('codex', 'sandbox_mode', 'workspace-write', {
+      projectPath,
+      scope: 'project',
+    });
+
+    await expect(readCodexProjectSettings()).resolves.toMatchObject({
+      sandbox_mode: 'workspace-write',
+    });
+  });
+
+  it('writes Codex model instructions file with the native config key', async () => {
+    const manager = new AgentSettingsManager();
+
+    await manager.set('codex', 'model_instructions_file', 'AGENTS.md', { projectPath });
+
+    await expect(readCodexGlobalSettings()).resolves.toMatchObject({
+      model_instructions_file: 'AGENTS.md',
+    });
+  });
+
+  it('rejects unsupported Codex local full settings reads', async () => {
+    const manager = new AgentSettingsManager();
+
+    await expect(manager.get('codex', undefined, {
+      projectPath,
+      scope: 'local',
+    })).rejects.toThrow('codex settings do not support local scope');
   });
 
   it('parses booleans, enums, arrays, and objects', async () => {
@@ -395,6 +452,69 @@ describe('AgentSettingsManager', () => {
     await manager.removeHook('claude', 'PostToolUse', 'lint-after-edit', { projectPath, matcher: 'Edit|Write' });
 
     await expect(readGlobalSettings()).resolves.toEqual({});
+  });
+
+  it('adds, lists, and removes typed Codex command hooks in TOML config', async () => {
+    const manager = new AgentSettingsManager();
+
+    await manager.addHook('codex', 'pre-tool-use', 'npm run lint', {
+      projectPath,
+      scope: 'project',
+      matcher: '^Bash$',
+      name: 'lint-before-bash',
+    });
+
+    await expect(readCodexProjectSettings()).resolves.toMatchObject({
+      hooks: {
+        PreToolUse: [
+          {
+            matcher: '^Bash$',
+            hooks: [
+              {
+                type: 'command',
+                command: 'npm run lint',
+                name: 'lint-before-bash',
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    await expect(manager.listHooks('codex', 'PreToolUse', {
+      projectPath,
+      scope: 'project',
+    })).resolves.toEqual([
+      {
+        matcher: '^Bash$',
+        hooks: [
+          {
+            type: 'command',
+            command: 'npm run lint',
+            name: 'lint-before-bash',
+          },
+        ],
+      },
+    ]);
+
+    await manager.removeHook('codex', 'pre-tool-use', 'lint-before-bash', {
+      projectPath,
+      scope: 'project',
+      matcher: '^Bash$',
+    });
+
+    await expect(readCodexProjectSettings()).resolves.not.toHaveProperty('hooks');
+  });
+
+  it('rejects unsupported hook events for Codex', async () => {
+    const manager = new AgentSettingsManager();
+
+    await expect(manager.addHook('codex', 'SessionEnd', 'echo done', { projectPath }))
+      .rejects.toThrow('does not support SessionEnd hooks');
+    await expect(manager.addHook('codex', 'pre-tool-use', 'echo done', {
+      projectPath,
+      scope: 'local',
+    })).rejects.toThrow('hooks do not support local scope');
   });
 
   it('preserves unrelated hooks when adding and removing hooks', async () => {

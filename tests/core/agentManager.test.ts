@@ -353,8 +353,8 @@ describe('AgentManager', () => {
     it('should return agents with hooks capability', () => {
       const hookAgents = manager.getAgentsByCapability('hooks');
       
-      expect(hookAgents).toHaveLength(1); // Only Claude supports hooks
-      expect(hookAgents[0]?.id).toBe('claude');
+      expect(hookAgents).toHaveLength(2);
+      expect(hookAgents.map(agent => agent.id)).toEqual(expect.arrayContaining(['claude', 'codex']));
     });
 
     it('should return agents with rules capability', () => {

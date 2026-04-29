@@ -1,3 +1,4 @@
+import * as TOML from '@iarna/toml';
 import { readFileIfExists, writeFile } from '../../utils/fs.js';
 import { getEffectiveAgentSettingsDefaultScopeSync } from '../userConfig.js';
 import { parseAgentSettingValue } from './valueParser.js';
@@ -23,6 +24,7 @@ import type {
 } from './types.js';
 
 type JsonObject = Record<string, unknown>;
+type RegisteredAgentSettingsAdapter = NonNullable<ReturnType<typeof getAgentSettingsAdapter>>;
 
 const HOOK_EVENT_ALIASES: Record<string, AgentHookEvent> = {
   'pre-tool-use': 'PreToolUse',
@@ -35,6 +37,7 @@ const HOOK_EVENT_ALIASES: Record<string, AgentHookEvent> = {
   stop: 'Stop',
   'session-start': 'SessionStart',
   'session-end': 'SessionEnd',
+  'user-prompt-submit': 'UserPromptSubmit',
 };
 
 const HOOK_EVENTS = new Set<AgentHookEvent>(Object.values(HOOK_EVENT_ALIASES));
@@ -298,10 +301,34 @@ function resolveScope(definition: AgentSettingDefinition, scope?: AgentSettingsS
   return resolvedScope;
 }
 
-async function readJsonObject(path: string): Promise<JsonObject> {
+function getSupportedSettingScopes(adapter: RegisteredAgentSettingsAdapter): AgentSettingsScope[] {
+  return [...new Set(adapter.definitions.flatMap(definition => definition.scopes))];
+}
+
+function resolveFullReadScope(adapter: RegisteredAgentSettingsAdapter, scope?: AgentSettingsScope): AgentSettingsScope {
+  const resolvedScope = scope ?? getEffectiveAgentSettingsDefaultScopeSync();
+  const supportedScopes = getSupportedSettingScopes(adapter);
+  if (!supportedScopes.includes(resolvedScope)) {
+    throw new Error(`Agent ${adapter.agent} settings do not support ${resolvedScope} scope. Supported scopes: ${supportedScopes.join(', ')}.`);
+  }
+  return resolvedScope;
+}
+
+async function readConfigObject(adapter: RegisteredAgentSettingsAdapter, path: string): Promise<JsonObject> {
   const content = await readFileIfExists(path);
   if (!content) {
     return {};
+  }
+
+  if (adapter.format === 'toml') {
+    try {
+      return assertObject(TOML.parse(content), path);
+    } catch (error) {
+      if (error instanceof SyntaxError || error instanceof Error) {
+        throw new Error(`${path} contains invalid TOML.`);
+      }
+      throw error;
+    }
   }
 
   try {
@@ -312,6 +339,32 @@ async function readJsonObject(path: string): Promise<JsonObject> {
     }
     throw error;
   }
+}
+
+function stringifyConfigObject(adapter: RegisteredAgentSettingsAdapter, config: JsonObject): string {
+  if (adapter.format === 'toml') {
+    return TOML.stringify(config as TOML.JsonMap);
+  }
+  return `${JSON.stringify(config, null, 2)}\n`;
+}
+
+async function writeConfigObject(adapter: RegisteredAgentSettingsAdapter, path: string, config: JsonObject): Promise<void> {
+  await writeFile(path, stringifyConfigObject(adapter, config));
+}
+
+function assertHookEventSupported(adapter: RegisteredAgentSettingsAdapter, event: AgentHookEvent): void {
+  if (adapter.hookEvents && !adapter.hookEvents.includes(event)) {
+    throw new Error(`Agent ${adapter.agent} does not support ${event} hooks. Supported: ${adapter.hookEvents.join(', ')}.`);
+  }
+}
+
+function resolveHookScope(adapter: RegisteredAgentSettingsAdapter, scope?: AgentSettingsScope): AgentSettingsScope {
+  const resolvedScope = scope ?? getEffectiveAgentSettingsDefaultScopeSync();
+  const supportedScopes = adapter.hookScopes ?? ['global', 'project', 'local'];
+  if (!supportedScopes.includes(resolvedScope)) {
+    throw new Error(`Agent ${adapter.agent} hooks do not support ${resolvedScope} scope. Supported scopes: ${supportedScopes.join(', ')}.`);
+  }
+  return resolvedScope;
 }
 
 export class AgentSettingsManager {
@@ -340,9 +393,9 @@ export class AgentSettingsManager {
     }
 
     if (!key) {
-      const scope = options.scope ?? getEffectiveAgentSettingsDefaultScopeSync();
+      const scope = resolveFullReadScope(adapter, options.scope);
       const path = adapter.getSettingsPath(scope, resolveProjectPath(options.projectPath));
-      const config = await readJsonObject(path);
+      const config = await readConfigObject(adapter, path);
 
       if (scope !== 'global') {
         return config;
@@ -354,7 +407,7 @@ export class AgentSettingsManager {
       }
 
       const globalConfigPath = adapter.getSettingsPath('global', resolveProjectPath(options.projectPath), globalConfigDefinitions[0]);
-      const globalConfig = await readJsonObject(globalConfigPath);
+      const globalConfig = await readConfigObject(adapter, globalConfigPath);
       const result = { ...config };
       for (const definition of globalConfigDefinitions) {
         const value = getNestedValue(globalConfig, definition.nativePath);
@@ -373,7 +426,7 @@ export class AgentSettingsManager {
 
     const scope = resolveScope(definition, options.scope);
     const path = adapter.getSettingsPath(scope, resolveProjectPath(options.projectPath), definition);
-    const config = await readJsonObject(path);
+    const config = await readConfigObject(adapter, path);
     return getNestedValue(config, definition.nativePath);
   }
 
@@ -395,14 +448,14 @@ export class AgentSettingsManager {
 
     const scope = resolveScope(definition, options.scope);
     const path = adapter.getSettingsPath(scope, resolveProjectPath(options.projectPath), definition);
-    const config = await readJsonObject(path);
+    const config = await readConfigObject(adapter, path);
     const previousValue = getNestedValue(config, definition.nativePath);
     const value = parseAgentSettingValue(definition, rawValue, options.parseJson);
 
     setNestedValue(config, definition.nativePath, value);
 
     if (!options.dryRun) {
-      await writeFile(path, `${JSON.stringify(config, null, 2)}\n`);
+      await writeConfigObject(adapter, path, config);
     }
 
     return {
@@ -429,13 +482,13 @@ export class AgentSettingsManager {
 
     const scope = resolveScope(definition, options.scope);
     const path = adapter.getSettingsPath(scope, resolveProjectPath(options.projectPath), definition);
-    const config = await readJsonObject(path);
+    const config = await readConfigObject(adapter, path);
     const previousValue = getNestedValue(config, definition.nativePath);
 
     deleteNestedValue(config, definition.nativePath);
 
     if (!options.dryRun) {
-      await writeFile(path, `${JSON.stringify(config, null, 2)}\n`);
+      await writeConfigObject(adapter, path, config);
     }
 
     return {
@@ -453,16 +506,20 @@ export class AgentSettingsManager {
     if (!adapter) {
       throw new Error(`Unsupported agent settings adapter: ${agent}. Supported: ${this.getSupportedAgents().join(', ')}`);
     }
-    if (agent !== 'claude') {
+    if (!adapter.hookEvents) {
       throw new Error(`Agent ${agent} does not support hook management.`);
     }
+    const hookEvent = event ? normalizeHookEvent(event) : undefined;
+    if (hookEvent) {
+      assertHookEventSupported(adapter, hookEvent);
+    }
 
-    const scope = options.scope ?? getEffectiveAgentSettingsDefaultScopeSync();
+    const scope = resolveHookScope(adapter, options.scope);
     const path = adapter.getSettingsPath(scope, resolveProjectPath(options.projectPath));
-    const config = await readJsonObject(path);
+    const config = await readConfigObject(adapter, path);
 
-    if (event) {
-      return getHookMatchers(config, normalizeHookEvent(event));
+    if (hookEvent) {
+      return getHookMatchers(config, hookEvent);
     }
 
     const hooks = getNestedValue(config, ['hooks']);
@@ -490,14 +547,15 @@ export class AgentSettingsManager {
     if (!adapter) {
       throw new Error(`Unsupported agent settings adapter: ${agent}. Supported: ${this.getSupportedAgents().join(', ')}`);
     }
-    if (agent !== 'claude') {
+    if (!adapter.hookEvents) {
       throw new Error(`Agent ${agent} does not support hook management.`);
     }
 
     const hookEvent = normalizeHookEvent(event);
-    const scope = options.scope ?? getEffectiveAgentSettingsDefaultScopeSync();
+    assertHookEventSupported(adapter, hookEvent);
+    const scope = resolveHookScope(adapter, options.scope);
     const path = adapter.getSettingsPath(scope, resolveProjectPath(options.projectPath));
-    const config = await readJsonObject(path);
+    const config = await readConfigObject(adapter, path);
     const hook = buildHookCommand(command, options.name);
     const matchers = getHookMatchers(config, hookEvent);
     const matcher = options.matcher ?? '*';
@@ -515,7 +573,7 @@ export class AgentSettingsManager {
     setHookMatchers(config, hookEvent, matchers);
 
     if (!options.dryRun) {
-      await writeFile(path, `${JSON.stringify(config, null, 2)}\n`);
+      await writeConfigObject(adapter, path, config);
     }
 
     return {
@@ -538,14 +596,15 @@ export class AgentSettingsManager {
     if (!adapter) {
       throw new Error(`Unsupported agent settings adapter: ${agent}. Supported: ${this.getSupportedAgents().join(', ')}`);
     }
-    if (agent !== 'claude') {
+    if (!adapter.hookEvents) {
       throw new Error(`Agent ${agent} does not support hook management.`);
     }
 
     const hookEvent = normalizeHookEvent(event);
-    const scope = options.scope ?? getEffectiveAgentSettingsDefaultScopeSync();
+    assertHookEventSupported(adapter, hookEvent);
+    const scope = resolveHookScope(adapter, options.scope);
     const path = adapter.getSettingsPath(scope, resolveProjectPath(options.projectPath));
-    const config = await readJsonObject(path);
+    const config = await readConfigObject(adapter, path);
     const matchers = getHookMatchers(config, hookEvent);
     let removed = 0;
 
@@ -570,7 +629,7 @@ export class AgentSettingsManager {
     setHookMatchers(config, hookEvent, nextMatchers);
 
     if (!options.dryRun) {
-      await writeFile(path, `${JSON.stringify(config, null, 2)}\n`);
+      await writeConfigObject(adapter, path, config);
     }
 
     return {
@@ -593,7 +652,7 @@ export class AgentSettingsManager {
     }
 
     const path = adapter.getSettingsPath('global', resolveProjectPath(options.projectPath), CLAUDE_API_KEY_RESPONSES_DEFINITION);
-    const config = await readJsonObject(path);
+    const config = await readConfigObject(adapter, path);
     const fingerprint = normalizeApiKeyForConfig(apiKey);
     const responses = getApiKeyResponses(config);
 
@@ -616,7 +675,7 @@ export class AgentSettingsManager {
     }
 
     const path = adapter.getSettingsPath('global', resolveProjectPath(options.projectPath), CLAUDE_API_KEY_RESPONSES_DEFINITION);
-    const config = await readJsonObject(path);
+    const config = await readConfigObject(adapter, path);
     const fingerprint = normalizeApiKeyForConfig(apiKey);
     const responses = getApiKeyResponses(config);
     const previousStatus = getApiKeyStatusFromResponses(responses, fingerprint);
@@ -638,7 +697,7 @@ export class AgentSettingsManager {
     setApiKeyResponses(config, approved, rejected);
 
     if (!options.dryRun) {
-      await writeFile(path, `${JSON.stringify(config, null, 2)}\n`);
+      await writeConfigObject(adapter, path, config);
     }
 
     return {

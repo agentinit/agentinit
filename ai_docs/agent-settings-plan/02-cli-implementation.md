@@ -21,6 +21,8 @@ agentinit agent api-key forget claude (--env <name>|--key <key>) [--json] [--dry
 agentinit agent api-key status claude (--env <name>|--key <key>) [--json]
 ```
 
+Individual adapters may support only a subset of scopes. For example, Codex settings and hooks support `--global` and `--project`, not `--local`.
+
 ## Proposed Files
 
 ```txt
