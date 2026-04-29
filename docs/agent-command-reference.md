@@ -1,8 +1,10 @@
 # `agentinit agent` Reference
 
-`agentinit agent` manages registry-backed native agent settings. Supported agents: `claude` (Claude Code) and `opencode` (OpenCode).
+`agentinit agent` manages registry-backed native agent settings. Supported agents: `claude` (Claude Code), `opencode` (OpenCode), and `hermes` (Hermes Agent).
 
 When you omit `--global`, `--project`, and `--local`, `agentinit agent` defaults to `global`. You can override that default with `AGENTINIT_AGENT_DEFAULT_SCOPE=global|project|local` or persist a user preference with `agentinit config agent-settings scope <scope>`.
+
+> **Note:** Hermes only supports `--global` scope. Project and local scopes are not available.
 
 ## Command Surface
 
@@ -29,11 +31,11 @@ agentinit agent hook remove claude <event> <command-or-name> [--matcher <matcher
 
 ## Scope Resolution
 
-| Scope | Claude Code | OpenCode |
-|---|---|---|
-| `global` | `~/.claude/settings.json` | `~/.config/opencode/opencode.json` |
-| `project` | `<project>/.claude/settings.json` | `<project>/.opencode/opencode.json` |
-| `local` | `<project>/.claude/settings.local.json` | `<project>/.opencode/opencode.local.json` |
+| Scope | Claude Code | OpenCode | Hermes |
+|---|---|---|---|
+| `global` | `~/.claude/settings.json` | `~/.config/opencode/opencode.json` | `~/.hermes/config.yaml` |
+| `project` | `<project>/.claude/settings.json` | `<project>/.opencode/opencode.json` | Hermes: unsupported |
+| `local` | `<project>/.claude/settings.local.json` | `<project>/.opencode/opencode.local.json` | Hermes: unsupported |
 
 ---
 
@@ -70,6 +72,62 @@ agentinit agent hook remove claude <event> <command-or-name> [--matcher <matcher
 ### UI / Sharing
 - `username` — custom display name
 - `share` — sharing mode: `manual`, `auto`, or `disabled`
+
+---
+
+## Supported Hermes Setting Keys
+
+### Model
+- `model.default` — default LLM identifier (e.g. `claude-sonnet-4`, `gpt-4o`)
+- `model.provider` — provider slug: `openai`, `anthropic`, `google`, etc.
+- `model.base_url` — custom OpenAI-compatible endpoint
+
+### Agent
+- `agent.max_turns` — max tool-calling iterations per conversation
+- `agent.verbose` — show full tool output
+- `agent.reasoning_effort` — reasoning depth: `low`, `medium`, `high`
+- `agent.service_tier` — provider service tier
+
+### Display
+- `display.compact` — suppress banners
+- `display.show_reasoning` — show chain-of-thought
+- `display.streaming` — stream responses token-by-token
+- `display.skin` — CLI theme name
+- `display.personality` — response persona: `helpful`, `kawaii`, `noir`, etc.
+
+### Terminal
+- `terminal.env_type` — execution backend: `local`, `docker`, `ssh`, `modal`, `daytona`
+- `terminal.timeout` — command timeout in seconds
+- `terminal.lifetime_seconds` — session lifetime
+
+### Compression
+- `compression.enabled` — auto-compress near context limit
+- `compression.threshold` — fraction of context window before compression
+
+### Code Execution
+- `code_execution.timeout` — sandbox timeout
+- `code_execution.max_tool_calls` — max RPC tool calls per session
+
+### Memory
+- `memory.memory_enabled` — inject stored memories
+- `memory.user_profile_enabled` — track user preferences
+- `memory.memory_char_limit` — max chars from memory store
+
+### Logging
+- `logging.level` — `DEBUG`, `INFO`, `WARNING`, `ERROR`
+
+### Delegation
+- `delegation.max_iterations` — max turns per child agent
+- `delegation.max_concurrent_children` — max parallel subagents
+- `delegation.orchestrator_enabled` — allow subagent delegation chaining
+
+### Skills
+- `skills.inline_shell` — auto-expose shell commands from skills
+- `skills.inline_shell_timeout` — inline shell timeout
+
+### Security
+- `security.allow_private_urls` — permit fetching non-public URLs
+- `security.redact_secrets` — strip secrets from logs and output
 
 ---
 

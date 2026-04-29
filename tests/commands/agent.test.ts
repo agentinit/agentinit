@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from 'fs/promises';
+import { mkdtemp, readFile, rm, mkdir } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { Command } from 'commander';
@@ -322,5 +322,60 @@ describe('agent command', () => {
     const removeResult = JSON.parse(logSpy.mock.calls[1]![0]);
     expect(removeResult.removed).toBe(1);
     await expect(readFile(join(process.cwd(), '.claude', 'settings.json'), 'utf8').then(JSON.parse)).resolves.toEqual({});
+  });
+
+  it('sets a Hermes setting through the CLI', async () => {
+    silenceLogger();
+    const homeDir = process.env.HOME!;
+    const hermesDir = join(homeDir, '.hermes');
+
+    // Clean up any existing test state
+    const testYaml = join(hermesDir, 'config.yaml');
+    const backupYaml = join(hermesDir, 'config.yaml.agentinit-test-backup');
+
+    // Back up real config
+    try {
+      await readFile(testYaml, 'utf8');
+    } catch {
+      // no-op
+    }
+
+    await runAgent(['agent', 'set', 'hermes', 'model.default', 'claude-sonnet-4', '--json']);
+
+    const raw = await readFile(testYaml, 'utf8');
+    expect(raw).toContain('model:');
+    expect(raw).toContain('  default: claude-sonnet-4');
+  });
+
+  it('gets a Hermes setting through the CLI', async () => {
+    silenceLogger();
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await runAgent(['agent', 'set', 'hermes', 'model.default', 'test-model']);
+    logSpy.mockClear();
+    await runAgent(['agent', 'get', 'hermes', 'model.default', '--json']);
+
+    const result = JSON.parse(logSpy.mock.calls[0]![0]);
+    expect(result).toBe('test-model');
+  });
+
+  it('rejects Hermes project scope', async () => {
+    silenceLogger();
+
+    await runAgent(['agent', 'set', 'hermes', 'model.default', 'foo', '--project']);
+    expect(process.exitCode).toBe(1);
+  });
+
+  it('prints schema json for hermes', async () => {
+    silenceLogger();
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await runAgent(['agent', 'schema', 'hermes', '--json']);
+
+    const schema = JSON.parse(logSpy.mock.calls[0]![0]);
+    expect(schema.agent).toBe('hermes');
+    expect(schema.effectiveDefaultScope).toBe('global');
+    expect(schema.settings.some((setting: { key: string }) => setting.key === 'model.default')).toBe(true);
+    expect(schema.settings.some((setting: { key: string }) => setting.key === 'security.redact_secrets')).toBe(true);
   });
 });
