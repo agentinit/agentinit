@@ -1,4 +1,5 @@
 import * as TOML from '@iarna/toml';
+import { parse as parseJsonc, type ParseError } from 'jsonc-parser';
 import { readFileIfExists, writeFile } from '../../utils/fs.js';
 import { getEffectiveAgentSettingsDefaultScopeSync } from '../userConfig.js';
 import { parseAgentSettingValue } from './valueParser.js';
@@ -332,10 +333,17 @@ async function readConfigObject(adapter: RegisteredAgentSettingsAdapter, path: s
   }
 
   try {
-    return assertObject(JSON.parse(content), path);
+    const errors: ParseError[] = [];
+    const value = adapter.format === 'jsonc'
+      ? parseJsonc(content, errors, { allowTrailingComma: true })
+      : JSON.parse(content);
+    if (errors.length > 0) {
+      throw new SyntaxError('Invalid JSONC');
+    }
+    return assertObject(value, path);
   } catch (error) {
     if (error instanceof SyntaxError) {
-      throw new Error(`${path} contains invalid JSON.`);
+      throw new Error(`${path} contains invalid ${adapter.format === 'jsonc' ? 'JSONC' : 'JSON'}.`);
     }
     throw error;
   }

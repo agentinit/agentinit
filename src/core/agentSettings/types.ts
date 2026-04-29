@@ -1,11 +1,11 @@
 export type AgentSettingsScope = 'global' | 'project' | 'local';
 
-export type AgentSettingValueType = 'string' | 'boolean' | 'number' | 'enum' | 'array' | 'object';
+export type AgentSettingValueType = 'string' | 'boolean' | 'number' | 'positiveInteger' | 'enum' | 'booleanOrEnum' | 'array' | 'object';
 
 export type AgentSettingRisk = 'safe' | 'risky' | 'security-sensitive' | 'deprecated';
 
 export type AgentSettingStore = 'settings' | 'globalConfig';
-export type AgentSettingsFormat = 'json' | 'toml';
+export type AgentSettingsFormat = 'json' | 'jsonc' | 'toml';
 
 export interface AgentSettingDefinition {
   agent: string;

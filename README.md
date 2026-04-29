@@ -391,7 +391,7 @@ Verified GitHub repos must be exact `owner/repo` entries. They only affect how A
 
 ### `agentinit agent`
 
-Manage registry-backed native agent settings. The current implementation supports safe Claude Code and Codex CLI settings, typed hook operations, and Claude API-key trust responses; command-executing settings such as status lines and AgentInit-managed plugin state are intentionally not exposed as raw settings.
+Manage registry-backed native agent settings. The current implementation supports safe Claude Code, Codex CLI, and OpenCode settings, typed hook operations for agents that expose native hooks, and Claude API-key trust responses; command-executing settings such as status lines and AgentInit-managed plugin state are intentionally not exposed as raw settings.
 
 When you omit `--global`, `--project`, and `--local`, `agentinit agent` now defaults to `global`. You can override that default with `AGENTINIT_AGENT_DEFAULT_SCOPE=global|project|local` or persist a user preference with `agentinit config agent-settings scope <scope>`. This also applies to hook commands, so pass `--project` or `--local` when supported and a hook should stay repo-scoped.
 See [docs/agent-command-reference.md](docs/agent-command-reference.md) for the full command reference and examples.
@@ -402,6 +402,7 @@ See [docs/agent-command-reference.md](docs/agent-command-reference.md) for the f
 agentinit agent list
 agentinit agent schema claude --json
 agentinit agent schema codex --json
+agentinit agent schema opencode --json
 
 # Set typed Claude settings
 agentinit agent set claude model sonnet
@@ -411,6 +412,11 @@ agentinit agent set claude env '{"AGENTINIT_TEST":"1"}' --value-json
 # Set typed Codex settings
 agentinit agent set codex model gpt-5.4
 agentinit agent set codex model_instructions_file AGENTS.md --project
+
+# Set typed OpenCode settings
+agentinit agent set opencode model anthropic/claude-sonnet-4-5 --project
+agentinit agent set opencode permission.bash ask --project
+agentinit agent set opencode provider '{"local-llm":{"options":{"apiKey":"{env:LOCAL_LLM_API_KEY}"}}}' --project --value-json
 
 # Add and inspect Claude hooks without replacing the whole hooks object
 agentinit agent hook add claude after-tool-use --command "npm run lint" --matcher "Edit|Write" --name lint-after-edit
@@ -427,6 +433,7 @@ agentinit agent api-key approve claude --env ANTHROPIC_API_KEY
 # Read settings in human or JSON form
 agentinit agent get claude model --json
 agentinit agent get codex web_search --json
+agentinit agent get opencode model --project --json
 
 # Preview or remove a setting
 agentinit agent set claude effortLevel high --dry-run
@@ -517,6 +524,7 @@ Supported agents today are Claude Code, Claude Desktop, Cursor, Windsurf, GitHub
 | Aider | `AGENTS.md`, `.aider.conf.yml` | Supported |
 | Cline | `.clinerules` | Supported |
 | Codex CLI | `.codex/config.toml` | Supported |
+| OpenCode | `.opencode/opencode.json`, `.opencode/opencode.jsonc` | Supported |
 | Gemini CLI | `.gemini/settings.json` | Supported |
 | OpenClaw | `~/.openclaw` presence, `~/.openclaw/skills/` | Supported (skills) |
 | Hermes | `~/.hermes` presence, `~/.hermes/skills/` | Supported (skills) |

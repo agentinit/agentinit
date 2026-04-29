@@ -39,11 +39,33 @@ export function parseAgentSettingValue(
       return value;
     }
 
+    case 'positiveInteger': {
+      const value = Number(raw);
+      if (!Number.isInteger(value) || value <= 0) {
+        throw new Error(`Value for "${definition.key}" must be a positive integer.`);
+      }
+      return value;
+    }
+
     case 'enum': {
       if (!definition.allowedValues?.includes(raw)) {
         throw new Error(`Value for "${definition.key}" must be one of: ${definition.allowedValues?.join(', ')}.`);
       }
       return raw;
+    }
+
+    case 'booleanOrEnum': {
+      const normalized = raw.trim().toLowerCase();
+      if (TRUE_VALUES.has(normalized)) {
+        return true;
+      }
+      if (FALSE_VALUES.has(normalized)) {
+        return false;
+      }
+      if (definition.allowedValues?.includes(raw)) {
+        return raw;
+      }
+      throw new Error(`Value for "${definition.key}" must be one of: on, off, true, false, yes, no, 1, 0, ${definition.allowedValues?.join(', ')}.`);
     }
 
     case 'array': {

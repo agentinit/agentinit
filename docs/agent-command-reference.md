@@ -1,8 +1,8 @@
 # `agentinit agent` Reference
 
-`agentinit agent` manages registry-backed native agent settings. The current implementation supports `claude` and `codex` settings, plus typed hook operations for both agents.
+`agentinit agent` manages registry-backed native agent settings. The current implementation supports `claude`, `codex`, and `opencode` settings, plus typed hook operations for agents that expose native hooks.
 
-When you omit `--global`, `--project`, and `--local`, `agentinit agent` defaults to `global`. You can override that default with `AGENTINIT_AGENT_DEFAULT_SCOPE=global|project|local` or persist a user preference with `agentinit config agent-settings scope <scope>`. Individual agents may support only a subset of scopes; Codex supports `--global` and `--project`.
+When you omit `--global`, `--project`, and `--local`, `agentinit agent` defaults to `global`. You can override that default with `AGENTINIT_AGENT_DEFAULT_SCOPE=global|project|local` or persist a user preference with `agentinit config agent-settings scope <scope>`. Individual agents may support only a subset of scopes; Codex and OpenCode support `--global` and `--project`.
 
 ## Command Surface
 
@@ -10,8 +10,10 @@ When you omit `--global`, `--project`, and `--local`, `agentinit agent` defaults
 agentinit agent list
 agentinit agent list claude
 agentinit agent list codex
+agentinit agent list opencode
 agentinit agent schema claude [--json]
 agentinit agent schema codex [--json]
+agentinit agent schema opencode [--json]
 
 agentinit agent get claude [key] [--global|--project|--local] [--json]
 agentinit agent set claude <key> <value> [--global|--project|--local] [--value-json] [--json] [--dry-run]
@@ -19,6 +21,9 @@ agentinit agent unset claude <key> [--global|--project|--local] [--json] [--dry-
 agentinit agent get codex [key] [--global|--project] [--json]
 agentinit agent set codex <key> <value> [--global|--project] [--value-json] [--json] [--dry-run]
 agentinit agent unset codex <key> [--global|--project] [--json] [--dry-run]
+agentinit agent get opencode [key] [--global|--project] [--json]
+agentinit agent set opencode <key> <value> [--global|--project] [--value-json] [--json] [--dry-run]
+agentinit agent unset opencode <key> [--global|--project] [--json] [--dry-run]
 
 agentinit agent hook add claude <event> --command "<shell command>" [--matcher <matcher>] [--name <name>] [--global|--project|--local] [--json] [--dry-run]
 agentinit agent hook list claude [event] [--global|--project|--local] [--json]
@@ -120,6 +125,31 @@ Codex settings are written to `~/.codex/config.toml` for `--global` and `.codex/
 - `features.web_search_cached`
 - `features.web_search_request`
 
+## Supported OpenCode Setting Keys
+
+OpenCode settings are written to `~/.config/opencode/opencode.json` for `--global` and `.opencode/opencode.json` for `--project`. If the matching `opencode.jsonc` already exists, AgentInit updates that file instead; existing global `config.json` is also respected for older OpenCode installs. OpenCode does not have a native AgentInit `--local` settings scope.
+
+- `model`
+- `small_model`
+- `provider`
+- `default_agent`
+- `autoupdate`
+- `shell`
+- `share`
+- `username`
+- `logLevel`
+- `snapshot`
+- `permission.*`
+- `permission.bash`
+- `permission.read`
+- `permission.edit`
+- `permission.webfetch`
+- `permission.task`
+- `permission.websearch`
+- `compaction.auto`
+- `tool_output.max_lines`
+- `tool_output.max_bytes`
+
 ## Hook Events
 
 - `PreToolUse`
@@ -133,7 +163,7 @@ Codex settings are written to `~/.codex/config.toml` for `--global` and `.codex/
 
 Accepted aliases include `before-tool-use`, `after-tool-use`, `post-tool-use-failure`, `permission-request`, `session-start`, and `session-end`.
 
-Codex supports `PreToolUse`, `PermissionRequest`, `PostToolUse`, `SessionStart`, `UserPromptSubmit`, and `Stop`. Accepted Codex aliases include `pre-tool-use`, `post-tool-use`, `permission-request`, `session-start`, and `user-prompt-submit`.
+Codex supports `PreToolUse`, `PermissionRequest`, `PostToolUse`, `SessionStart`, `UserPromptSubmit`, and `Stop`. Accepted Codex aliases include `pre-tool-use`, `post-tool-use`, `permission-request`, `session-start`, and `user-prompt-submit`. OpenCode does not expose a native hook system through `agentinit agent hook`.
 
 ## Examples
 
@@ -143,10 +173,13 @@ Inspect supported agents and settings:
 agentinit agent list
 agentinit agent list claude
 agentinit agent list codex
+agentinit agent list opencode
 agentinit agent schema claude
 agentinit agent schema codex
+agentinit agent schema opencode
 agentinit agent schema claude --json
 agentinit agent schema codex --json
+agentinit agent schema opencode --json
 ```
 
 Read settings in human or JSON form:
@@ -162,6 +195,10 @@ agentinit agent get codex
 agentinit agent get codex --project
 agentinit agent get codex features.codex_hooks
 agentinit agent get codex web_search --json
+agentinit agent get opencode
+agentinit agent get opencode --project
+agentinit agent get opencode model
+agentinit agent get opencode permission.* --project --json
 ```
 
 Global full reads include regular `~/.claude/settings.json` values plus registered AgentInit-managed `~/.claude.json` settings. Internal Claude global config state such as `projects`, auth records, caches, and usage counters is not exposed.
@@ -178,6 +215,10 @@ agentinit agent set claude teammateDefaultModel sonnet
 agentinit agent set codex model gpt-5.4
 agentinit agent set codex model_provider openai
 agentinit agent set codex model_instructions_file AGENTS.md --project
+agentinit agent set opencode model anthropic/claude-sonnet-4-5
+agentinit agent set opencode small_model anthropic/claude-haiku-4-5
+agentinit agent set opencode default_agent my_custom --project
+agentinit agent set opencode shell zsh
 ```
 
 Set booleans:
@@ -221,6 +262,9 @@ agentinit agent set codex features.shell_snapshot true
 agentinit agent set codex features.shell_tool true
 agentinit agent set codex features.unified_exec true
 agentinit agent set codex features.undo false
+agentinit agent set opencode autoupdate false
+agentinit agent set opencode snapshot true --project
+agentinit agent set opencode compaction.auto true
 ```
 
 Set enums:
@@ -241,12 +285,20 @@ agentinit agent set codex model_reasoning_effort high
 agentinit agent set codex approval_policy on-request --project
 agentinit agent set codex sandbox_mode workspace-write --project
 agentinit agent set codex web_search live
+agentinit agent set opencode share manual
+agentinit agent set opencode logLevel INFO
+agentinit agent set opencode autoupdate notify
+agentinit agent set opencode permission.* ask --project
+agentinit agent set opencode permission.bash allow --project
+agentinit agent set opencode permission.edit deny --project
 ```
 
 Set numbers:
 
 ```bash
 agentinit agent set claude cleanupPeriodDays 30
+agentinit agent set opencode tool_output.max_lines 5000
+agentinit agent set opencode tool_output.max_bytes 100000
 ```
 
 Set arrays:
@@ -269,7 +321,10 @@ Set objects:
 agentinit agent set claude env '{"AGENTINIT_TEST":"1"}' --value-json
 agentinit agent set claude env '{"NODE_ENV":"test","CI":"1"}' --project --value-json
 agentinit agent set claude attribution '{"coAuthoredBy":"AgentInit"}' --value-json
+agentinit agent set opencode provider '{"local-llm":{"name":"Local LLM","npm":"@ai-sdk/openai-compatible","options":{"baseURL":"http://localhost:11434/v1","apiKey":"{env:LOCAL_LLM_API_KEY}"},"models":{"llama-3":{"name":"Llama 3","tool_call":true}}}}' --project --value-json
 ```
+
+OpenCode provider configuration can contain API keys. Prefer OpenCode's `{env:NAME}` substitution instead of writing raw secrets into config files.
 
 Add and inspect Claude hooks without replacing the whole hooks object:
 

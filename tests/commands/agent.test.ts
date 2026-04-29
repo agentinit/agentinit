@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from 'fs/promises';
+import { access, mkdir, mkdtemp, readFile, rm, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import * as TOML from '@iarna/toml';
@@ -168,6 +168,178 @@ describe('agent command', () => {
         ],
       },
     });
+  });
+
+  it('sets OpenCode settings through schema-valid native paths', async () => {
+    silenceLogger();
+
+    await runAgent(['agent', 'set', 'opencode', 'model', 'anthropic/claude-sonnet-4-5', '--project']);
+    await runAgent(['agent', 'set', 'opencode', 'small_model', 'anthropic/claude-haiku-4-5', '--project']);
+    await runAgent(['agent', 'set', 'opencode', 'default_agent', 'my_custom', '--project']);
+    await runAgent(['agent', 'set', 'opencode', 'permission.*', 'ask', '--project']);
+    await runAgent(['agent', 'set', 'opencode', 'permission.bash', 'allow', '--project']);
+
+    await expect(readFile(join(process.cwd(), '.opencode', 'opencode.json'), 'utf8').then(JSON.parse)).resolves.toEqual({
+      model: 'anthropic/claude-sonnet-4-5',
+      small_model: 'anthropic/claude-haiku-4-5',
+      default_agent: 'my_custom',
+      permission: {
+        '*': 'ask',
+        bash: 'allow',
+      },
+    });
+  });
+
+  it('sets OpenCode providers through a JSON provider map', async () => {
+    silenceLogger();
+
+    await runAgent([
+      'agent',
+      'set',
+      'opencode',
+      'provider',
+      JSON.stringify({
+        'local-llm': {
+          name: 'Local LLM',
+          npm: '@ai-sdk/openai-compatible',
+          options: {
+            baseURL: 'http://localhost:11434/v1',
+          },
+          models: {
+            'llama-3': {
+              name: 'Llama 3',
+              tool_call: true,
+            },
+          },
+        },
+      }),
+      '--project',
+      '--value-json',
+    ]);
+
+    await expect(readFile(join(process.cwd(), '.opencode', 'opencode.json'), 'utf8').then(JSON.parse)).resolves.toEqual({
+      provider: {
+        'local-llm': {
+          name: 'Local LLM',
+          npm: '@ai-sdk/openai-compatible',
+          options: {
+            baseURL: 'http://localhost:11434/v1',
+          },
+          models: {
+            'llama-3': {
+              name: 'Llama 3',
+              tool_call: true,
+            },
+          },
+        },
+      },
+    });
+  });
+
+  it('writes OpenCode autoupdate booleans and notify with native value types', async () => {
+    silenceLogger();
+
+    await runAgent(['agent', 'set', 'opencode', 'autoupdate', 'false']);
+    await expect(readFile(join(process.env.HOME!, '.config', 'opencode', 'opencode.json'), 'utf8').then(JSON.parse)).resolves.toEqual({
+      autoupdate: false,
+    });
+
+    await runAgent(['agent', 'set', 'opencode', 'autoupdate', 'notify']);
+    await expect(readFile(join(process.env.HOME!, '.config', 'opencode', 'opencode.json'), 'utf8').then(JSON.parse)).resolves.toEqual({
+      autoupdate: 'notify',
+    });
+  });
+
+  it('updates existing OpenCode project JSONC config instead of shadowing it with JSON', async () => {
+    silenceLogger();
+    const jsoncPath = join(process.cwd(), '.opencode', 'opencode.jsonc');
+    const jsonPath = join(process.cwd(), '.opencode', 'opencode.json');
+    await mkdir(join(process.cwd(), '.opencode'), { recursive: true });
+    await writeFile(jsoncPath, '{\n  // existing OpenCode JSONC\n  "snapshot": true,\n}\n');
+
+    await runAgent(['agent', 'set', 'opencode', 'model', 'anthropic/claude-sonnet-4-5', '--project']);
+
+    await expect(access(jsonPath)).rejects.toThrow();
+    await expect(readFile(jsoncPath, 'utf8').then(JSON.parse)).resolves.toEqual({
+      snapshot: true,
+      model: 'anthropic/claude-sonnet-4-5',
+    });
+  });
+
+  it('updates existing OpenCode global JSONC config', async () => {
+    silenceLogger();
+    const configDir = join(process.env.HOME!, '.config', 'opencode');
+    const jsoncPath = join(configDir, 'opencode.jsonc');
+    const jsonPath = join(configDir, 'opencode.json');
+    await mkdir(configDir, { recursive: true });
+    await writeFile(jsoncPath, '{\n  // existing OpenCode JSONC\n  "autoupdate": "notify",\n}\n');
+
+    await runAgent(['agent', 'set', 'opencode', 'shell', 'zsh']);
+
+    await expect(access(jsonPath)).rejects.toThrow();
+    await expect(readFile(jsoncPath, 'utf8').then(JSON.parse)).resolves.toEqual({
+      autoupdate: 'notify',
+      shell: 'zsh',
+    });
+  });
+
+  it('rejects unsupported OpenCode local scope', async () => {
+    silenceLogger();
+
+    await runAgent(['agent', 'set', 'opencode', 'model', 'anthropic/claude-sonnet-4-5', '--local']);
+
+    expect(process.exitCode).toBe(1);
+  });
+
+  it('rejects invalid OpenCode positive integer settings', async () => {
+    silenceLogger();
+
+    await runAgent(['agent', 'set', 'opencode', 'tool_output.max_lines', '0', '--project']);
+
+    expect(process.exitCode).toBe(1);
+  });
+
+  it('prints schema json for OpenCode', async () => {
+    silenceLogger();
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await runAgent(['agent', 'schema', 'opencode', '--json']);
+
+    const schema = JSON.parse(logSpy.mock.calls[0]![0]);
+    expect(schema.agent).toBe('opencode');
+    expect(schema.effectiveDefaultScope).toBe('global');
+    expect(schema.settings).toContainEqual(expect.objectContaining({
+      key: 'permission.*',
+      nativePath: 'permission.*',
+      valueType: 'enum',
+      allowedValues: ['allow', 'ask', 'deny'],
+      scopes: ['global', 'project'],
+    }));
+    expect(schema.settings).toContainEqual(expect.objectContaining({
+      key: 'autoupdate',
+      valueType: 'booleanOrEnum',
+      allowedValues: ['notify'],
+      scopes: ['global'],
+    }));
+    expect(schema.settings).toContainEqual(expect.objectContaining({
+      key: 'provider',
+      valueType: 'object',
+      risk: 'security-sensitive',
+      scopes: ['global', 'project'],
+    }));
+    expect(schema.settings).toContainEqual(expect.objectContaining({
+      key: 'tool_output.max_lines',
+      valueType: 'positiveInteger',
+      scopes: ['global', 'project'],
+    }));
+    expect(schema.settings).toContainEqual(expect.objectContaining({
+      key: 'default_agent',
+      valueType: 'string',
+    }));
+    expect(schema.settings).toContainEqual(expect.objectContaining({
+      key: 'small_model',
+      valueType: 'string',
+    }));
   });
 
   it('parses setting values with --value-json and prints machine-readable set output with --json', async () => {
