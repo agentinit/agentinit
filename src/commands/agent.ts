@@ -15,6 +15,8 @@ interface AgentCommandOptions extends ScopeOptions {
   valueJson?: boolean;
   dryRun?: boolean;
   command?: string;
+  env?: string;
+  key?: string;
   matcher?: string;
   name?: string;
 }
@@ -124,6 +126,49 @@ function buildHookRemoveOptions(options: AgentCommandOptions) {
     result.dryRun = options.dryRun;
   }
   return result;
+}
+
+function resolveApiKeyOption(options: AgentCommandOptions): string {
+  if (options.env && options.key) {
+    throw new Error('Choose only one API key source: --env or --key.');
+  }
+  if (options.env) {
+    const value = process.env[options.env];
+    if (!value) {
+      throw new Error(`Environment variable ${options.env} is not set.`);
+    }
+    return value;
+  }
+  if (options.key) {
+    return options.key;
+  }
+  throw new Error('API key source is required. Use --env <name> or --key <key>.');
+}
+
+function warnForRawApiKeyOption(options: AgentCommandOptions): void {
+  if (options.key && !options.json) {
+    logger.warning('Using --key can expose the raw API key in shell history and process listings. Prefer --env when possible.');
+  }
+}
+
+function buildApiKeyOptions(options: AgentCommandOptions) {
+  return {
+    dryRun: Boolean(options.dryRun),
+  };
+}
+
+function apiKeyActionVerb(action: 'approve' | 'reject' | 'forget', dryRun: boolean): string {
+  if (dryRun) {
+    return `Would ${action}`;
+  }
+  switch (action) {
+    case 'approve':
+      return 'Approved';
+    case 'reject':
+      return 'Rejected';
+    case 'forget':
+      return 'Forgot';
+  }
 }
 
 export function registerAgentCommand(program: Command): void {
@@ -254,6 +299,58 @@ export function registerAgentCommand(program: Command): void {
         failAgentCommand(error);
       }
     });
+
+  const apiKey = agent
+    .command('api-key')
+    .description('Manage Claude custom API key trust responses');
+
+  apiKey
+    .command('status <agent>')
+    .description('Check whether a custom API key is approved, rejected, or unknown')
+    .option('--env <name>', 'Read the API key from this environment variable')
+    .option('--key <key>', 'Use this API key value directly; prefer --env to avoid shell-history exposure')
+    .option('--json', 'Print JSON output')
+    .action(async (agentId: string, options: AgentCommandOptions) => {
+      try {
+        warnForRawApiKeyOption(options);
+        const result = await manager.getApiKeyStatus(agentId, resolveApiKeyOption(options));
+        if (options.json) {
+          printJson(result);
+          return;
+        }
+
+        logger.info(`${green(result.agent)} API key fingerprint ${cyan(result.fingerprint)} is ${result.status}.`);
+        logger.info(`Path: ${result.path}`);
+      } catch (error) {
+        failAgentCommand(error);
+      }
+    });
+
+  for (const action of ['approve', 'reject', 'forget'] as const) {
+    apiKey
+      .command(`${action} <agent>`)
+      .description(`${action[0]!.toUpperCase()}${action.slice(1)} a custom API key trust response`)
+      .option('--env <name>', 'Read the API key from this environment variable')
+      .option('--key <key>', 'Use this API key value directly; prefer --env to avoid shell-history exposure')
+      .option('--json', 'Print JSON output')
+      .option('--dry-run', 'Preview the write without changing files')
+      .action(async (agentId: string, options: AgentCommandOptions) => {
+        try {
+          warnForRawApiKeyOption(options);
+          const result = await manager.updateApiKeyTrust(agentId, action, resolveApiKeyOption(options), buildApiKeyOptions(options));
+          if (options.json) {
+            printJson(result);
+            return;
+          }
+
+          logger.success(`${apiKeyActionVerb(action, result.dryRun)} ${green(result.agent)} API key fingerprint ${cyan(result.fingerprint)}.`);
+          logger.info(`Status: ${result.status}`);
+          logger.info(`Path: ${result.path}`);
+        } catch (error) {
+          failAgentCommand(error);
+        }
+      });
+  }
 
   agent
     .command('get <agent> [key]')

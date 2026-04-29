@@ -18,10 +18,39 @@ agentinit agent unset claude <key> [--global|--project|--local] [--json] [--dry-
 agentinit agent hook add claude <event> --command "<shell command>" [--matcher <matcher>] [--name <name>] [--global|--project|--local] [--json] [--dry-run]
 agentinit agent hook list claude [event] [--global|--project|--local] [--json]
 agentinit agent hook remove claude <event> <command-or-name> [--matcher <matcher>] [--global|--project|--local] [--json] [--dry-run]
+
+agentinit agent api-key approve claude (--env <name>|--key <key>) [--json] [--dry-run]
+agentinit agent api-key reject claude (--env <name>|--key <key>) [--json] [--dry-run]
+agentinit agent api-key forget claude (--env <name>|--key <key>) [--json] [--dry-run]
+agentinit agent api-key status claude (--env <name>|--key <key>) [--json]
 ```
 
 ## Supported Claude Setting Keys
 
+- `theme`
+- `editorMode`
+- `verbose`
+- `preferredNotifChannel`
+- `autoCompactEnabled`
+- `fileCheckpointingEnabled`
+- `showTurnDuration`
+- `terminalProgressBarEnabled`
+- `todoFeatureEnabled`
+- `teammateMode`
+- `autoConnectIde`
+- `autoInstallIdeExtension`
+- `diffTool`
+- `respectGitignore`
+- `copyFullResponse`
+- `copyOnSelect`
+- `remoteControlAtStartup`
+- `taskCompleteNotifEnabled`
+- `inputNeededNotifEnabled`
+- `agentPushNotifEnabled`
+- `showStatusInTerminalTab`
+- `prStatusFooterEnabled`
+- `claudeInChromeDefaultEnabled`
+- `teammateDefaultModel`
 - `model`
 - `agent`
 - `env`
@@ -29,11 +58,14 @@ agentinit agent hook remove claude <event> <command-or-name> [--matcher <matcher
 - `permissions.deny`
 - `permissions.ask`
 - `permissions.defaultMode`
+- `permissions.disableBypassPermissionsMode`
 - `permissions.additionalDirectories`
 - `worktree.symlinkDirectories`
 - `worktree.sparsePaths`
 - `plansDirectory`
 - `autoMemoryDirectory`
+- `autoMemoryEnabled`
+- `autoDreamEnabled`
 - `alwaysThinkingEnabled`
 - `effortLevel`
 - `prefersReducedMotion`
@@ -43,6 +75,10 @@ agentinit agent hook remove claude <event> <command-or-name> [--matcher <matcher
 - `showThinkingSummaries`
 - `spinnerTipsEnabled`
 - `autoUpdatesChannel`
+- `language`
+- `outputStyle`
+- `defaultView`
+- `useAutoModeDuringPlan`
 - `includeCoAuthoredBy`
 - `enableAllProjectMcpServers`
 - `enabledMcpjsonServers`
@@ -84,32 +120,66 @@ agentinit agent get claude env --project --json
 agentinit agent get claude permissions.allow --project --json
 ```
 
+Global full reads include regular `~/.claude/settings.json` values plus registered AgentInit-managed `~/.claude.json` settings. Internal Claude global config state such as `projects`, auth records, caches, and usage counters is not exposed.
+
 Set string values:
 
 ```bash
 agentinit agent set claude model sonnet
 agentinit agent set claude agent reviewer --project
 agentinit agent set claude plansDirectory .claude/plans --project
+agentinit agent set claude language spanish
+agentinit agent set claude outputStyle concise
+agentinit agent set claude teammateDefaultModel sonnet
 ```
 
 Set booleans:
 
 ```bash
+agentinit agent set claude verbose true
+agentinit agent set claude autoCompactEnabled on
+agentinit agent set claude fileCheckpointingEnabled true
+agentinit agent set claude showTurnDuration false
+agentinit agent set claude terminalProgressBarEnabled true
+agentinit agent set claude todoFeatureEnabled true
+agentinit agent set claude autoConnectIde false
+agentinit agent set claude autoInstallIdeExtension true
+agentinit agent set claude respectGitignore true
+agentinit agent set claude copyFullResponse false
+agentinit agent set claude copyOnSelect true
+agentinit agent set claude remoteControlAtStartup true
+agentinit agent set claude taskCompleteNotifEnabled true
+agentinit agent set claude inputNeededNotifEnabled true
+agentinit agent set claude agentPushNotifEnabled false
+agentinit agent set claude showStatusInTerminalTab true
+agentinit agent set claude prStatusFooterEnabled true
+agentinit agent set claude claudeInChromeDefaultEnabled true
 agentinit agent set claude alwaysThinkingEnabled on
+agentinit agent set claude autoMemoryEnabled true
+agentinit agent set claude autoDreamEnabled false
 agentinit agent set claude prefersReducedMotion true
 agentinit agent set claude includeGitInstructions false
 agentinit agent set claude showThinkingSummaries yes
 agentinit agent set claude spinnerTipsEnabled off
 agentinit agent set claude enableAllProjectMcpServers true --project
 agentinit agent set claude skipDangerousModePermissionPrompt true
+agentinit agent set claude useAutoModeDuringPlan true --local
 ```
 
 Set enums:
 
 ```bash
+agentinit agent set claude theme dark
+agentinit agent set claude editorMode vim
+agentinit agent set claude preferredNotifChannel terminal_bell
+agentinit agent set claude teammateMode auto
+agentinit agent set claude diffTool auto
 agentinit agent set claude effortLevel high
 agentinit agent set claude permissions.defaultMode acceptEdits --project
+agentinit agent set claude permissions.defaultMode dontAsk --local
+agentinit agent set claude permissions.disableBypassPermissionsMode disable
 agentinit agent set claude autoUpdatesChannel stable
+agentinit agent set claude defaultView chat --local
 ```
 
 Set numbers:
@@ -155,12 +225,24 @@ agentinit agent hook remove claude post-tool-use test-after-edit --matcher "Edit
 agentinit agent hook remove claude post-tool-use "npm run lint"
 ```
 
+Manage Claude custom API key trust responses:
+
+```bash
+agentinit agent api-key approve claude --env ANTHROPIC_API_KEY
+agentinit agent api-key status claude --env ANTHROPIC_API_KEY --json
+agentinit agent api-key reject claude --key sk-ant-...
+agentinit agent api-key forget claude --env ANTHROPIC_API_KEY
+```
+
+The raw API key is never written to `~/.claude.json` by these commands. AgentInit stores and prints only Claude's normalized last-20-character fingerprint. Prefer `--env`; `--key` is supported for convenience but can expose the raw key in shell history and process listings, and the CLI warns on human-readable runs.
+
 Preview writes without changing files:
 
 ```bash
 agentinit agent set claude effortLevel high --dry-run
 agentinit agent unset claude includeGitInstructions --dry-run
 agentinit agent hook add claude after-tool-use --command "npm test" --project --dry-run
+agentinit agent api-key approve claude --env ANTHROPIC_API_KEY --dry-run
 ```
 
 Machine-readable output:
@@ -170,6 +252,7 @@ agentinit agent set claude model sonnet --json
 agentinit agent get claude model --json
 agentinit agent unset claude effortLevel --json
 agentinit agent hook list claude post-tool-use --project --json
+agentinit agent api-key status claude --env ANTHROPIC_API_KEY --json
 ```
 
 Remove settings:
@@ -178,6 +261,8 @@ Remove settings:
 agentinit agent unset claude effortLevel
 agentinit agent unset claude env --project
 agentinit agent unset claude permissions.defaultMode --project
+agentinit agent unset claude remoteControlAtStartup
+agentinit agent unset claude defaultView --local
 ```
 
 Persist a different default scope if you want repo-local behavior:

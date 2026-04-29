@@ -43,6 +43,10 @@ describe('AgentSettingsManager', () => {
     return JSON.parse(await readFile(join(process.env.HOME!, '.claude', 'settings.json'), 'utf8'));
   }
 
+  async function readClaudeGlobalConfig() {
+    return JSON.parse(await readFile(join(process.env.HOME!, '.claude.json'), 'utf8'));
+  }
+
   it('sets nested Claude settings in global scope by default', async () => {
     const manager = new AgentSettingsManager();
 
@@ -98,6 +102,98 @@ describe('AgentSettingsManager', () => {
     });
   });
 
+  it('writes global Claude config settings to ~/.claude.json and preserves unrelated state', async () => {
+    const manager = new AgentSettingsManager();
+    const globalConfigPath = join(process.env.HOME!, '.claude.json');
+    await writeFile(globalConfigPath, JSON.stringify({
+      projects: {
+        '/project': {
+          lastSessionId: 'session-1',
+        },
+      },
+      cachedGrowthBookFeatures: {
+        feature: true,
+      },
+      customApiKeyResponses: {
+        approved: ['last-20-characters'],
+        rejected: [],
+      },
+    }, null, 2));
+
+    await manager.set('claude', 'theme', 'dark', { projectPath });
+    await manager.set('claude', 'preferredNotifChannel', 'terminal_bell', { projectPath });
+    await manager.set('claude', 'taskCompleteNotifEnabled', 'true', { projectPath });
+
+    await expect(readClaudeGlobalConfig()).resolves.toEqual({
+      projects: {
+        '/project': {
+          lastSessionId: 'session-1',
+        },
+      },
+      cachedGrowthBookFeatures: {
+        feature: true,
+      },
+      customApiKeyResponses: {
+        approved: ['last-20-characters'],
+        rejected: [],
+      },
+      theme: 'dark',
+      preferredNotifChannel: 'terminal_bell',
+      taskCompleteNotifEnabled: true,
+    });
+  });
+
+  it('uses global scope for global-config settings when the default scope is project', async () => {
+    const manager = new AgentSettingsManager();
+
+    await writeUserConfig({
+      defaultAgentSettingsScope: 'project',
+      customMarketplaces: [],
+      verifiedGithubRepos: [],
+    });
+
+    await manager.set('claude', 'editorMode', 'vim', { projectPath });
+
+    await expect(readClaudeGlobalConfig()).resolves.toEqual({
+      editorMode: 'vim',
+    });
+    await expect(readProjectSettings()).rejects.toThrow();
+  });
+
+  it('does not fall back to global for non-global-config settings when the default scope is unsupported', async () => {
+    const manager = new AgentSettingsManager();
+
+    await writeUserConfig({
+      defaultAgentSettingsScope: 'project',
+      customMarketplaces: [],
+      verifiedGithubRepos: [],
+    });
+
+    await expect(manager.set('claude', 'skipDangerousModePermissionPrompt', 'true', { projectPath }))
+      .rejects.toThrow('does not support project scope');
+    await expect(readGlobalSettings()).rejects.toThrow();
+  });
+
+  it('includes registered global config values in full global reads without exposing internal Claude state', async () => {
+    const manager = new AgentSettingsManager();
+    const globalConfigPath = join(process.env.HOME!, '.claude.json');
+    await manager.set('claude', 'model', 'sonnet', { projectPath });
+    await writeFile(globalConfigPath, JSON.stringify({
+      theme: 'dark',
+      projects: {
+        '/project': {
+          lastSessionId: 'session-1',
+        },
+      },
+      primaryApiKey: 'secret',
+    }, null, 2));
+
+    await expect(manager.get('claude', undefined, { scope: 'global', projectPath })).resolves.toEqual({
+      model: 'sonnet',
+      theme: 'dark',
+    });
+  });
+
   it('exposes the effective default scope in the schema', async () => {
     const manager = new AgentSettingsManager();
 
@@ -116,6 +212,20 @@ describe('AgentSettingsManager', () => {
 
   it('rejects unsupported scopes for personal risky settings', async () => {
     const manager = new AgentSettingsManager();
+
+    await expect(
+      manager.set('claude', 'theme', 'dark', {
+        projectPath,
+        scope: 'project',
+      }),
+    ).rejects.toThrow('does not support project scope');
+
+    await expect(
+      manager.set('claude', 'useAutoModeDuringPlan', 'true', {
+        projectPath,
+        scope: 'project',
+      }),
+    ).rejects.toThrow('does not support project scope');
 
     await expect(
       manager.set('claude', 'skipDangerousModePermissionPrompt', 'true', {
@@ -157,6 +267,90 @@ describe('AgentSettingsManager', () => {
       .rejects.toThrow('Unknown claude setting: statusLine');
     await expect(manager.set('claude', 'enabledPlugins', '{"plugin":true}', { projectPath, parseJson: true }))
       .rejects.toThrow('Unknown claude setting: enabledPlugins');
+  });
+
+  it('manages custom API key trust responses without exposing raw settings', async () => {
+    const manager = new AgentSettingsManager();
+    const globalConfigPath = join(process.env.HOME!, '.claude.json');
+    await writeFile(globalConfigPath, JSON.stringify({
+      projects: {
+        '/project': {
+          lastSessionId: 'session-1',
+        },
+      },
+      customApiKeyResponses: {
+        approved: [],
+        rejected: ['56789012345678901234'],
+      },
+    }, null, 2));
+
+    await expect(manager.getApiKeyStatus('claude', 'sk-ant-12345678901234567890', { projectPath })).resolves.toMatchObject({
+      fingerprint: '12345678901234567890',
+      status: 'unknown',
+    });
+
+    await expect(manager.updateApiKeyTrust('claude', 'approve', 'sk-ant-12345678901234567890', { projectPath })).resolves.toMatchObject({
+      fingerprint: '12345678901234567890',
+      previousStatus: 'unknown',
+      status: 'approved',
+    });
+    await expect(manager.updateApiKeyTrust('claude', 'reject', 'sk-ant-12345678901234567890', { projectPath })).resolves.toMatchObject({
+      previousStatus: 'approved',
+      status: 'rejected',
+    });
+    await expect(manager.updateApiKeyTrust('claude', 'forget', 'sk-ant-12345678901234567890', { projectPath })).resolves.toMatchObject({
+      previousStatus: 'rejected',
+      status: 'unknown',
+    });
+
+    await expect(readClaudeGlobalConfig()).resolves.toEqual({
+      projects: {
+        '/project': {
+          lastSessionId: 'session-1',
+        },
+      },
+      customApiKeyResponses: {
+        approved: [],
+        rejected: ['56789012345678901234'],
+      },
+    });
+  });
+
+  it('moves API key fingerprints between approval lists and rejects malformed existing trust state', async () => {
+    const manager = new AgentSettingsManager();
+    const globalConfigPath = join(process.env.HOME!, '.claude.json');
+    await writeFile(globalConfigPath, JSON.stringify({
+      customApiKeyResponses: {
+        approved: [],
+        rejected: ['12345678901234567890'],
+      },
+    }, null, 2));
+
+    await manager.updateApiKeyTrust('claude', 'approve', 'sk-ant-12345678901234567890', { projectPath });
+    await expect(readClaudeGlobalConfig()).resolves.toEqual({
+      customApiKeyResponses: {
+        approved: ['12345678901234567890'],
+        rejected: [],
+      },
+    });
+
+    await manager.updateApiKeyTrust('claude', 'reject', 'sk-ant-12345678901234567890', { projectPath });
+    await expect(readClaudeGlobalConfig()).resolves.toEqual({
+      customApiKeyResponses: {
+        approved: [],
+        rejected: ['12345678901234567890'],
+      },
+    });
+
+    await writeFile(globalConfigPath, JSON.stringify({
+      customApiKeyResponses: {
+        approved: '12345678901234567890',
+        rejected: [],
+      },
+    }, null, 2));
+
+    await expect(manager.updateApiKeyTrust('claude', 'approve', 'sk-ant-12345678901234567890', { projectPath }))
+      .rejects.toThrow('customApiKeyResponses.approved value must be an array of strings');
   });
 
   it('adds, lists, and removes typed Claude command hooks', async () => {
@@ -344,7 +538,7 @@ describe('AgentSettingsManager', () => {
     const manager = new AgentSettingsManager();
 
     await expect(manager.set('claude', 'permissions.defaultMode', 'bypassPermissions', { projectPath }))
-      .rejects.toThrow('must be one of: default, acceptEdits, plan');
+      .rejects.toThrow('must be one of: default, acceptEdits, plan, dontAsk');
     await expect(manager.set('claude', 'env', '{"AGENTINIT_TEST":"1"}', { projectPath }))
       .rejects.toThrow('Use --value-json');
   });
@@ -355,12 +549,27 @@ describe('AgentSettingsManager', () => {
     const keys = schema.settings.map(setting => setting.key);
 
     expect(keys).toContain('model');
+    expect(keys).toContain('theme');
+    expect(keys).toContain('taskCompleteNotifEnabled');
+    expect(keys).toContain('teammateDefaultModel');
     expect(keys).toContain('env');
     expect(keys).toContain('alwaysThinkingEnabled');
+    expect(keys).toContain('autoMemoryEnabled');
+    expect(keys).toContain('autoDreamEnabled');
     expect(keys).toContain('skipDangerousModePermissionPrompt');
+    expect(schema.settings.find(setting => setting.key === 'theme')).toMatchObject({
+      store: 'globalConfig',
+      scopes: ['global'],
+    });
+    expect(schema.settings.find(setting => setting.key === 'useAutoModeDuringPlan')).toMatchObject({
+      scopes: ['global', 'local'],
+    });
     expect(keys).not.toContain('hooks');
     expect(keys).not.toContain('sandbox');
     expect(keys).not.toContain('statusLine');
+    expect(keys).not.toContain('customApiKeyResponses');
+    expect(keys).not.toContain('primaryApiKey');
+    expect(keys).not.toContain('projects');
     expect(keys).not.toContain('enabledPlugins');
     expect(keys).not.toContain('extraKnownMarketplaces');
     expect(keys).not.toContain('allowedMcpServers');

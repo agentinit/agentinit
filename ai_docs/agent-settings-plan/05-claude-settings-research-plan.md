@@ -130,6 +130,8 @@ normal user/project configuration.
 - `worktree.sparsePaths`
 - `plansDirectory`
 - `autoMemoryDirectory`
+- `autoMemoryEnabled`
+- `autoDreamEnabled`
 - `alwaysThinkingEnabled`
 - `effortLevel`
 - `prefersReducedMotion`
@@ -184,7 +186,6 @@ Do not expose these in the stable public surface until they have a current
 public docs or schema reference:
 
 - `pluginConfigs`
-- `autoMemoryEnabled`
 - `claudeMdExcludes`
 - `strictPluginOnlyCustomization`
 - `skipAutoPermissionPrompt`

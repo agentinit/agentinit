@@ -13,6 +13,7 @@ describe('agent command', () => {
   const originalCwd = process.cwd();
   const originalExitCode = process.exitCode;
   const originalAgentSettingsScope = process.env.AGENTINIT_AGENT_DEFAULT_SCOPE;
+  const originalApiKey = process.env.AGENTINIT_TEST_API_KEY;
 
   beforeEach(async () => {
     const homeDir = await mkdtemp(join(tmpdir(), 'agentinit-agent-cmd-home-'));
@@ -37,6 +38,12 @@ describe('agent command', () => {
       delete process.env.AGENTINIT_AGENT_DEFAULT_SCOPE;
     } else {
       process.env.AGENTINIT_AGENT_DEFAULT_SCOPE = originalAgentSettingsScope;
+    }
+
+    if (originalApiKey === undefined) {
+      delete process.env.AGENTINIT_TEST_API_KEY;
+    } else {
+      process.env.AGENTINIT_TEST_API_KEY = originalApiKey;
     }
 
     await Promise.all(tempDirs.map(dir => rm(dir, { recursive: true, force: true })));
@@ -115,6 +122,23 @@ describe('agent command', () => {
     });
   });
 
+  it('sets global Claude config settings through the CLI', async () => {
+    silenceLogger();
+
+    await writeUserConfig({
+      defaultAgentSettingsScope: 'project',
+      customMarketplaces: [],
+      verifiedGithubRepos: [],
+    });
+    await runAgent(['agent', 'set', 'claude', 'theme', 'dark']);
+    await runAgent(['agent', 'set', 'claude', 'taskCompleteNotifEnabled', 'true']);
+
+    await expect(readFile(join(process.env.HOME!, '.claude.json'), 'utf8').then(JSON.parse)).resolves.toEqual({
+      theme: 'dark',
+      taskCompleteNotifEnabled: true,
+    });
+  });
+
   it('parses setting values with --value-json and prints machine-readable set output with --json', async () => {
     silenceLogger();
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -164,6 +188,20 @@ describe('agent command', () => {
     });
   });
 
+  it('includes registered global Claude config values in global full reads without exposing internal state', async () => {
+    silenceLogger();
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await runAgent(['agent', 'set', 'claude', 'model', 'sonnet', '--global']);
+    await runAgent(['agent', 'set', 'claude', 'theme', 'dark']);
+    await runAgent(['agent', 'get', 'claude', '--global', '--json']);
+
+    expect(JSON.parse(logSpy.mock.calls[0]![0])).toEqual({
+      model: 'sonnet',
+      theme: 'dark',
+    });
+  });
+
   it('prints schema json', async () => {
     silenceLogger();
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -174,6 +212,11 @@ describe('agent command', () => {
     expect(schema.agent).toBe('claude');
     expect(schema.effectiveDefaultScope).toBe('global');
     expect(schema.settings.some((setting: { key: string }) => setting.key === 'effortLevel')).toBe(true);
+    expect(schema.settings).toContainEqual(expect.objectContaining({
+      key: 'theme',
+      store: 'globalConfig',
+      scopes: ['global'],
+    }));
   });
 
   it('sets exit code for invalid keys', async () => {
@@ -194,6 +237,61 @@ describe('agent command', () => {
 
     await runAgent(['agent', 'set', 'claude', 'permissions.defaultMode', 'bypassPermissions']);
     expect(process.exitCode).toBe(1);
+  });
+
+  it('manages Claude custom API key trust without printing the raw key', async () => {
+    const rawKey = 'sk-ant-12345678901234567890';
+    process.env.AGENTINIT_TEST_API_KEY = rawKey;
+    vi.spyOn(logger, 'titleBox').mockImplementation(() => {});
+    vi.spyOn(logger, 'tree').mockImplementation(() => {});
+    const infoSpy = vi.spyOn(logger, 'info').mockImplementation(() => {});
+    const successSpy = vi.spyOn(logger, 'success').mockImplementation(() => {});
+    vi.spyOn(logger, 'error').mockImplementation(() => {});
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await runAgent(['agent', 'api-key', 'approve', 'claude', '--env', 'AGENTINIT_TEST_API_KEY', '--json']);
+    await runAgent(['agent', 'api-key', 'status', 'claude', '--env', 'AGENTINIT_TEST_API_KEY', '--json']);
+    await runAgent(['agent', 'api-key', 'status', 'claude', '--env', 'AGENTINIT_TEST_API_KEY']);
+
+    const approveResult = JSON.parse(logSpy.mock.calls[0]![0]);
+    const statusResult = JSON.parse(logSpy.mock.calls[1]![0]);
+    expect(approveResult).toMatchObject({
+      fingerprint: '12345678901234567890',
+      status: 'approved',
+    });
+    expect(statusResult.status).toBe('approved');
+    const output = [
+      ...logSpy.mock.calls.map(call => call[0]),
+      ...infoSpy.mock.calls.flat().map(String),
+      ...successSpy.mock.calls.flat().map(String),
+    ].join('\n');
+    expect(output).not.toContain(rawKey);
+    await expect(readFile(join(process.env.HOME!, '.claude.json'), 'utf8').then(JSON.parse)).resolves.toEqual({
+      customApiKeyResponses: {
+        approved: ['12345678901234567890'],
+        rejected: [],
+      },
+    });
+  });
+
+  it('supports explicit API keys with a human-readable warning', async () => {
+    const rawKey = 'sk-ant-12345678901234567890';
+    vi.spyOn(logger, 'titleBox').mockImplementation(() => {});
+    vi.spyOn(logger, 'tree').mockImplementation(() => {});
+    vi.spyOn(logger, 'info').mockImplementation(() => {});
+    vi.spyOn(logger, 'success').mockImplementation(() => {});
+    const warningSpy = vi.spyOn(logger, 'warning').mockImplementation(() => {});
+    vi.spyOn(logger, 'error').mockImplementation(() => {});
+
+    await runAgent(['agent', 'api-key', 'approve', 'claude', '--key', rawKey]);
+
+    expect(warningSpy).toHaveBeenCalledWith(expect.stringContaining('shell history'));
+    await expect(readFile(join(process.env.HOME!, '.claude.json'), 'utf8').then(JSON.parse)).resolves.toEqual({
+      customApiKeyResponses: {
+        approved: ['12345678901234567890'],
+        rejected: [],
+      },
+    });
   });
 
   it('adds and removes Claude hooks through typed hook commands', async () => {

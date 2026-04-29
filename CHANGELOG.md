@@ -93,6 +93,7 @@
 
 ### Features
 
+* **agent:** add Claude global config settings and API key trust commands
 * **agent:** add typed Claude hook add, list, and remove commands
 * **agent:** add registry-backed Claude settings command MVP
 * **lock:** add lock inspection commands and tracked skill updates

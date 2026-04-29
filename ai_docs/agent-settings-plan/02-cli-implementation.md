@@ -7,14 +7,18 @@ Implement the `agentinit agent` command family using a registry and adapter arch
 ## Commands
 
 ```bash
-agentinit agent set <agent> <key> <value> [--global|--project] [--value-json] [--json] [--dry-run]
-agentinit agent get <agent> [key] [--global|--project] [--json]
-agentinit agent unset <agent> <key> [--global|--project] [--json] [--dry-run]
+agentinit agent set <agent> <key> <value> [--global|--project|--local] [--value-json] [--json] [--dry-run]
+agentinit agent get <agent> [key] [--global|--project|--local] [--json]
+agentinit agent unset <agent> <key> [--global|--project|--local] [--json] [--dry-run]
 agentinit agent list [agent] [--json]
 agentinit agent schema <agent> [--json]
-agentinit agent hook add <agent> <event> --command <command> [--matcher <matcher>] [--name <name>] [--global|--project] [--json] [--dry-run]
-agentinit agent hook list <agent> [event] [--global|--project] [--json]
-agentinit agent hook remove <agent> <event> <command-or-name> [--matcher <matcher>] [--global|--project] [--json] [--dry-run]
+agentinit agent hook add <agent> <event> --command <command> [--matcher <matcher>] [--name <name>] [--global|--project|--local] [--json] [--dry-run]
+agentinit agent hook list <agent> [event] [--global|--project|--local] [--json]
+agentinit agent hook remove <agent> <event> <command-or-name> [--matcher <matcher>] [--global|--project|--local] [--json] [--dry-run]
+agentinit agent api-key approve claude (--env <name>|--key <key>) [--json] [--dry-run]
+agentinit agent api-key reject claude (--env <name>|--key <key>) [--json] [--dry-run]
+agentinit agent api-key forget claude (--env <name>|--key <key>) [--json] [--dry-run]
+agentinit agent api-key status claude (--env <name>|--key <key>) [--json]
 ```
 
 ## Proposed Files
@@ -84,10 +88,12 @@ type AgentSettingsSchema = {
 - Preserve unrelated keys.
 - Validate before writing.
 - Resolve omitted scope from `AGENTINIT_AGENT_DEFAULT_SCOPE`, then user config, then the built-in global default.
+- Only global-config-backed settings may fall back to their global default when the omitted default scope is unsupported.
 - Create parent directories when needed.
 - Use atomic write where practical.
 - Support `--dry-run` that prints changed paths and before/after summaries.
 - Never emit or install arbitrary hook shell from website-facing presets.
+- For Claude custom API key trust, prefer reading the key from an environment variable, warn when `--key` is used in human-readable output, and persist only Claude's normalized last-20-character fingerprint.
 
 ## Initial Preset Example
 

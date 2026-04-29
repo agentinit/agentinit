@@ -4,6 +4,10 @@ import { parseAgentSettingValue } from './valueParser.js';
 import { getAgentSettingDefinition, getAgentSettingsAdapter, getAgentSettingsAdapters, toSchemaEntry } from './registry.js';
 import type {
   AgentSettingDefinition,
+  AgentApiKeyAction,
+  AgentApiKeyOptions,
+  AgentApiKeyResult,
+  AgentApiKeyStatus,
   AgentHookAddOptions,
   AgentHookEntry,
   AgentHookCommand,
@@ -34,6 +38,20 @@ const HOOK_EVENT_ALIASES: Record<string, AgentHookEvent> = {
 };
 
 const HOOK_EVENTS = new Set<AgentHookEvent>(Object.values(HOOK_EVENT_ALIASES));
+
+const CLAUDE_API_KEY_RESPONSES_DEFINITION: AgentSettingDefinition = {
+  agent: 'claude',
+  key: 'customApiKeyResponses',
+  nativePath: ['customApiKeyResponses'],
+  title: 'Custom API key responses',
+  description: 'Remembered custom API key trust responses.',
+  valueType: 'object',
+  scopes: ['global'],
+  defaultScope: 'global',
+  category: 'auth',
+  risk: 'security-sensitive',
+  store: 'globalConfig',
+};
 
 function assertObject(value: unknown, path: string): JsonObject {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -180,6 +198,57 @@ function buildHookCommand(command: string, name?: string): AgentHookCommand {
   };
 }
 
+function normalizeApiKeyForConfig(apiKey: string): string {
+  const trimmed = apiKey.trim();
+  if (!trimmed) {
+    throw new Error('API key cannot be empty.');
+  }
+  return trimmed.slice(-20);
+}
+
+function getApiKeyResponses(config: JsonObject): { approved: string[]; rejected: string[] } {
+  const current = config.customApiKeyResponses;
+  if (current !== undefined && (!current || typeof current !== 'object' || Array.isArray(current))) {
+    throw new Error('Existing customApiKeyResponses value is not an object.');
+  }
+
+  const responses = (current ?? {}) as JsonObject;
+  const approved = responses.approved ?? [];
+  const rejected = responses.rejected ?? [];
+
+  if (!Array.isArray(approved) || !approved.every(value => typeof value === 'string')) {
+    throw new Error('Existing customApiKeyResponses.approved value must be an array of strings.');
+  }
+  if (!Array.isArray(rejected) || !rejected.every(value => typeof value === 'string')) {
+    throw new Error('Existing customApiKeyResponses.rejected value must be an array of strings.');
+  }
+
+  return {
+    approved,
+    rejected,
+  };
+}
+
+function getApiKeyStatusFromResponses(responses: { approved: string[]; rejected: string[] }, fingerprint: string): AgentApiKeyStatus {
+  if (responses.approved.includes(fingerprint)) {
+    return 'approved';
+  }
+  if (responses.rejected.includes(fingerprint)) {
+    return 'rejected';
+  }
+  return 'unknown';
+}
+
+function setApiKeyResponses(config: JsonObject, approved: string[], rejected: string[]): void {
+  config.customApiKeyResponses = {
+    ...(config.customApiKeyResponses && typeof config.customApiKeyResponses === 'object' && !Array.isArray(config.customApiKeyResponses)
+      ? config.customApiKeyResponses as JsonObject
+      : {}),
+    approved,
+    rejected,
+  };
+}
+
 function deleteNestedValue(config: JsonObject, path: string[]): boolean {
   const parents: Array<{ object: JsonObject; key: string }> = [];
   let current: unknown = config;
@@ -221,7 +290,8 @@ function resolveProjectPath(projectPath?: string): string {
 }
 
 function resolveScope(definition: AgentSettingDefinition, scope?: AgentSettingsScope): AgentSettingsScope {
-  const resolvedScope = scope ?? getEffectiveAgentSettingsDefaultScopeSync();
+  const defaultScope = getEffectiveAgentSettingsDefaultScopeSync();
+  const resolvedScope = scope ?? (definition.store === 'globalConfig' && !definition.scopes.includes(defaultScope) ? definition.defaultScope : defaultScope);
   if (!definition.scopes.includes(resolvedScope)) {
     throw new Error(`"${definition.key}" does not support ${resolvedScope} scope. Supported scopes: ${definition.scopes.join(', ')}.`);
   }
@@ -272,7 +342,28 @@ export class AgentSettingsManager {
     if (!key) {
       const scope = options.scope ?? getEffectiveAgentSettingsDefaultScopeSync();
       const path = adapter.getSettingsPath(scope, resolveProjectPath(options.projectPath));
-      return await readJsonObject(path);
+      const config = await readJsonObject(path);
+
+      if (scope !== 'global') {
+        return config;
+      }
+
+      const globalConfigDefinitions = adapter.definitions.filter(definition => definition.store === 'globalConfig' && definition.scopes.includes('global'));
+      if (globalConfigDefinitions.length === 0) {
+        return config;
+      }
+
+      const globalConfigPath = adapter.getSettingsPath('global', resolveProjectPath(options.projectPath), globalConfigDefinitions[0]);
+      const globalConfig = await readJsonObject(globalConfigPath);
+      const result = { ...config };
+      for (const definition of globalConfigDefinitions) {
+        const value = getNestedValue(globalConfig, definition.nativePath);
+        if (value !== undefined) {
+          setNestedValue(result, definition.nativePath, value);
+        }
+      }
+
+      return result;
     }
 
     const definition = getAgentSettingDefinition(agent, key);
@@ -281,7 +372,7 @@ export class AgentSettingsManager {
     }
 
     const scope = resolveScope(definition, options.scope);
-    const path = adapter.getSettingsPath(scope, resolveProjectPath(options.projectPath));
+    const path = adapter.getSettingsPath(scope, resolveProjectPath(options.projectPath), definition);
     const config = await readJsonObject(path);
     return getNestedValue(config, definition.nativePath);
   }
@@ -303,7 +394,7 @@ export class AgentSettingsManager {
     }
 
     const scope = resolveScope(definition, options.scope);
-    const path = adapter.getSettingsPath(scope, resolveProjectPath(options.projectPath));
+    const path = adapter.getSettingsPath(scope, resolveProjectPath(options.projectPath), definition);
     const config = await readJsonObject(path);
     const previousValue = getNestedValue(config, definition.nativePath);
     const value = parseAgentSettingValue(definition, rawValue, options.parseJson);
@@ -337,7 +428,7 @@ export class AgentSettingsManager {
     }
 
     const scope = resolveScope(definition, options.scope);
-    const path = adapter.getSettingsPath(scope, resolveProjectPath(options.projectPath));
+    const path = adapter.getSettingsPath(scope, resolveProjectPath(options.projectPath), definition);
     const config = await readJsonObject(path);
     const previousValue = getNestedValue(config, definition.nativePath);
 
@@ -488,6 +579,74 @@ export class AgentSettingsManager {
       scope,
       path,
       removed,
+      dryRun: Boolean(options.dryRun),
+    };
+  }
+
+  async getApiKeyStatus(agent: string, apiKey: string, options: AgentApiKeyOptions = {}): Promise<AgentApiKeyResult> {
+    const adapter = getAgentSettingsAdapter(agent);
+    if (!adapter) {
+      throw new Error(`Unsupported agent settings adapter: ${agent}. Supported: ${this.getSupportedAgents().join(', ')}`);
+    }
+    if (agent !== 'claude') {
+      throw new Error(`Agent ${agent} does not support API key trust management.`);
+    }
+
+    const path = adapter.getSettingsPath('global', resolveProjectPath(options.projectPath), CLAUDE_API_KEY_RESPONSES_DEFINITION);
+    const config = await readJsonObject(path);
+    const fingerprint = normalizeApiKeyForConfig(apiKey);
+    const responses = getApiKeyResponses(config);
+
+    return {
+      agent,
+      path,
+      fingerprint,
+      status: getApiKeyStatusFromResponses(responses, fingerprint),
+      dryRun: false,
+    };
+  }
+
+  async updateApiKeyTrust(agent: string, action: AgentApiKeyAction, apiKey: string, options: AgentApiKeyOptions = {}): Promise<AgentApiKeyResult> {
+    const adapter = getAgentSettingsAdapter(agent);
+    if (!adapter) {
+      throw new Error(`Unsupported agent settings adapter: ${agent}. Supported: ${this.getSupportedAgents().join(', ')}`);
+    }
+    if (agent !== 'claude') {
+      throw new Error(`Agent ${agent} does not support API key trust management.`);
+    }
+
+    const path = adapter.getSettingsPath('global', resolveProjectPath(options.projectPath), CLAUDE_API_KEY_RESPONSES_DEFINITION);
+    const config = await readJsonObject(path);
+    const fingerprint = normalizeApiKeyForConfig(apiKey);
+    const responses = getApiKeyResponses(config);
+    const previousStatus = getApiKeyStatusFromResponses(responses, fingerprint);
+    let approved = responses.approved.filter(value => value !== fingerprint);
+    let rejected = responses.rejected.filter(value => value !== fingerprint);
+
+    if (action === 'approve') {
+      approved = [...approved, fingerprint];
+    } else if (action === 'reject') {
+      rejected = [...rejected, fingerprint];
+    }
+
+    const status: AgentApiKeyStatus = action === 'approve'
+      ? 'approved'
+      : action === 'reject'
+        ? 'rejected'
+        : 'unknown';
+
+    setApiKeyResponses(config, approved, rejected);
+
+    if (!options.dryRun) {
+      await writeFile(path, `${JSON.stringify(config, null, 2)}\n`);
+    }
+
+    return {
+      agent,
+      path,
+      fingerprint,
+      status,
+      previousStatus,
       dryRun: Boolean(options.dryRun),
     };
   }

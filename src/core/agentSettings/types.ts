@@ -4,6 +4,8 @@ export type AgentSettingValueType = 'string' | 'boolean' | 'number' | 'enum' | '
 
 export type AgentSettingRisk = 'safe' | 'risky' | 'security-sensitive' | 'deprecated';
 
+export type AgentSettingStore = 'settings' | 'globalConfig';
+
 export interface AgentSettingDefinition {
   agent: string;
   key: string;
@@ -16,6 +18,7 @@ export interface AgentSettingDefinition {
   allowedValues?: string[];
   category: string;
   risk: AgentSettingRisk;
+  store?: AgentSettingStore;
   deprecated?: boolean;
   replacement?: string;
 }
@@ -24,7 +27,7 @@ export interface AgentSettingsAdapter {
   agent: string;
   displayName: string;
   definitions: AgentSettingDefinition[];
-  getSettingsPath(scope: AgentSettingsScope, projectPath: string): string;
+  getSettingsPath(scope: AgentSettingsScope, projectPath: string, definition?: AgentSettingDefinition): string;
 }
 
 export interface AgentSettingSchemaEntry extends Omit<AgentSettingDefinition, 'nativePath'> {
@@ -112,5 +115,22 @@ export interface AgentHookWriteResult {
   path: string;
   hook?: AgentHookCommand;
   removed?: number;
+  dryRun: boolean;
+}
+
+export type AgentApiKeyStatus = 'approved' | 'rejected' | 'unknown';
+export type AgentApiKeyAction = 'approve' | 'reject' | 'forget';
+
+export interface AgentApiKeyOptions {
+  projectPath?: string;
+  dryRun?: boolean;
+}
+
+export interface AgentApiKeyResult {
+  agent: string;
+  path: string;
+  fingerprint: string;
+  status: AgentApiKeyStatus;
+  previousStatus?: AgentApiKeyStatus;
   dryRun: boolean;
 }

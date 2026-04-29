@@ -30,7 +30,9 @@ The skill should:
 - Emit validated commands, not raw config patches.
 - Prefer presets for hooks and security-sensitive settings when those preset-backed keys are present in `agentinit agent schema`.
 - Use `agentinit agent hook add/list/remove` for explicit custom hook commands.
+- Use `agentinit agent api-key approve|reject|forget|status claude --env <name>` for Claude custom API key trust responses when possible.
 - Treat status lines, sandbox overrides, and plugin enablement state as unsupported when the schema does not expose safe keys for them.
+- Do not emit raw `customApiKeyResponses` JSON. If the user asks to use `--key`, warn that it can expose the raw key in shell history and process listings.
 - Ask for clarification only when the registry cannot resolve intent safely.
 
 ## Skill Should Not Be Source of Truth
@@ -60,6 +62,7 @@ Use `agentinit agent` as the public interface.
 Prefer:
 agentinit agent set <agent> <key> <value> [--global|--project]
 agentinit agent hook add <agent> <event> --command <command> [--matcher <matcher>] [--global|--project]
+agentinit agent api-key approve claude --env <name>
 
 Do not invent setting keys. If uncertain, inspect:
 agentinit agent schema <agent> --json
@@ -67,6 +70,8 @@ agentinit agent schema <agent> --json
 Use --value-json when the setting value itself is JSON. Use --json for machine-readable command output.
 
 For hooks and command execution, prefer presets when the schema exposes preset-backed keys. For custom hooks, require an explicit user-provided or user-approved command and use `agentinit agent hook add`. Do not generate raw hook/status/sandbox JSON.
+
+For Claude custom API keys, prefer typed `agent api-key` commands with `--env`; never generate raw `customApiKeyResponses` JSON. If using `--key`, include a shell-history/process-listing warning.
 ```
 
 ## Example Skill Behavior

@@ -391,7 +391,7 @@ Verified GitHub repos must be exact `owner/repo` entries. They only affect how A
 
 ### `agentinit agent`
 
-Manage registry-backed native agent settings. The initial implementation supports safe Claude Code settings and typed hook operations; command-executing settings such as status lines, sandbox overrides, and AgentInit-managed plugin state are intentionally not exposed as raw settings.
+Manage registry-backed native agent settings. The initial implementation supports safe Claude Code settings, registered Claude global config preferences, typed hook operations, and Claude API-key trust responses; command-executing settings such as status lines, sandbox overrides, and AgentInit-managed plugin state are intentionally not exposed as raw settings.
 
 When you omit `--global`, `--project`, and `--local`, `agentinit agent` now defaults to `global`. You can override that default with `AGENTINIT_AGENT_DEFAULT_SCOPE=global|project|local` or persist a user preference with `agentinit config agent-settings scope <scope>`. This also applies to hook commands, so pass `--project` or `--local` when a hook should stay repo-scoped.
 See [docs/agent-command-reference.md](docs/agent-command-reference.md) for the full command reference and examples.
@@ -411,6 +411,9 @@ agentinit agent set claude env '{"AGENTINIT_TEST":"1"}' --value-json
 agentinit agent hook add claude after-tool-use --command "npm run lint" --matcher "Edit|Write" --name lint-after-edit
 agentinit agent hook list claude post-tool-use --json
 agentinit agent hook remove claude post-tool-use lint-after-edit --matcher "Edit|Write"
+
+# Approve the current Claude custom API key without putting the key in shell history
+agentinit agent api-key approve claude --env ANTHROPIC_API_KEY
 
 # Read settings in human or JSON form
 agentinit agent get claude model --json
