@@ -1,8 +1,10 @@
 import { claudeSettingsAdapter } from './adapters/claude.js';
+import { opencodeSettingsAdapter } from './adapters/opencode.js';
 import type { AgentSettingsAdapter, AgentSettingDefinition, AgentSettingSchemaEntry } from './types.js';
 
 const ADAPTERS: AgentSettingsAdapter[] = [
   claudeSettingsAdapter,
+  opencodeSettingsAdapter,
 ];
 
 export function getAgentSettingsAdapters(): AgentSettingsAdapter[] {

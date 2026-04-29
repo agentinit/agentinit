@@ -1,24 +1,78 @@
 # `agentinit agent` Reference
 
-`agentinit agent` manages registry-backed native agent settings. The current implementation supports `claude` settings and typed Claude hook operations.
+`agentinit agent` manages registry-backed native agent settings. Supported agents: `claude` (Claude Code) and `opencode` (OpenCode).
 
 When you omit `--global`, `--project`, and `--local`, `agentinit agent` defaults to `global`. You can override that default with `AGENTINIT_AGENT_DEFAULT_SCOPE=global|project|local` or persist a user preference with `agentinit config agent-settings scope <scope>`.
 
 ## Command Surface
 
 ```bash
+# List agents and settings
 agentinit agent list
-agentinit agent list claude
-agentinit agent schema claude [--json]
+agentinit agent list opencode
+agentinit agent schema opencode [--json]
 
-agentinit agent get claude [key] [--global|--project|--local] [--json]
-agentinit agent set claude <key> <value> [--global|--project|--local] [--value-json] [--json] [--dry-run]
-agentinit agent unset claude <key> [--global|--project|--local] [--json] [--dry-run]
+# Read settings
+agentinit agent get opencode [key] [--global|--project|--local] [--json]
+agentinit agent set opencode <key> <value> [--global|--project|--local] [--value-json] [--json] [--dry-run]
+agentinit agent unset opencode <key> [--global|--project|--local] [--json] [--dry-run]
 
+# Claude hooks (Claude Code only)
 agentinit agent hook add claude <event> --command "<shell command>" [--matcher <matcher>] [--name <name>] [--global|--project|--local] [--json] [--dry-run]
 agentinit agent hook list claude [event] [--global|--project|--local] [--json]
 agentinit agent hook remove claude <event> <command-or-name> [--matcher <matcher>] [--global|--project|--local] [--json] [--dry-run]
 ```
+
+> **Note:** OpenCode does not have a hook system. Hook subcommands are only available for `claude`.
+
+---
+
+## Scope Resolution
+
+| Scope | Claude Code | OpenCode |
+|---|---|---|
+| `global` | `~/.claude/settings.json` | `~/.config/opencode/opencode.json` |
+| `project` | `<project>/.claude/settings.json` | `<project>/.opencode/opencode.json` |
+| `local` | `<project>/.claude/settings.local.json` | `<project>/.opencode/opencode.local.json` |
+
+---
+
+## Supported OpenCode Setting Keys
+
+### Model
+- `model` — default model in `provider/model` format (e.g. `anthropic/claude-sonnet-4-5`)
+- `small_model` — small model for lightweight tasks
+
+### Agent
+- `default_agent` — default agent: `build` or `plan`
+
+### Permissions
+- `permission.*` — default permission for all tools: `allow`, `ask`, or `deny`
+- `permission.bash` — shell command execution
+- `permission.read` — reading files outside workspace
+- `permission.edit` — editing/writing files
+- `permission.webfetch` — fetching external URLs
+- `permission.task` — spawning subagent tasks
+- `permission.websearch` — web search operations
+
+### Compaction
+- `compaction.auto` — enable automatic context compaction (default: `true`)
+
+### Output
+- `tool_output.max_lines` — max lines before truncation (default: 2000)
+- `tool_output.max_bytes` — max bytes before truncation (default: 51200)
+
+### Runtime
+- `autoupdate` — auto-update or `notify`
+- `shell` — default shell for terminal
+- `logLevel` — log verbosity: `DEBUG`, `INFO`, `WARN`, `ERROR`
+- `snapshot` — enable/disable undo/redo tracking
+
+### UI / Sharing
+- `username` — custom display name
+- `share` — sharing mode: `manual`, `auto`, or `disabled`
+
+---
 
 ## Supported Claude Setting Keys
 
@@ -49,7 +103,9 @@ agentinit agent hook remove claude <event> <command-or-name> [--matcher <matcher
 - `disabledMcpjsonServers`
 - `skipDangerousModePermissionPrompt`
 
-## Hook Events
+---
+
+## Hook Events (Claude Code only)
 
 - `PreToolUse`
 - `PostToolUse`
@@ -62,16 +118,39 @@ agentinit agent hook remove claude <event> <command-or-name> [--matcher <matcher
 
 Accepted aliases include `before-tool-use`, `after-tool-use`, `post-tool-use-failure`, `permission-request`, `session-start`, and `session-end`.
 
+---
+
 ## Examples
+
+### OpenCode
 
 Inspect supported agents and settings:
 
 ```bash
 agentinit agent list
-agentinit agent list claude
-agentinit agent schema claude
-agentinit agent schema claude --json
+agentinit agent list opencode
+agentinit agent schema opencode
+agentinit agent schema opencode --json
 ```
+
+Read and set settings:
+
+```bash
+agentinit agent get opencode
+agentinit agent get opencode --project
+agentinit agent get opencode model
+agentinit agent get opencode model --json
+agentinit agent set opencode model "anthropic/claude-sonnet-4-5"
+agentinit agent set opencode default_agent plan --project
+agentinit agent set opencode snapshot false
+agentinit agent set opencode permission.edit deny --project
+agentinit agent set opencode tool_output.max_lines 5000
+agentinit agent set opencode autoupdate notify
+agentinit agent set opencode share manual
+agentinit agent unset opencode permission.bash --project
+```
+
+### Claude Code
 
 Read settings in human or JSON form:
 
@@ -139,7 +218,7 @@ agentinit agent set claude env '{"NODE_ENV":"test","CI":"1"}' --project --value-
 agentinit agent set claude attribution '{"coAuthoredBy":"AgentInit"}' --value-json
 ```
 
-Add and inspect Claude hooks without replacing the whole hooks object:
+Add and inspect Claude hooks:
 
 ```bash
 agentinit agent hook add claude after-tool-use --command "npm run lint"
@@ -180,7 +259,7 @@ agentinit agent unset claude env --project
 agentinit agent unset claude permissions.defaultMode --project
 ```
 
-Persist a different default scope if you want repo-local behavior:
+Persist a different default scope:
 
 ```bash
 agentinit config agent-settings scope
