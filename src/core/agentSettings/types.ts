@@ -25,6 +25,7 @@ export interface AgentSettingsAdapter {
   displayName: string;
   definitions: AgentSettingDefinition[];
   getSettingsPath(scope: AgentSettingsScope, projectPath: string): string;
+  format?: 'json' | 'yaml';
 }
 
 export interface AgentSettingSchemaEntry extends Omit<AgentSettingDefinition, 'nativePath'> {

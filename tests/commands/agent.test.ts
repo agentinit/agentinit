@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from 'fs/promises';
+import { mkdtemp, readFile, rm, mkdir } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { Command } from 'commander';
@@ -196,6 +196,79 @@ describe('agent command', () => {
     expect(process.exitCode).toBe(1);
   });
 
+  it('sets an OpenCode setting through the CLI', async () => {
+    silenceLogger();
+
+    await runAgent(['agent', 'set', 'opencode', 'model', 'anthropic/claude-sonnet-4-5', '--project']);
+
+    await expect(readFile(join(process.cwd(), '.opencode', 'opencode.json'), 'utf8').then(JSON.parse)).resolves.toEqual({
+      model: 'anthropic/claude-sonnet-4-5',
+    });
+  });
+
+  it('maps permission.* to permission.default for OpenCode', async () => {
+    silenceLogger();
+
+    await runAgent(['agent', 'set', 'opencode', 'permission.*', 'deny', '--project']);
+
+    await expect(readFile(join(process.cwd(), '.opencode', 'opencode.json'), 'utf8').then(JSON.parse)).resolves.toEqual({
+      permission: {
+        default: 'deny',
+      },
+    });
+  });
+
+  it('rejects invalid enum values for OpenCode permissions', async () => {
+    silenceLogger();
+
+    await runAgent(['agent', 'set', 'opencode', 'permission.bash', 'fuck_yeah', '--project']);
+    expect(process.exitCode).toBe(1);
+  });
+
+  it('rejects invalid enum values for OpenCode autoupdate', async () => {
+    silenceLogger();
+
+    await runAgent(['agent', 'set', 'opencode', 'autoupdate', 'maybe_later']);
+    expect(process.exitCode).toBe(1);
+  });
+
+  it('rejects project scope for OpenCode autoupdate', async () => {
+    silenceLogger();
+
+    await runAgent(['agent', 'set', 'opencode', 'autoupdate', 'notify', '--project']);
+    expect(process.exitCode).toBe(1);
+  });
+
+  it('prints schema json for opencode', async () => {
+    silenceLogger();
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await runAgent(['agent', 'schema', 'opencode', '--json']);
+
+    const schema = JSON.parse(logSpy.mock.calls[0]![0]);
+    expect(schema.agent).toBe('opencode');
+    expect(schema.effectiveDefaultScope).toBe('global');
+    expect(schema.settings.some((setting: { key: string }) => setting.key === 'model')).toBe(true);
+
+    // small_model should not exist
+    expect(schema.settings.some((setting: { key: string }) => setting.key === 'small_model')).toBe(false);
+
+    // permission.* should have nativePath: 'permission.default'
+    const defaultPerm = schema.settings.find((setting: { key: string }) => setting.key === 'permission.*');
+    expect(defaultPerm?.nativePath).toBe('permission.default');
+    expect(defaultPerm?.valueType).toBe('enum');
+    expect(defaultPerm?.allowedValues).toEqual(['allow', 'ask', 'deny']);
+
+    // permission.bash should be enum
+    const bashPerm = schema.settings.find((setting: { key: string }) => setting.key === 'permission.bash');
+    expect(bashPerm?.valueType).toBe('enum');
+
+    // autoupdate should be enum too
+    const autoupdate = schema.settings.find((setting: { key: string }) => setting.key === 'autoupdate');
+    expect(autoupdate?.valueType).toBe('enum');
+    expect(autoupdate?.allowedValues).toEqual(['true', 'false', 'notify']);
+  });
+
   it('adds and removes Claude hooks through typed hook commands', async () => {
     silenceLogger();
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -249,5 +322,60 @@ describe('agent command', () => {
     const removeResult = JSON.parse(logSpy.mock.calls[1]![0]);
     expect(removeResult.removed).toBe(1);
     await expect(readFile(join(process.cwd(), '.claude', 'settings.json'), 'utf8').then(JSON.parse)).resolves.toEqual({});
+  });
+
+  it('sets a Hermes setting through the CLI', async () => {
+    silenceLogger();
+    const homeDir = process.env.HOME!;
+    const hermesDir = join(homeDir, '.hermes');
+
+    // Clean up any existing test state
+    const testYaml = join(hermesDir, 'config.yaml');
+    const backupYaml = join(hermesDir, 'config.yaml.agentinit-test-backup');
+
+    // Back up real config
+    try {
+      await readFile(testYaml, 'utf8');
+    } catch {
+      // no-op
+    }
+
+    await runAgent(['agent', 'set', 'hermes', 'model.default', 'claude-sonnet-4', '--json']);
+
+    const raw = await readFile(testYaml, 'utf8');
+    expect(raw).toContain('model:');
+    expect(raw).toContain('  default: claude-sonnet-4');
+  });
+
+  it('gets a Hermes setting through the CLI', async () => {
+    silenceLogger();
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await runAgent(['agent', 'set', 'hermes', 'model.default', 'test-model']);
+    logSpy.mockClear();
+    await runAgent(['agent', 'get', 'hermes', 'model.default', '--json']);
+
+    const result = JSON.parse(logSpy.mock.calls[0]![0]);
+    expect(result).toBe('test-model');
+  });
+
+  it('rejects Hermes project scope', async () => {
+    silenceLogger();
+
+    await runAgent(['agent', 'set', 'hermes', 'model.default', 'foo', '--project']);
+    expect(process.exitCode).toBe(1);
+  });
+
+  it('prints schema json for hermes', async () => {
+    silenceLogger();
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await runAgent(['agent', 'schema', 'hermes', '--json']);
+
+    const schema = JSON.parse(logSpy.mock.calls[0]![0]);
+    expect(schema.agent).toBe('hermes');
+    expect(schema.effectiveDefaultScope).toBe('global');
+    expect(schema.settings.some((setting: { key: string }) => setting.key === 'model.default')).toBe(true);
+    expect(schema.settings.some((setting: { key: string }) => setting.key === 'security.redact_secrets')).toBe(true);
   });
 });

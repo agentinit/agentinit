@@ -1,4 +1,5 @@
 import { readFileIfExists, writeFile } from '../../utils/fs.js';
+import * as yaml from 'js-yaml';
 import { getEffectiveAgentSettingsDefaultScopeSync } from '../userConfig.js';
 import { parseAgentSettingValue } from './valueParser.js';
 import { getAgentSettingDefinition, getAgentSettingsAdapter, getAgentSettingsAdapters, toSchemaEntry } from './registry.js';
@@ -244,6 +245,35 @@ async function readJsonObject(path: string): Promise<JsonObject> {
   }
 }
 
+async function readConfigObject(path: string, format?: string): Promise<JsonObject> {
+  const content = await readFileIfExists(path);
+  if (!content) {
+    return {};
+  }
+
+  if (format === 'yaml') {
+    try {
+      const parsed = yaml.load(content);
+      if (parsed == null) return {};
+      return assertObject(parsed, path);
+    } catch (error) {
+      if (error instanceof yaml.YAMLException) {
+        throw new Error(`${path} contains invalid YAML.`);
+      }
+      throw error;
+    }
+  }
+
+  return readJsonObject(path);
+}
+
+function writeConfigObject(path: string, config: JsonObject, format?: string): Promise<void> {
+  if (format === 'yaml') {
+    return writeFile(path, yaml.dump(config, { sortKeys: false }).trimEnd() + '\n');
+  }
+  return writeFile(path, `${JSON.stringify(config, null, 2)}\n`);
+}
+
 export class AgentSettingsManager {
   getSupportedAgents(): string[] {
     return getAgentSettingsAdapters().map(adapter => adapter.agent);
@@ -272,7 +302,7 @@ export class AgentSettingsManager {
     if (!key) {
       const scope = options.scope ?? getEffectiveAgentSettingsDefaultScopeSync();
       const path = adapter.getSettingsPath(scope, resolveProjectPath(options.projectPath));
-      return await readJsonObject(path);
+      return await readConfigObject(path, adapter.format);
     }
 
     const definition = getAgentSettingDefinition(agent, key);
@@ -282,7 +312,7 @@ export class AgentSettingsManager {
 
     const scope = resolveScope(definition, options.scope);
     const path = adapter.getSettingsPath(scope, resolveProjectPath(options.projectPath));
-    const config = await readJsonObject(path);
+    const config = await readConfigObject(path, adapter.format);
     return getNestedValue(config, definition.nativePath);
   }
 
@@ -304,14 +334,14 @@ export class AgentSettingsManager {
 
     const scope = resolveScope(definition, options.scope);
     const path = adapter.getSettingsPath(scope, resolveProjectPath(options.projectPath));
-    const config = await readJsonObject(path);
+    const config = await readConfigObject(path, adapter.format);
     const previousValue = getNestedValue(config, definition.nativePath);
     const value = parseAgentSettingValue(definition, rawValue, options.parseJson);
 
     setNestedValue(config, definition.nativePath, value);
 
     if (!options.dryRun) {
-      await writeFile(path, `${JSON.stringify(config, null, 2)}\n`);
+      await writeConfigObject(path, config, adapter.format);
     }
 
     return {
@@ -338,13 +368,13 @@ export class AgentSettingsManager {
 
     const scope = resolveScope(definition, options.scope);
     const path = adapter.getSettingsPath(scope, resolveProjectPath(options.projectPath));
-    const config = await readJsonObject(path);
+    const config = await readConfigObject(path, adapter.format);
     const previousValue = getNestedValue(config, definition.nativePath);
 
     deleteNestedValue(config, definition.nativePath);
 
     if (!options.dryRun) {
-      await writeFile(path, `${JSON.stringify(config, null, 2)}\n`);
+      await writeConfigObject(path, config, adapter.format);
     }
 
     return {
@@ -368,7 +398,7 @@ export class AgentSettingsManager {
 
     const scope = options.scope ?? getEffectiveAgentSettingsDefaultScopeSync();
     const path = adapter.getSettingsPath(scope, resolveProjectPath(options.projectPath));
-    const config = await readJsonObject(path);
+    const config = await readConfigObject(path, adapter.format);
 
     if (event) {
       return getHookMatchers(config, normalizeHookEvent(event));
@@ -406,7 +436,7 @@ export class AgentSettingsManager {
     const hookEvent = normalizeHookEvent(event);
     const scope = options.scope ?? getEffectiveAgentSettingsDefaultScopeSync();
     const path = adapter.getSettingsPath(scope, resolveProjectPath(options.projectPath));
-    const config = await readJsonObject(path);
+    const config = await readConfigObject(path, adapter.format);
     const hook = buildHookCommand(command, options.name);
     const matchers = getHookMatchers(config, hookEvent);
     const matcher = options.matcher ?? '*';
@@ -424,7 +454,7 @@ export class AgentSettingsManager {
     setHookMatchers(config, hookEvent, matchers);
 
     if (!options.dryRun) {
-      await writeFile(path, `${JSON.stringify(config, null, 2)}\n`);
+      await writeConfigObject(path, config, adapter.format);
     }
 
     return {
@@ -454,7 +484,7 @@ export class AgentSettingsManager {
     const hookEvent = normalizeHookEvent(event);
     const scope = options.scope ?? getEffectiveAgentSettingsDefaultScopeSync();
     const path = adapter.getSettingsPath(scope, resolveProjectPath(options.projectPath));
-    const config = await readJsonObject(path);
+    const config = await readConfigObject(path, adapter.format);
     const matchers = getHookMatchers(config, hookEvent);
     let removed = 0;
 
@@ -479,7 +509,7 @@ export class AgentSettingsManager {
     setHookMatchers(config, hookEvent, nextMatchers);
 
     if (!options.dryRun) {
-      await writeFile(path, `${JSON.stringify(config, null, 2)}\n`);
+      await writeConfigObject(path, config, adapter.format);
     }
 
     return {

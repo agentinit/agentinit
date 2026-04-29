@@ -1,24 +1,135 @@
 # `agentinit agent` Reference
 
-`agentinit agent` manages registry-backed native agent settings. The current implementation supports `claude` settings and typed Claude hook operations.
+`agentinit agent` manages registry-backed native agent settings. Supported agents: `claude` (Claude Code), `opencode` (OpenCode), and `hermes` (Hermes Agent).
 
 When you omit `--global`, `--project`, and `--local`, `agentinit agent` defaults to `global`. You can override that default with `AGENTINIT_AGENT_DEFAULT_SCOPE=global|project|local` or persist a user preference with `agentinit config agent-settings scope <scope>`.
+
+> **Note:** Hermes only supports `--global` scope. Project and local scopes are not available.
 
 ## Command Surface
 
 ```bash
+# List agents and settings
 agentinit agent list
-agentinit agent list claude
-agentinit agent schema claude [--json]
+agentinit agent list opencode
+agentinit agent schema opencode [--json]
 
-agentinit agent get claude [key] [--global|--project|--local] [--json]
-agentinit agent set claude <key> <value> [--global|--project|--local] [--value-json] [--json] [--dry-run]
-agentinit agent unset claude <key> [--global|--project|--local] [--json] [--dry-run]
+# Read settings
+agentinit agent get opencode [key] [--global|--project|--local] [--json]
+agentinit agent set opencode <key> <value> [--global|--project|--local] [--value-json] [--json] [--dry-run]
+agentinit agent unset opencode <key> [--global|--project|--local] [--json] [--dry-run]
 
+# Claude hooks (Claude Code only)
 agentinit agent hook add claude <event> --command "<shell command>" [--matcher <matcher>] [--name <name>] [--global|--project|--local] [--json] [--dry-run]
 agentinit agent hook list claude [event] [--global|--project|--local] [--json]
 agentinit agent hook remove claude <event> <command-or-name> [--matcher <matcher>] [--global|--project|--local] [--json] [--dry-run]
 ```
+
+> **Note:** OpenCode does not have a hook system. Hook subcommands are only available for `claude`.
+
+---
+
+## Scope Resolution
+
+| Scope | Claude Code | OpenCode | Hermes |
+|---|---|---|---|
+| `global` | `~/.claude/settings.json` | `~/.config/opencode/opencode.json` | `~/.hermes/config.yaml` |
+| `project` | `<project>/.claude/settings.json` | `<project>/.opencode/opencode.json` | Hermes: unsupported |
+| `local` | `<project>/.claude/settings.local.json` | `<project>/.opencode/opencode.local.json` | Hermes: unsupported |
+
+---
+
+## Supported OpenCode Setting Keys
+
+### Model
+- `model` — default model in `provider/model` format (e.g. `anthropic/claude-sonnet-4-5`)
+
+### Agent
+- `default_agent` — default agent: `build` or `plan`
+
+### Permissions
+- `permission.*` — default permission for all tools: `allow`, `ask`, or `deny`
+- `permission.bash` — shell command execution
+- `permission.read` — reading files outside workspace
+- `permission.edit` — editing/writing files
+- `permission.webfetch` — fetching external URLs
+- `permission.task` — spawning subagent tasks
+- `permission.websearch` — web search operations
+
+### Compaction
+- `compaction.auto` — enable automatic context compaction (default: `true`)
+
+### Output
+- `tool_output.max_lines` — max lines before truncation (default: 2000)
+- `tool_output.max_bytes` — max bytes before truncation (default: 51200)
+
+### Runtime
+- `autoupdate` — auto-update or `notify`
+- `shell` — default shell for terminal
+- `logLevel` — log verbosity: `DEBUG`, `INFO`, `WARN`, `ERROR`
+- `snapshot` — enable/disable undo/redo tracking
+
+### UI / Sharing
+- `username` — custom display name
+- `share` — sharing mode: `manual`, `auto`, or `disabled`
+
+---
+
+## Supported Hermes Setting Keys
+
+### Model
+- `model.default` — default LLM identifier (e.g. `claude-sonnet-4`, `gpt-4o`)
+- `model.provider` — provider slug: `openai`, `anthropic`, `google`, etc.
+- `model.base_url` — custom OpenAI-compatible endpoint
+
+### Agent
+- `agent.max_turns` — max tool-calling iterations per conversation
+- `agent.verbose` — show full tool output
+- `agent.reasoning_effort` — reasoning depth: `low`, `medium`, `high`
+- `agent.service_tier` — provider service tier
+
+### Display
+- `display.compact` — suppress banners
+- `display.show_reasoning` — show chain-of-thought
+- `display.streaming` — stream responses token-by-token
+- `display.skin` — CLI theme name
+- `display.personality` — response persona: `helpful`, `kawaii`, `noir`, etc.
+
+### Terminal
+- `terminal.env_type` — execution backend: `local`, `docker`, `ssh`, `modal`, `daytona`
+- `terminal.timeout` — command timeout in seconds
+- `terminal.lifetime_seconds` — session lifetime
+
+### Compression
+- `compression.enabled` — auto-compress near context limit
+- `compression.threshold` — fraction of context window before compression
+
+### Code Execution
+- `code_execution.timeout` — sandbox timeout
+- `code_execution.max_tool_calls` — max RPC tool calls per session
+
+### Memory
+- `memory.memory_enabled` — inject stored memories
+- `memory.user_profile_enabled` — track user preferences
+- `memory.memory_char_limit` — max chars from memory store
+
+### Logging
+- `logging.level` — `DEBUG`, `INFO`, `WARNING`, `ERROR`
+
+### Delegation
+- `delegation.max_iterations` — max turns per child agent
+- `delegation.max_concurrent_children` — max parallel subagents
+- `delegation.orchestrator_enabled` — allow subagent delegation chaining
+
+### Skills
+- `skills.inline_shell` — auto-expose shell commands from skills
+- `skills.inline_shell_timeout` — inline shell timeout
+
+### Security
+- `security.allow_private_urls` — permit fetching non-public URLs
+- `security.redact_secrets` — strip secrets from logs and output
+
+---
 
 ## Supported Claude Setting Keys
 
@@ -49,7 +160,9 @@ agentinit agent hook remove claude <event> <command-or-name> [--matcher <matcher
 - `disabledMcpjsonServers`
 - `skipDangerousModePermissionPrompt`
 
-## Hook Events
+---
+
+## Hook Events (Claude Code only)
 
 - `PreToolUse`
 - `PostToolUse`
@@ -62,16 +175,39 @@ agentinit agent hook remove claude <event> <command-or-name> [--matcher <matcher
 
 Accepted aliases include `before-tool-use`, `after-tool-use`, `post-tool-use-failure`, `permission-request`, `session-start`, and `session-end`.
 
+---
+
 ## Examples
+
+### OpenCode
 
 Inspect supported agents and settings:
 
 ```bash
 agentinit agent list
-agentinit agent list claude
-agentinit agent schema claude
-agentinit agent schema claude --json
+agentinit agent list opencode
+agentinit agent schema opencode
+agentinit agent schema opencode --json
 ```
+
+Read and set settings:
+
+```bash
+agentinit agent get opencode
+agentinit agent get opencode --project
+agentinit agent get opencode model
+agentinit agent get opencode model --json
+agentinit agent set opencode model "anthropic/claude-sonnet-4-5"
+agentinit agent set opencode default_agent plan --project
+agentinit agent set opencode snapshot false
+agentinit agent set opencode permission.edit deny --project
+agentinit agent set opencode tool_output.max_lines 5000
+agentinit agent set opencode autoupdate notify
+agentinit agent set opencode share manual
+agentinit agent unset opencode permission.bash --project
+```
+
+### Claude Code
 
 Read settings in human or JSON form:
 
@@ -139,7 +275,7 @@ agentinit agent set claude env '{"NODE_ENV":"test","CI":"1"}' --project --value-
 agentinit agent set claude attribution '{"coAuthoredBy":"AgentInit"}' --value-json
 ```
 
-Add and inspect Claude hooks without replacing the whole hooks object:
+Add and inspect Claude hooks:
 
 ```bash
 agentinit agent hook add claude after-tool-use --command "npm run lint"
@@ -180,7 +316,7 @@ agentinit agent unset claude env --project
 agentinit agent unset claude permissions.defaultMode --project
 ```
 
-Persist a different default scope if you want repo-local behavior:
+Persist a different default scope:
 
 ```bash
 agentinit config agent-settings scope
