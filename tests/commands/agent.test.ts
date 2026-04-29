@@ -196,6 +196,79 @@ describe('agent command', () => {
     expect(process.exitCode).toBe(1);
   });
 
+  it('sets an OpenCode setting through the CLI', async () => {
+    silenceLogger();
+
+    await runAgent(['agent', 'set', 'opencode', 'model', 'anthropic/claude-sonnet-4-5', '--project']);
+
+    await expect(readFile(join(process.cwd(), '.opencode', 'opencode.json'), 'utf8').then(JSON.parse)).resolves.toEqual({
+      model: 'anthropic/claude-sonnet-4-5',
+    });
+  });
+
+  it('maps permission.* to permission.default for OpenCode', async () => {
+    silenceLogger();
+
+    await runAgent(['agent', 'set', 'opencode', 'permission.*', 'deny', '--project']);
+
+    await expect(readFile(join(process.cwd(), '.opencode', 'opencode.json'), 'utf8').then(JSON.parse)).resolves.toEqual({
+      permission: {
+        default: 'deny',
+      },
+    });
+  });
+
+  it('rejects invalid enum values for OpenCode permissions', async () => {
+    silenceLogger();
+
+    await runAgent(['agent', 'set', 'opencode', 'permission.bash', 'fuck_yeah', '--project']);
+    expect(process.exitCode).toBe(1);
+  });
+
+  it('rejects invalid enum values for OpenCode autoupdate', async () => {
+    silenceLogger();
+
+    await runAgent(['agent', 'set', 'opencode', 'autoupdate', 'maybe_later']);
+    expect(process.exitCode).toBe(1);
+  });
+
+  it('rejects project scope for OpenCode autoupdate', async () => {
+    silenceLogger();
+
+    await runAgent(['agent', 'set', 'opencode', 'autoupdate', 'notify', '--project']);
+    expect(process.exitCode).toBe(1);
+  });
+
+  it('prints schema json for opencode', async () => {
+    silenceLogger();
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await runAgent(['agent', 'schema', 'opencode', '--json']);
+
+    const schema = JSON.parse(logSpy.mock.calls[0]![0]);
+    expect(schema.agent).toBe('opencode');
+    expect(schema.effectiveDefaultScope).toBe('global');
+    expect(schema.settings.some((setting: { key: string }) => setting.key === 'model')).toBe(true);
+
+    // small_model should not exist
+    expect(schema.settings.some((setting: { key: string }) => setting.key === 'small_model')).toBe(false);
+
+    // permission.* should have nativePath: 'permission.default'
+    const defaultPerm = schema.settings.find((setting: { key: string }) => setting.key === 'permission.*');
+    expect(defaultPerm?.nativePath).toBe('permission.default');
+    expect(defaultPerm?.valueType).toBe('enum');
+    expect(defaultPerm?.allowedValues).toEqual(['allow', 'ask', 'deny']);
+
+    // permission.bash should be enum
+    const bashPerm = schema.settings.find((setting: { key: string }) => setting.key === 'permission.bash');
+    expect(bashPerm?.valueType).toBe('enum');
+
+    // autoupdate should be enum too
+    const autoupdate = schema.settings.find((setting: { key: string }) => setting.key === 'autoupdate');
+    expect(autoupdate?.valueType).toBe('enum');
+    expect(autoupdate?.allowedValues).toEqual(['true', 'false', 'notify']);
+  });
+
   it('adds and removes Claude hooks through typed hook commands', async () => {
     silenceLogger();
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});

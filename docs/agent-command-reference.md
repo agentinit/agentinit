@@ -41,7 +41,6 @@ agentinit agent hook remove claude <event> <command-or-name> [--matcher <matcher
 
 ### Model
 - `model` — default model in `provider/model` format (e.g. `anthropic/claude-sonnet-4-5`)
-- `small_model` — small model for lightweight tasks
 
 ### Agent
 - `default_agent` — default agent: `build` or `plan`

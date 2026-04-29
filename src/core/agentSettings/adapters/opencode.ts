@@ -3,19 +3,18 @@ import { expandTilde } from '../../../utils/paths.js';
 import type { AgentSettingsAdapter, AgentSettingDefinition, AgentSettingsScope } from '../types.js';
 
 const ALL_SCOPES: AgentSettingsScope[] = ['global', 'project', 'local'];
-const SHARED_SCOPES: AgentSettingsScope[] = ['global', 'project'];
 
 function setting(
   key: string,
   valueType: AgentSettingDefinition['valueType'],
   title: string,
   description: string,
-  options: Partial<Omit<AgentSettingDefinition, 'agent' | 'key' | 'nativePath' | 'title' | 'description' | 'valueType'>> = {},
+  options: Partial<Omit<AgentSettingDefinition, 'agent' | 'key' | 'title' | 'description' | 'valueType'>> = {},
 ): AgentSettingDefinition {
   const definition: AgentSettingDefinition = {
     agent: 'opencode',
     key,
-    nativePath: key.split('.'),
+    nativePath: options.nativePath ?? key.split('.'),
     title,
     description,
     valueType,
@@ -72,16 +71,13 @@ export const opencodeSettingsAdapter: AgentSettingsAdapter = {
       defaultScope: 'global',
       category: 'model',
     }),
-    setting('small_model', 'string', 'Small model', 'Small model for lightweight tasks like title generation, in provider/model format.', {
-      defaultScope: 'global',
-      category: 'model',
-    }),
     setting('default_agent', 'enum', 'Default agent', 'Agent to use when none is specified. Must be a primary agent. Falls back to build.', {
       allowedValues: ['build', 'plan'],
       defaultScope: 'global',
       category: 'agent',
     }),
-    setting('autoupdate', 'string', 'Auto update', 'Control automatic updates: true (auto), false (off), or "notify" (notification only).', {
+    setting('autoupdate', 'enum', 'Auto update', 'Control automatic updates: true (auto), false (off), or "notify" (notification only).', {
+      allowedValues: ['true', 'false', 'notify'],
       scopes: ['global'],
       defaultScope: 'global',
       category: 'runtime',
@@ -107,30 +103,38 @@ export const opencodeSettingsAdapter: AgentSettingsAdapter = {
     setting('snapshot', 'boolean', 'Snapshot tracking', 'Enable/disable filesystem snapshot tracking for undo/redo. Defaults to true.', {
       category: 'runtime',
     }),
-    setting('permission.*', 'string', 'Default permission', 'Default permission rule for all tools: allow, ask, or deny.', {
+    setting('permission.*', 'enum', 'Default permission', 'Default permission rule for all tools: allow, ask, or deny.', {
+      nativePath: ['permission', 'default'],
       defaultScope: 'global',
       category: 'permissions',
       risk: 'security-sensitive',
+      allowedValues: ['allow', 'ask', 'deny'],
     }),
-    setting('permission.bash', 'string', 'Bash permission', 'Permission rule for shell command execution.', {
+    setting('permission.bash', 'enum', 'Bash permission', 'Permission rule for shell command execution.', {
       category: 'permissions',
       risk: 'security-sensitive',
+      allowedValues: ['allow', 'ask', 'deny'],
     }),
-    setting('permission.read', 'string', 'Read permission', 'Permission rule for reading files outside the workspace.', {
+    setting('permission.read', 'enum', 'Read permission', 'Permission rule for reading files outside the workspace.', {
       category: 'permissions',
+      allowedValues: ['allow', 'ask', 'deny'],
     }),
-    setting('permission.edit', 'string', 'Edit permission', 'Permission rule for editing/writing files.', {
+    setting('permission.edit', 'enum', 'Edit permission', 'Permission rule for editing/writing files.', {
       category: 'permissions',
       risk: 'risky',
+      allowedValues: ['allow', 'ask', 'deny'],
     }),
-    setting('permission.webfetch', 'string', 'Web fetch permission', 'Permission rule for fetching external URLs.', {
+    setting('permission.webfetch', 'enum', 'Web fetch permission', 'Permission rule for fetching external URLs.', {
       category: 'permissions',
+      allowedValues: ['allow', 'ask', 'deny'],
     }),
-    setting('permission.task', 'string', 'Task permission', 'Permission rule for spawning subagent tasks.', {
+    setting('permission.task', 'enum', 'Task permission', 'Permission rule for spawning subagent tasks.', {
       category: 'permissions',
+      allowedValues: ['allow', 'ask', 'deny'],
     }),
-    setting('permission.websearch', 'string', 'Web search permission', 'Permission rule for web search operations.', {
+    setting('permission.websearch', 'enum', 'Web search permission', 'Permission rule for web search operations.', {
       category: 'permissions',
+      allowedValues: ['allow', 'ask', 'deny'],
     }),
     setting('compaction.auto', 'boolean', 'Auto compaction', 'Enable automatic context compaction when context is full. Defaults to true.', {
       defaultScope: 'global',
