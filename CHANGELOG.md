@@ -1,3 +1,12 @@
+# [1.24.0](https://github.com/agentinit/agentinit/compare/v1.23.0...v1.24.0) (2026-04-29)
+
+
+### Features
+
+* **agent:** add Codex settings support ([c720cce](https://github.com/agentinit/agentinit/commit/c720cce8a59526f0d81e6b617c755f6cf6cd70e7))
+* **agent:** add OpenCode settings adapter ([d433810](https://github.com/agentinit/agentinit/commit/d433810473b55d4953449d5efc1b68e4d53ccffe))
+* **agent:** support Claude global config settings ([f61091b](https://github.com/agentinit/agentinit/commit/f61091bdfdef47af7a11539ef738a73cd18a3738))
+
 # [1.23.0](https://github.com/agentinit/agentinit/compare/v1.22.1...v1.23.0) (2026-04-28)
 
 
