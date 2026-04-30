@@ -1,3 +1,10 @@
+# [1.25.0](https://github.com/agentinit/agentinit/compare/v1.24.0...v1.25.0) (2026-04-30)
+
+
+### Features
+
+* **agent:** show detailed settings list state ([a2f153e](https://github.com/agentinit/agentinit/commit/a2f153ed17228f8c72386dbc8e748afb44522348))
+
 # [1.24.0](https://github.com/agentinit/agentinit/compare/v1.23.0...v1.24.0) (2026-04-29)
 
 
