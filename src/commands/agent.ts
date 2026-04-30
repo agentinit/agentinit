@@ -12,6 +12,7 @@ interface ScopeOptions {
 
 interface AgentCommandOptions extends ScopeOptions {
   json?: boolean;
+  details?: boolean;
   valueJson?: boolean;
   dryRun?: boolean;
   command?: string;
@@ -54,6 +55,21 @@ function printValue(value: unknown): void {
     return;
   }
   printJson(value);
+}
+
+function buildSettingFlags(setting: {
+  valueType: string;
+  category: string;
+  risk: string;
+  deprecated?: boolean;
+  replacement?: string;
+}): string {
+  return [
+    setting.valueType,
+    setting.category,
+    setting.risk !== 'safe' ? setting.risk : null,
+    setting.deprecated ? `use ${setting.replacement}` : null,
+  ].filter(Boolean).join(', ');
 }
 
 function buildSetOptions(options: AgentCommandOptions) {
@@ -400,8 +416,12 @@ export function registerAgentCommand(program: Command): void {
   agent
     .command('list [agent]')
     .description('List supported agents or setting keys for one agent')
+    .option('--global', 'Read global user settings')
+    .option('--project', 'Read shared project settings')
+    .option('--local', 'Read local project settings')
     .option('--json', 'Print JSON output')
-    .action((agentId: string | undefined, options: AgentCommandOptions) => {
+    .option('--details', 'Print detailed setting metadata with safe current-value summaries')
+    .action(async (agentId: string | undefined, options: AgentCommandOptions) => {
       try {
         if (!agentId) {
           const agents = manager.getSupportedAgents();
@@ -417,12 +437,25 @@ export function registerAgentCommand(program: Command): void {
         const schema = manager.getSchema(agentId);
         const keys = schema.settings.map(setting => setting.key);
         if (options.json) {
+          if (options.details) {
+            const list = await manager.listSettings(agentId, buildReadOptions(options));
+            printJson(list.settings);
+            return;
+          }
           printJson(keys);
           return;
         }
 
+        const list = await manager.listSettings(agentId, buildReadOptions(options));
         logger.titleBox(`AgentInit  ${agentId} Settings`);
-        schema.settings.forEach((setting, index) => logger.tree(`${cyan(setting.key)} ${dim(setting.category)}`, index === schema.settings.length - 1));
+        logger.info(`Scope: ${cyan(list.scope)}`);
+        list.settings.forEach((setting, index) => {
+          const flags = buildSettingFlags(setting);
+          logger.tree(
+            `${cyan(setting.key)} ${dim(`[${flags}]`)} ${setting.description} ${dim(`current: ${setting.currentSummary}`)}`,
+            index === list.settings.length - 1,
+          );
+        });
       } catch (error) {
         failAgentCommand(error);
       }
@@ -443,12 +476,7 @@ export function registerAgentCommand(program: Command): void {
         logger.titleBox(`AgentInit  ${schema.displayName} Schema`);
         logger.info(`Default omitted scope: ${cyan(schema.effectiveDefaultScope)}`);
         for (const setting of schema.settings) {
-          const flags = [
-            setting.valueType,
-            setting.category,
-            setting.risk !== 'safe' ? setting.risk : null,
-            setting.deprecated ? `use ${setting.replacement}` : null,
-          ].filter(Boolean).join(', ');
+          const flags = buildSettingFlags(setting);
           logger.tree(`${cyan(setting.key)} ${dim(`[${flags}]`)} ${setting.description}`, false);
         }
       } catch (error) {

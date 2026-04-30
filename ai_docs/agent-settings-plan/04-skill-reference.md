@@ -27,6 +27,7 @@ The skill should:
 - Trigger when users ask to configure Claude, Codex, OpenCode, Cursor CLI, Hermes, or OpenClaw runtime behavior.
 - Prefer `agentinit agent set|get|unset|list|schema`.
 - Query or reference `agentinit agent schema <agent>` when exact keys are needed.
+- Use `agentinit agent list <agent> --details --json` when current state is needed; use only scopes supported by the selected agent.
 - Emit validated commands, not raw config patches.
 - Prefer presets for hooks and security-sensitive settings when those preset-backed keys are present in `agentinit agent schema`.
 - Use `agentinit agent hook add/list/remove` for explicit custom hook commands.
@@ -66,6 +67,9 @@ agentinit agent api-key approve claude --env <name>
 
 Do not invent setting keys. If uncertain, inspect:
 agentinit agent schema <agent> --json
+
+When the user asks what is currently configured, inspect:
+agentinit agent list <agent> --details --json
 
 Use --value-json when the setting value itself is JSON. Use --json for machine-readable command output.
 

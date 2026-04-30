@@ -400,6 +400,7 @@ See [docs/agent-command-reference.md](docs/agent-command-reference.md) for the f
 ```bash
 # Review supported agents and settings
 agentinit agent list
+agentinit agent list claude --details
 agentinit agent schema claude --json
 agentinit agent schema codex --json
 agentinit agent schema opencode --json

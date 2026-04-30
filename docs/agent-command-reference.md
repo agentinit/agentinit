@@ -8,9 +8,9 @@ When you omit `--global`, `--project`, and `--local`, `agentinit agent` defaults
 
 ```bash
 agentinit agent list
-agentinit agent list claude
-agentinit agent list codex
-agentinit agent list opencode
+agentinit agent list claude [--global|--project|--local] [--json] [--details]
+agentinit agent list codex [--global|--project] [--json] [--details]
+agentinit agent list opencode [--global|--project] [--json] [--details]
 agentinit agent schema claude [--json]
 agentinit agent schema codex [--json]
 agentinit agent schema opencode [--json]
@@ -181,6 +181,18 @@ agentinit agent schema claude --json
 agentinit agent schema codex --json
 agentinit agent schema opencode --json
 ```
+
+`agent schema <agent>` is the reference view: it shows the registered schema,
+types, categories, descriptions, risks, and supported scopes without reading the
+current settings files. `agent list <agent>` is the browsable state view: it
+shows the same descriptions plus safe current-value summaries for the selected
+scope. Unsupported agent scopes are rejected; settings outside a supported
+selected scope are shown as not applicable. `agent get <agent> [key]` prints
+exact raw values.
+
+For compatibility, `agent list <agent> --json` still returns only the supported
+key array. Use `agent list <agent> --details --json` for detailed metadata and
+safe current-state summaries.
 
 Read settings in human or JSON form:
 

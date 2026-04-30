@@ -342,6 +342,88 @@ describe('agent command', () => {
     }));
   });
 
+  it('prints rich human setting lists with descriptions and safe current summaries', async () => {
+    const titleSpy = vi.spyOn(logger, 'titleBox').mockImplementation(() => {});
+    const infoSpy = vi.spyOn(logger, 'info').mockImplementation(() => {});
+    vi.spyOn(logger, 'success').mockImplementation(() => {});
+    vi.spyOn(logger, 'error').mockImplementation(() => {});
+    const treeSpy = vi.spyOn(logger, 'tree').mockImplementation(() => {});
+
+    await runAgent(['agent', 'set', 'claude', 'prefersReducedMotion', 'true', '--global']);
+    await runAgent(['agent', 'set', 'claude', 'permissions.allow', '["Read(*)","Bash(npm test)"]', '--global', '--value-json']);
+    await runAgent(['agent', 'list', 'claude', '--global']);
+
+    expect(titleSpy).toHaveBeenCalledWith('AgentInit  claude Settings');
+    expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('Scope:'));
+    expect(treeSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Reduce or disable Claude Code UI animations.'),
+      expect.any(Boolean),
+    );
+    expect(treeSpy).toHaveBeenCalledWith(
+      expect.stringContaining('current: true'),
+      expect.any(Boolean),
+    );
+    expect(treeSpy).toHaveBeenCalledWith(
+      expect.stringContaining('current: set (array, 2 items)'),
+      expect.any(Boolean),
+    );
+  });
+
+  it('keeps list json as key arrays for compatibility', async () => {
+    silenceLogger();
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await runAgent(['agent', 'list', 'claude', '--json']);
+
+    const keys = JSON.parse(logSpy.mock.calls[0]![0]);
+    expect(keys).toContain('prefersReducedMotion');
+    expect(keys).toContain('cleanupPeriodDays');
+    expect(keys.every((key: unknown) => typeof key === 'string')).toBe(true);
+  });
+
+  it('prints detailed list json with safe current summaries', async () => {
+    silenceLogger();
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await runAgent(['agent', 'set', 'claude', 'prefersReducedMotion', 'true', '--global']);
+    await runAgent(['agent', 'list', 'claude', '--global', '--details', '--json']);
+
+    const details = JSON.parse(logSpy.mock.calls[0]![0]);
+    expect(details).toContainEqual(expect.objectContaining({
+      key: 'prefersReducedMotion',
+      description: 'Reduce or disable Claude Code UI animations.',
+      currentStatus: 'set',
+      currentSummary: 'true',
+    }));
+    expect(details).toContainEqual(expect.objectContaining({
+      key: 'effortLevel',
+      currentStatus: 'not-set',
+      currentSummary: 'not set',
+    }));
+  });
+
+  it('marks settings outside a supported selected list scope as not applicable', async () => {
+    silenceLogger();
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await runAgent(['agent', 'list', 'claude', '--project', '--details', '--json']);
+
+    const details = JSON.parse(logSpy.mock.calls[0]![0]);
+    expect(details).toContainEqual(expect.objectContaining({
+      key: 'theme',
+      currentStatus: 'not-applicable',
+      currentSummary: 'n/a',
+    }));
+  });
+
+  it('rejects list scopes unsupported by the selected agent', async () => {
+    silenceLogger();
+
+    await runAgent(['agent', 'list', 'codex', '--local', '--details', '--json']);
+
+    expect(process.exitCode).toBe(1);
+  });
+
   it('parses setting values with --value-json and prints machine-readable set output with --json', async () => {
     silenceLogger();
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});

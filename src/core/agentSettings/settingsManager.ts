@@ -17,7 +17,9 @@ import type {
   AgentHookMatcher,
   AgentHookRemoveOptions,
   AgentHookWriteResult,
+  AgentSettingListEntry,
   AgentSettingReadOptions,
+  AgentSettingsList,
   AgentSettingsSchema,
   AgentSettingsScope,
   AgentSettingSetOptions,
@@ -356,6 +358,19 @@ function stringifyConfigObject(adapter: RegisteredAgentSettingsAdapter, config: 
   return `${JSON.stringify(config, null, 2)}\n`;
 }
 
+function summarizeSettingValue(value: unknown): string {
+  if (value === undefined) {
+    return 'not set';
+  }
+  if (Array.isArray(value)) {
+    return `set (array, ${value.length} item${value.length === 1 ? '' : 's'})`;
+  }
+  if (value && typeof value === 'object') {
+    return 'set (object)';
+  }
+  return JSON.stringify(value);
+}
+
 async function writeConfigObject(adapter: RegisteredAgentSettingsAdapter, path: string, config: JsonObject): Promise<void> {
   await writeFile(path, stringifyConfigObject(adapter, config));
 }
@@ -391,6 +406,56 @@ export class AgentSettingsManager {
       displayName: adapter.displayName,
       effectiveDefaultScope: getEffectiveAgentSettingsDefaultScopeSync(),
       settings: adapter.definitions.map(toSchemaEntry),
+    };
+  }
+
+  async listSettings(agent: string, options: AgentSettingReadOptions = {}): Promise<AgentSettingsList> {
+    const adapter = getAgentSettingsAdapter(agent);
+    if (!adapter) {
+      throw new Error(`Unsupported agent settings adapter: ${agent}. Supported: ${this.getSupportedAgents().join(', ')}`);
+    }
+
+    const scope = resolveFullReadScope(adapter, options.scope);
+    const projectPath = resolveProjectPath(options.projectPath);
+    const configByPath = new Map<string, JsonObject>();
+
+    const readConfigForDefinition = async (definition: AgentSettingDefinition): Promise<JsonObject> => {
+      const path = adapter.getSettingsPath(scope, projectPath, definition);
+      const cached = configByPath.get(path);
+      if (cached) {
+        return cached;
+      }
+      const config = await readConfigObject(adapter, path);
+      configByPath.set(path, config);
+      return config;
+    };
+
+    const settings: AgentSettingListEntry[] = [];
+    for (const definition of adapter.definitions) {
+      const schemaEntry = toSchemaEntry(definition);
+      if (!definition.scopes.includes(scope)) {
+        settings.push({
+          ...schemaEntry,
+          currentStatus: 'not-applicable',
+          currentSummary: 'n/a',
+        });
+        continue;
+      }
+
+      const config = await readConfigForDefinition(definition);
+      const value = getNestedValue(config, definition.nativePath);
+      settings.push({
+        ...schemaEntry,
+        currentStatus: value === undefined ? 'not-set' : 'set',
+        currentSummary: summarizeSettingValue(value),
+      });
+    }
+
+    return {
+      agent: adapter.agent,
+      displayName: adapter.displayName,
+      scope,
+      settings,
     };
   }
 

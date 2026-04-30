@@ -10,7 +10,7 @@ Implement the `agentinit agent` command family using a registry and adapter arch
 agentinit agent set <agent> <key> <value> [--global|--project|--local] [--value-json] [--json] [--dry-run]
 agentinit agent get <agent> [key] [--global|--project|--local] [--json]
 agentinit agent unset <agent> <key> [--global|--project|--local] [--json] [--dry-run]
-agentinit agent list [agent] [--json]
+agentinit agent list [agent] [--global|--project|--local] [--json] [--details]
 agentinit agent schema <agent> [--json]
 agentinit agent hook add <agent> <event> --command <command> [--matcher <matcher>] [--name <name>] [--global|--project|--local] [--json] [--dry-run]
 agentinit agent hook list <agent> [event] [--global|--project|--local] [--json]
@@ -21,7 +21,9 @@ agentinit agent api-key forget claude (--env <name>|--key <key>) [--json] [--dry
 agentinit agent api-key status claude (--env <name>|--key <key>) [--json]
 ```
 
-Individual adapters may support only a subset of scopes. For example, Codex settings and hooks support `--global` and `--project`, not `--local`.
+Individual adapters may support only a subset of scopes. For example, Codex settings and hooks support `--global` and `--project`, not `--local`. `agent list <agent>` rejects scopes unsupported by the selected agent, while settings that exist but do not apply to a supported selected scope can appear as not applicable in detailed list output.
+
+Use `agent schema <agent>` as the registry reference view. It must not read settings files. Use `agent list <agent> --details` or `agent list <agent> --details --json` as the state-aware view when safe current-value summaries are needed. For compatibility, `agent list <agent> --json` returns only the key array.
 
 ## Proposed Files
 
@@ -115,6 +117,7 @@ Preset-backed settings are future work. Raw command-executing settings such as C
 - Hook add/remove preserves unrelated events, matchers, and hook commands.
 - AgentInit-managed plugin state is not exposed as raw agent settings.
 - `schema` output is stable and machine-readable.
+- `list --details` reports safe current-state summaries and rejects agent-unsupported scopes.
 
 ## Acceptance Criteria
 

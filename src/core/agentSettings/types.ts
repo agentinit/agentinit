@@ -45,6 +45,20 @@ export interface AgentSettingsSchema {
   settings: AgentSettingSchemaEntry[];
 }
 
+export type AgentSettingCurrentStatus = 'set' | 'not-set' | 'not-applicable';
+
+export interface AgentSettingListEntry extends AgentSettingSchemaEntry {
+  currentStatus: AgentSettingCurrentStatus;
+  currentSummary: string;
+}
+
+export interface AgentSettingsList {
+  agent: string;
+  displayName: string;
+  scope: AgentSettingsScope;
+  settings: AgentSettingListEntry[];
+}
+
 export interface AgentSettingSetOptions {
   scope?: AgentSettingsScope;
   parseJson?: boolean;
