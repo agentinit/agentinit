@@ -1,3 +1,10 @@
+## [1.25.1](https://github.com/agentinit/agentinit/compare/v1.25.0...v1.25.1) (2026-05-01)
+
+
+### Bug Fixes
+
+* smoke test packaged cli ([7b97e2d](https://github.com/agentinit/agentinit/commit/7b97e2d0d3a6e61cb5143f057d8dc6e1196cc42c))
+
 # [1.25.0](https://github.com/agentinit/agentinit/compare/v1.24.0...v1.25.0) (2026-04-30)
 
 
