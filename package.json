@@ -31,7 +31,7 @@
     }
   },
   "scripts": {
-    "build": "npx tsc -p tsconfig.build.json && cp -r src/templates dist/ && bun build dist/cli.js --outfile dist/cli-bundled.js --target node --external tiktoken && mv dist/cli-bundled.js dist/cli.js",
+    "build": "npx tsc -p tsconfig.build.json && cp -r src/templates dist/ && bun build dist/cli.js --outfile dist/cli-bundled.js --target node --external tiktoken --external jsonc-parser && mv dist/cli-bundled.js dist/cli.js",
     "dev": "bun run src/cli.ts",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -39,7 +39,10 @@
     "lint": "tsc --noEmit",
     "clean": "rm -rf dist",
     "pack": "npm pack --dry-run",
-    "prepublishOnly": "npm run build && npm run lint && npm test"
+    "smoke:cli": "node scripts/smoke-cli.mjs dist/cli.js",
+    "smoke:pack": "node scripts/smoke-packed-cli.mjs",
+    "canary:published": "node scripts/canary-published-cli.mjs",
+    "prepublishOnly": "npm run build && npm run smoke:cli && npm run smoke:pack && npm run lint && npm test"
   },
   "keywords": [
     "ai",

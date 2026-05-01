@@ -15,13 +15,14 @@ import { registerPluginsCommand } from './commands/plugins.js';
 import { registerLockCommand } from './commands/lock.js';
 import { registerAgentCommand } from './commands/agent.js';
 import { logger } from './utils/logger.js';
+import { getOwnPackageVersion } from './utils/ownPackageVersion.js';
 
 const program = new Command();
 
 program
   .name('agentinit')
   .description('A CLI tool for managing and configuring AI coding agents')
-  .version('1.0.1');
+  .version(getOwnPackageVersion());
 
 // New subcommand groups
 registerSkillsCommand(program);

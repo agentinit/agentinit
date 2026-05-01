@@ -49,6 +49,12 @@ jobs:
       - name: Build project
         run: npm run build
 
+      - name: Smoke test built CLI
+        run: npm run smoke:cli
+
+      - name: Smoke test packed CLI
+        run: npm run smoke:pack
+
       - name: Verify the integrity of provenance attestations and registry signatures for installed dependencies
         run: npm audit signatures
 
@@ -56,3 +62,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npx semantic-release
+
+      - name: Canary test published CLI
+        run: npm run canary:published
