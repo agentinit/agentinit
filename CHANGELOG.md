@@ -1,3 +1,10 @@
+## [1.25.2](https://github.com/agentinit/agentinit/compare/v1.25.1...v1.25.2) (2026-05-01)
+
+
+### Bug Fixes
+
+* harden published cli canary ([542a8b0](https://github.com/agentinit/agentinit/commit/542a8b0e946702e223de5ccdb122383a07ebfef7))
+
 ## [1.25.1](https://github.com/agentinit/agentinit/compare/v1.25.0...v1.25.1) (2026-05-01)
 
 
