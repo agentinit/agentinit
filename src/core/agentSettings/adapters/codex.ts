@@ -102,6 +102,7 @@ export const codexSettingsAdapter: AgentSettingsAdapter = {
     }),
     featureSetting('codex_hooks', 'Codex hooks', 'Enable lifecycle hooks from hooks.json or inline [hooks].'),
     featureSetting('fast_mode', 'Fast mode', 'Enable Fast mode selection and the service_tier = "fast" path.'),
+    featureSetting('goals', 'Goals', 'Enable the goals feature.'),
     featureSetting('memories', 'Memories', 'Enable Codex Memories.'),
     featureSetting('multi_agent', 'Multi-agent', 'Enable subagent collaboration tools.'),
     featureSetting('personality', 'Personality', 'Enable personality selection controls.'),
