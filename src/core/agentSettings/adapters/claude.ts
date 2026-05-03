@@ -108,6 +108,11 @@ export const claudeSettingsAdapter: AgentSettingsAdapter = {
       defaultScope: 'global',
       category: 'runtime',
     }),
+    setting('defaultShell', 'enum', 'Default shell', 'Primary shell for interactive ! commands and shell blocks.', {
+      allowedValues: ['bash', 'powershell', 'zsh'],
+      defaultScope: 'global',
+      category: 'runtime',
+    }),
     setting('showThinkingSummaries', 'boolean', 'Thinking summaries', 'Show extended thinking summaries in interactive sessions.', {
       defaultScope: 'global',
       category: 'ui',
