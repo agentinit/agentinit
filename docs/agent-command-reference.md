@@ -114,6 +114,7 @@ Codex settings are written to `~/.codex/config.toml` for `--global` and `.codex/
 - `features.apps`
 - `features.codex_hooks`
 - `features.fast_mode`
+- `features.goals`
 - `features.memories`
 - `features.multi_agent`
 - `features.personality`
