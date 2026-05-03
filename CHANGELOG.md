@@ -1,3 +1,10 @@
+# [1.26.0](https://github.com/agentinit/agentinit/compare/v1.25.2...v1.26.0) (2026-05-03)
+
+
+### Features
+
+* **agent:** add codex goals feature setting ([7ca8db6](https://github.com/agentinit/agentinit/commit/7ca8db6a7021d791cf2daa61679d0f97d5c28bd2))
+
 ## [1.25.2](https://github.com/agentinit/agentinit/compare/v1.25.1...v1.25.2) (2026-05-01)
 
 
