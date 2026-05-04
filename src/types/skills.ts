@@ -3,6 +3,9 @@ export interface SkillInfo {
   description: string;
   path: string;
   generatedContent?: string;
+  version?: string;
+  author?: string;
+  source?: string;
 }
 
 export const SHARED_SKILLS_TARGET_ID = 'agents';

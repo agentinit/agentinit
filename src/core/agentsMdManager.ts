@@ -72,8 +72,8 @@ export class AgentsMdManager {
       const headingMatch = line.match(/^(#{1,6})\s+(.+)$/);
       if (headingMatch) {
         flushSection();
-        currentLevel = headingMatch[1].length;
-        currentHeading = headingMatch[2].trim();
+        currentLevel = headingMatch[1]!.length;
+        currentHeading = headingMatch[2]!.trim();
         currentBodyLines = [];
       } else if (currentHeading !== null) {
         currentBodyLines.push(line);
@@ -108,7 +108,7 @@ export class AgentsMdManager {
 
     if (existingIndex >= 0) {
       // Replace existing section body
-      sections[existingIndex].body = options.body;
+      sections[existingIndex]!.body = options.body;
       newContent = this.serializeSections(sections);
     } else {
       // Append new section
