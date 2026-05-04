@@ -14,6 +14,7 @@ import { registerRulesCommand } from './commands/rules.js';
 import { registerPluginsCommand } from './commands/plugins.js';
 import { registerLockCommand } from './commands/lock.js';
 import { registerAgentCommand } from './commands/agent.js';
+import { registerAgentsMdCommand } from './commands/agentsMd.js';
 import { logger } from './utils/logger.js';
 import { getOwnPackageVersion } from './utils/ownPackageVersion.js';
 
@@ -32,6 +33,7 @@ registerPluginsCommand(program);
 registerConfigCommand(program);
 registerLockCommand(program);
 registerAgentCommand(program);
+registerAgentsMdCommand(program);
 
 // Core commands (unchanged)
 program
@@ -53,6 +55,7 @@ program
   .option('-a, --agent <agents...>', 'Target specific agent(s)')
   .option('-d, --dry-run', 'Show what would be changed without making changes')
   .option('-b, --backup', 'Create backup before syncing')
+  .option('--symlink', 'Create CLAUDE.md symlink to AGENTS.md after sync')
   .action(syncCommand);
 
 program

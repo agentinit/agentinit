@@ -69,7 +69,7 @@ export interface SkillsRemoveResult {
 }
 
 export interface SkillSource {
-  type: 'marketplace' | 'github' | 'gitlab' | 'bitbucket' | 'local';
+  type: 'marketplace' | 'github' | 'gitlab' | 'bitbucket' | 'local' | 'well-known';
   marketplace?: string | undefined;
   pluginName?: string | undefined;
   url?: string | undefined;

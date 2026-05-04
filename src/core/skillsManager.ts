@@ -84,6 +84,11 @@ export class SkillsManager {
       return httpSource;
     }
 
+    // Well-known endpoint or direct URL (not a git host)
+    if (source.startsWith('http://') || source.startsWith('https://')) {
+      return { type: 'well-known', url: source };
+    }
+
     // Full git URL
     const sshSource = this.parseSshRepositorySource(source);
     if (sshSource) {
@@ -673,6 +678,24 @@ export class SkillsManager {
           ...discovered,
           cleanup,
         };
+      }
+
+      if (resolved.type === 'well-known') {
+        if (!resolved.url) {
+          throw new Error(`Invalid well-known source: ${source}`);
+        }
+        const { WellKnownDiscovery } = await import('./wellKnownDiscovery.js');
+        const discovery = new WellKnownDiscovery();
+        const discovered = await discovery.discover(resolved.url);
+        const skills = discovered.map((d: any) => ({
+          name: d.name,
+          description: d.description || `Skill from ${d.source}`,
+          path: d.source,
+          source: 'well-known',
+          author: d.author,
+          version: d.version,
+        }));
+        return { skills, warnings: [], cleanup };
       }
 
       let repoPath: string;
