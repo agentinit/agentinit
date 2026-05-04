@@ -101,6 +101,68 @@ describe('SkillsManager', () => {
     expect(installedPath).toBe(join(targetDir, '.claude/skills', 'safe-skill'));
   });
 
+  it('installs skills discovered from a well-known index through remote repository sources', async () => {
+    const manager = new SkillsManager();
+    const repoDir = await mkdtemp(join(tmpdir(), 'agentinit-well-known-repo-'));
+    const projectDir = await mkdtemp(join(tmpdir(), 'agentinit-well-known-project-'));
+    tempDirs.push(repoDir, projectDir);
+
+    await mkdir(join(repoDir, 'skills', 'remote-skill'), { recursive: true });
+    await writeFile(
+      join(repoDir, 'skills', 'remote-skill', 'SKILL.md'),
+      '---\nname: remote-skill\ndescription: repo description\n---\nUse the remote skill.\n',
+    );
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      skills: [
+        {
+          name: 'remote-skill',
+          description: 'Index description',
+          source: 'agentinit-labs/well-known-skills',
+          version: '1.2.3',
+          author: 'AgentInit',
+        },
+      ],
+    }), { status: 200 }));
+    vi.spyOn(manager, 'cloneRepo').mockResolvedValue(repoDir);
+
+    const result = await manager.addFromSource('https://skills.example.com', projectDir, {
+      agents: [SHARED_SKILLS_TARGET_ID],
+      scan: false,
+      yes: true,
+    });
+
+    expect(result.skipped).toEqual([]);
+    expect(result.installed).toHaveLength(1);
+    expect(result.installed[0]?.skill).toMatchObject({
+      name: 'remote-skill',
+      description: 'Index description',
+      source: 'agentinit-labs/well-known-skills',
+      version: '1.2.3',
+      author: 'AgentInit',
+    });
+    await expect(readFile(join(projectDir, '.agents/skills/remote-skill/SKILL.md'), 'utf8'))
+      .resolves.toContain('Use the remote skill.');
+  });
+
+  it('rejects local paths in well-known skill indexes', async () => {
+    const manager = new SkillsManager();
+    const projectDir = await mkdtemp(join(tmpdir(), 'agentinit-well-known-project-'));
+    tempDirs.push(projectDir);
+
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      skills: [
+        {
+          name: 'local-leak',
+          source: projectDir,
+        },
+      ],
+    }), { status: 200 }));
+
+    await expect(
+      manager.discoverFromSource('https://skills.example.com', projectDir)
+    ).rejects.toThrow('must use a remote repository source');
+  });
+
   it('installs skills into the canonical directory and symlinks Claude paths', async () => {
     const manager = new SkillsManager();
     const srcDir = await mkdtemp(join(tmpdir(), 'agentinit-skill-src-'));

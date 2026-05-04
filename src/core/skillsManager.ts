@@ -32,6 +32,7 @@ import type {
 import { SHARED_SKILLS_TARGET_ID } from '../types/skills.js';
 import { InstallLock, hashDirectory, logLockWriteWarning } from './installLock.js';
 import type { LockSource, LockAction } from '../types/lockfile.js';
+import type { WellKnownSkill } from './wellKnownDiscovery.js';
 
 const execFileAsync = promisify(execFile);
 const DEFAULT_SKILLS_CATALOG = {
@@ -684,18 +685,7 @@ export class SkillsManager {
         if (!resolved.url) {
           throw new Error(`Invalid well-known source: ${source}`);
         }
-        const { WellKnownDiscovery } = await import('./wellKnownDiscovery.js');
-        const discovery = new WellKnownDiscovery();
-        const discovered = await discovery.discover(resolved.url);
-        const skills = discovered.map((d: any) => ({
-          name: d.name,
-          description: d.description || `Skill from ${d.source}`,
-          path: d.source,
-          source: 'well-known',
-          author: d.author,
-          version: d.version,
-        }));
-        return { skills, warnings: [], cleanup };
+        return await this.loadWellKnownSkills(source, resolved.url, projectPath);
       }
 
       let repoPath: string;
@@ -740,6 +730,71 @@ export class SkillsManager {
     } catch (error) {
       await cleanup();
       throw error;
+    }
+  }
+
+  private async loadWellKnownSkills(
+    sourceLabel: string,
+    url: string,
+    projectPath: string,
+  ): Promise<LoadedSkillsContext> {
+    const { WellKnownDiscovery } = await import('./wellKnownDiscovery.js');
+    const discovery = new WellKnownDiscovery();
+    const discovered = await discovery.discover(url);
+    const contexts: LoadedSkillsContext[] = [];
+    const warnings: string[] = [];
+    const skills: SkillInfo[] = [];
+
+    const cleanup = async () => {
+      await Promise.all(contexts.map(context => context.cleanup()));
+    };
+
+    try {
+      for (const entry of discovered) {
+        this.validateWellKnownSkillSource(entry, sourceLabel);
+        const context = await this.loadDiscoveredSkillsContext(entry.source, projectPath);
+        contexts.push(context);
+        warnings.push(...context.warnings);
+
+        const matchingSkills = context.skills.filter(
+          skill => skill.name.toLowerCase() === entry.name.toLowerCase()
+        );
+        const selectedSkills = matchingSkills.length > 0 ? matchingSkills : context.skills;
+        if (selectedSkills.length === 0) {
+          warnings.push(`Well-known skill "${entry.name}" from ${entry.source} did not contain installable skills.`);
+          continue;
+        }
+
+        for (const skill of selectedSkills) {
+          skills.push({
+            ...skill,
+            description: entry.description || skill.description,
+            source: entry.source,
+            ...(entry.author ? { author: entry.author } : {}),
+            ...(entry.version ? { version: entry.version } : {}),
+          });
+        }
+      }
+
+      return { skills, warnings, cleanup };
+    } catch (error) {
+      await cleanup();
+      throw error;
+    }
+  }
+
+  private validateWellKnownSkillSource(skill: WellKnownSkill, sourceLabel: string): void {
+    const source = skill.source.trim();
+    if (!source) {
+      throw new Error(`Well-known skill "${skill.name}" from ${sourceLabel} is missing a source.`);
+    }
+    if (source.startsWith('.') || source.startsWith('/') || source.startsWith('~')) {
+      throw new Error(`Well-known skill "${skill.name}" from ${sourceLabel} must use a remote repository source.`);
+    }
+
+    const resolved = this.resolveSource(source);
+    if (resolved.type === 'local' || resolved.type === 'well-known' || resolved.type === 'marketplace') {
+      throw new Error(`Well-known skill "${skill.name}" from ${sourceLabel} must use a remote repository source.`);
     }
   }
 

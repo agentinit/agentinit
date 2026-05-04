@@ -46,7 +46,7 @@ export class WellKnownDiscovery {
           errors.push(`${url}: invalid response structure`);
           continue;
         }
-        return data.skills;
+        return this.validateSkills(data.skills, url);
       } catch (error) {
         errors.push(`${url}: ${error instanceof Error ? error.message : 'unknown error'}`);
       }
@@ -57,19 +57,26 @@ export class WellKnownDiscovery {
     );
   }
 
-  /**
-   * Check if a URL looks like a well-known endpoint (not a git repo or local path).
-   */
-  static isWellKnownUrl(source: string): boolean {
-    if (source.startsWith('.') || source.startsWith('/') || source.startsWith('~')) {
-      return false;
-    }
-    if (source.includes('.git') || source.startsWith('git@')) {
-      return false;
-    }
-    if (source.match(/^\w+:\/\//)) {
-      return true;
-    }
-    return false;
+  private validateSkills(skills: unknown[], url: string): WellKnownSkill[] {
+    return skills.map((entry, index) => {
+      if (!entry || typeof entry !== 'object') {
+        throw new WellKnownDiscoveryError(`${url}: skill at index ${index} must be an object`);
+      }
+
+      const skill = entry as Record<string, unknown>;
+      const name = typeof skill.name === 'string' ? skill.name.trim() : '';
+      const source = typeof skill.source === 'string' ? skill.source.trim() : '';
+      if (!name || !source) {
+        throw new WellKnownDiscoveryError(`${url}: skill at index ${index} must include string name and source`);
+      }
+
+      return {
+        name,
+        source,
+        ...(typeof skill.description === 'string' ? { description: skill.description } : {}),
+        ...(typeof skill.version === 'string' ? { version: skill.version } : {}),
+        ...(typeof skill.author === 'string' ? { author: skill.author } : {}),
+      };
+    });
   }
 }

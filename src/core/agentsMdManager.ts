@@ -1,11 +1,16 @@
 import { promises as fs } from 'fs';
-import { resolve, dirname } from 'path';
+import { resolve } from 'path';
 import { fileExists, readFileIfExists, writeFile, createRelativeSymlink } from '../utils/fs.js';
 
 export interface AgentsMdSection {
   heading: string;
   body: string;
   level: number;
+}
+
+interface ParsedSection extends AgentsMdSection {
+  startLine: number;
+  endLine: number;
 }
 
 export interface SetSectionOptions {
@@ -41,46 +46,51 @@ export class AgentsMdManager {
   }
 
   /**
-   * Read per-agent variant (CLAUDE.md, .cursorrules, etc.), or null.
-   */
-  async readAgentFile(agentFileName: string): Promise<string | null> {
-    return readFileIfExists(resolve(this.projectPath, agentFileName));
-  }
-
-  /**
    * Parse sections from markdown content.
    * Returns array of sections with heading level, heading text, and body.
    */
   parseSections(content: string): AgentsMdSection[] {
+    return this.parseSectionsWithRanges(content).map(({ heading, body, level }) => ({
+      heading,
+      body,
+      level,
+    }));
+  }
+
+  private parseSectionsWithRanges(content: string): ParsedSection[] {
     const lines = content.split('\n');
-    const sections: AgentsMdSection[] = [];
+    const sections: ParsedSection[] = [];
     let currentHeading: string | null = null;
     let currentLevel = 0;
+    let currentStartLine = 0;
     let currentBodyLines: string[] = [];
 
-    function flushSection() {
+    function flushSection(endLine: number) {
       if (currentHeading !== null) {
         sections.push({
           heading: currentHeading,
           body: currentBodyLines.join('\n').trimEnd(),
           level: currentLevel,
+          startLine: currentStartLine,
+          endLine,
         });
       }
     }
 
-    for (const line of lines) {
+    for (const [index, line] of lines.entries()) {
       const headingMatch = line.match(/^(#{1,6})\s+(.+)$/);
       if (headingMatch) {
-        flushSection();
+        flushSection(index);
         currentLevel = headingMatch[1]!.length;
         currentHeading = headingMatch[2]!.trim();
+        currentStartLine = index;
         currentBodyLines = [];
       } else if (currentHeading !== null) {
         currentBodyLines.push(line);
       }
     }
 
-    flushSection();
+    flushSection(lines.length);
     return sections;
   }
 
@@ -99,24 +109,26 @@ export class AgentsMdManager {
   async setSection(options: SetSectionOptions): Promise<void> {
     const agentsMdPath = this.getAgentsMdPath();
     const content = (await readFileIfExists(agentsMdPath)) || '';
-    const sections = this.parseSections(content);
+    const sections = this.parseSectionsWithRanges(content);
     const existingIndex = sections.findIndex(
       s => s.heading.trim().toLowerCase() === options.heading.trim().toLowerCase()
     );
 
-    let newContent: string;
+    const lines = this.contentLines(content);
+    const sectionText = this.serializeSection({
+      heading: options.heading,
+      body: options.body,
+      level: existingIndex >= 0 ? sections[existingIndex]!.level : 2,
+    });
 
     if (existingIndex >= 0) {
-      // Replace existing section body
-      sections[existingIndex]!.body = options.body;
-      newContent = this.serializeSections(sections);
+      const existing = sections[existingIndex]!;
+      if (existing.endLine < lines.length && lines[existing.endLine - 1] === '') {
+        sectionText.push('');
+      }
+      lines.splice(existing.startLine, existing.endLine - existing.startLine, ...sectionText);
     } else {
-      // Append new section
-      const newSection: AgentsMdSection = {
-        heading: options.heading,
-        body: options.body,
-        level: 2,
-      };
+      const insertion = this.sectionInsertionLines(lines, sectionText, options.placement);
 
       if (options.placement?.startsWith('after ')) {
         const afterHeading = options.placement.slice(6).trim();
@@ -124,19 +136,18 @@ export class AgentsMdManager {
           s => s.heading.trim().toLowerCase() === afterHeading.toLowerCase()
         );
         if (afterIndex >= 0) {
-          sections.splice(afterIndex + 1, 0, newSection);
+          lines.splice(sections[afterIndex]!.endLine, 0, ...insertion);
         } else {
-          sections.push(newSection);
+          lines.push(...insertion);
         }
       } else if (options.placement === 'prepend') {
-        sections.unshift(newSection);
+        lines.unshift(...insertion);
       } else {
-        sections.push(newSection);
+        lines.push(...insertion);
       }
-      newContent = this.serializeSections(sections);
     }
 
-    await writeFile(agentsMdPath, newContent);
+    await writeFile(agentsMdPath, this.joinContentLines(lines));
   }
 
   /**
@@ -148,15 +159,17 @@ export class AgentsMdManager {
     const content = await readFileIfExists(agentsMdPath);
     if (!content) return false;
 
-    const sections = this.parseSections(content);
+    const sections = this.parseSectionsWithRanges(content);
     const index = sections.findIndex(
       s => s.heading.trim().toLowerCase() === options.heading.trim().toLowerCase()
     );
 
     if (index < 0) return false;
 
-    sections.splice(index, 1);
-    await writeFile(agentsMdPath, this.serializeSections(sections));
+    const lines = this.contentLines(content);
+    const section = sections[index]!;
+    lines.splice(section.startLine, section.endLine - section.startLine);
+    await writeFile(agentsMdPath, this.joinContentLines(lines));
     return true;
   }
 
@@ -189,17 +202,45 @@ export class AgentsMdManager {
   }
 
   /**
-   * Serialize sections back to markdown string.
+   * Serialize one section to markdown lines.
    */
-  private serializeSections(sections: AgentsMdSection[]): string {
-    const parts: string[] = [];
-    for (const section of sections) {
-      parts.push(`${'#'.repeat(section.level)} ${section.heading}`);
-      if (section.body) {
-        parts.push(section.body);
-      }
-      parts.push('');
+  private serializeSection(section: AgentsMdSection): string[] {
+    const lines = [`${'#'.repeat(section.level)} ${section.heading}`];
+    if (section.body) {
+      lines.push(...section.body.replace(/\n$/, '').split('\n'));
     }
-    return parts.join('\n').trimEnd() + '\n';
+    return lines;
+  }
+
+  private sectionInsertionLines(
+    existingLines: string[],
+    sectionLines: string[],
+    placement: SetSectionOptions['placement'],
+  ): string[] {
+    const insertion = [...sectionLines];
+    const hasExistingContent = existingLines.some(line => line.trim());
+    if (!hasExistingContent) {
+      return insertion;
+    }
+
+    if (placement === 'prepend') {
+      return [...insertion, ''];
+    }
+
+    return ['', ...insertion];
+  }
+
+  private contentLines(content: string): string[] {
+    if (!content) {
+      return [];
+    }
+    return content.replace(/\n$/, '').split('\n');
+  }
+
+  private joinContentLines(lines: string[]): string {
+    while (lines.length > 0 && lines[lines.length - 1] === '') {
+      lines.pop();
+    }
+    return lines.length > 0 ? `${lines.join('\n')}\n` : '';
   }
 }

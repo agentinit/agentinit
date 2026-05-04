@@ -1,6 +1,6 @@
 import { Command } from 'commander';
 import ora from 'ora';
-import { green, red } from 'kleur/colors';
+import { green } from 'kleur/colors';
 import { logger } from '../utils/logger.js';
 import { AgentsMdManager } from '../core/agentsMdManager.js';
 
