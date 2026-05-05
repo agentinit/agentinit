@@ -84,6 +84,11 @@ export class SkillsManager {
       return httpSource;
     }
 
+    // Well-known endpoint or direct URL (not a git host)
+    if (source.startsWith('http://') || source.startsWith('https://')) {
+      return { type: 'well-known', url: source };
+    }
+
     // Full git URL
     const sshSource = this.parseSshRepositorySource(source);
     if (sshSource) {
@@ -675,6 +680,21 @@ export class SkillsManager {
         };
       }
 
+      if (resolved.type === 'well-known') {
+        if (!resolved.url) {
+          throw new Error(`Invalid well-known source: ${source}`);
+        }
+        const discovered = await this.loadWellKnownSkillsContext(resolved.url, projectPath);
+        return {
+          skills: discovered.skills,
+          warnings: discovered.warnings,
+          cleanup: async () => {
+            await discovered.cleanup();
+            await cleanup();
+          },
+        };
+      }
+
       let repoPath: string;
       if (resolved.type === 'github' || resolved.type === 'gitlab' || resolved.type === 'bitbucket') {
         if (!resolved.url) {
@@ -712,6 +732,65 @@ export class SkillsManager {
           ? [`Resolved "${source}" from the default skills catalog ${DEFAULT_SKILLS_CATALOG.owner}/${DEFAULT_SKILLS_CATALOG.repo}. Use "./${source}" for a local path.`]
           : []),
       ];
+
+      return { skills, warnings, cleanup };
+    } catch (error) {
+      await cleanup();
+      throw error;
+    }
+  }
+
+  private async loadWellKnownSkillsContext(
+    source: string,
+    projectPath: string,
+  ): Promise<LoadedSkillsContext> {
+    const { WellKnownDiscovery } = await import('./wellKnownDiscovery.js');
+    const discovery = new WellKnownDiscovery();
+    const indexSkills = await discovery.discover(source);
+    const contexts: LoadedSkillsContext[] = [];
+    const skills: SkillInfo[] = [];
+    const warnings: string[] = [];
+    const cleanup = async () => {
+      await Promise.all(contexts.map(context => context.cleanup().catch(() => {})));
+      contexts.length = 0;
+    };
+
+    try {
+      for (const indexSkill of indexSkills) {
+        const nestedSource = this.resolveSource(indexSkill.source);
+        if (nestedSource.type === 'well-known') {
+          warnings.push(`Skipped "${indexSkill.name}": well-known indexes cannot reference another well-known index`);
+          continue;
+        }
+
+        const context = await this.loadDiscoveredSkillsContext(indexSkill.source, projectPath);
+        contexts.push(context);
+
+        const exactMatches = context.skills.filter(
+          skill => skill.name.trim().toLowerCase() === indexSkill.name.trim().toLowerCase(),
+        );
+        const selectedSkills = exactMatches.length > 0
+          ? exactMatches
+          : context.skills.length === 1
+            ? context.skills
+            : [];
+
+        if (selectedSkills.length === 0) {
+          warnings.push(`Skipped "${indexSkill.name}": no matching skill found at ${indexSkill.source}`);
+          continue;
+        }
+
+        for (const skill of selectedSkills) {
+          skills.push({
+            ...skill,
+            name: indexSkill.name || skill.name,
+            description: indexSkill.description || skill.description,
+            source: 'well-known',
+            ...(indexSkill.author ? { author: indexSkill.author } : {}),
+            ...(indexSkill.version ? { version: indexSkill.version } : {}),
+          });
+        }
+      }
 
       return { skills, warnings, cleanup };
     } catch (error) {

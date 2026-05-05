@@ -466,6 +466,43 @@ export function registerSkillsCommand(program: Command): void {
       }
     });
 
+  // --- skills discover <url> ---
+  skills
+    .command('discover <url>')
+    .description('Discover skills from a well-known endpoint or URL')
+    .action(async (url: string, options) => {
+      logger.titleBox('AgentInit  Skills Discovery');
+      const spinner = ora(`Discovering skills from ${url}...`).start();
+
+      try {
+        const projectPath = process.cwd();
+        const agentManager = new AgentManager();
+        const skillsManager = new SkillsManager(agentManager);
+        const result = await skillsManager.discoverFromSource(url, projectPath);
+        spinner.stop();
+
+        if (result.skills.length === 0) {
+          logger.info('No skills discovered.');
+          return;
+        }
+
+        for (const skill of result.skills) {
+          logger.info(`  ${green(skill.name)}${skill.version ? ` @ ${skill.version}` : ''}`);
+          if (skill.description) {
+            logger.info(`    ${skill.description}`);
+          }
+          if (skill.author) {
+            logger.info(`    Author: ${skill.author}`);
+          }
+        }
+        logger.info(`\nTotal: ${result.skills.length} skill(s)`);
+      } catch (error) {
+        spinner.fail('Discovery failed');
+        logger.error(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        process.exit(1);
+      }
+    });
+
   // --- skills list (alias: ls) ---
   skills
     .command('list')

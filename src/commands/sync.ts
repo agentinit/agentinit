@@ -9,6 +9,7 @@ interface SyncOptions {
   dryRun?: boolean;
   backup?: boolean;
   agent?: string[];
+  symlink?: boolean;
 }
 
 export async function syncCommand(options: SyncOptions): Promise<void> {
@@ -68,6 +69,17 @@ export async function syncCommand(options: SyncOptions): Promise<void> {
         
         if (options.backup && result.changes.some(c => c.action === 'backed_up')) {
           logger.info('💾 Backup files created with .agentinit.backup extension');
+        }
+
+        if (options.symlink) {
+          const { AgentsMdManager } = await import('../core/agentsMdManager.js');
+          const mdManager = new AgentsMdManager(cwd);
+          try {
+            await mdManager.symlinkClaude();
+            logger.info('🔗 CLAUDE.md symlinked to AGENTS.md');
+          } catch (error) {
+            logger.warning(`Failed to create symlink: ${error instanceof Error ? error.message : 'Unknown error'}`);
+          }
         }
       }
     } else {

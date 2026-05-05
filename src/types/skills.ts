@@ -3,6 +3,9 @@ export interface SkillInfo {
   description: string;
   path: string;
   generatedContent?: string;
+  version?: string;
+  author?: string;
+  source?: string;
 }
 
 export const SHARED_SKILLS_TARGET_ID = 'agents';
@@ -69,7 +72,7 @@ export interface SkillsRemoveResult {
 }
 
 export interface SkillSource {
-  type: 'marketplace' | 'github' | 'gitlab' | 'bitbucket' | 'local';
+  type: 'marketplace' | 'github' | 'gitlab' | 'bitbucket' | 'local' | 'well-known';
   marketplace?: string | undefined;
   pluginName?: string | undefined;
   url?: string | undefined;
