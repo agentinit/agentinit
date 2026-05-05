@@ -619,6 +619,31 @@ describe('skills command', () => {
     expect(errorSpy).toHaveBeenCalledWith('Error: Repository not found');
   });
 
+  it('stops before target prompts when a bare skill is missing from the default catalog', async () => {
+    const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => {});
+    const discardSpy = vi.spyOn(SkillsManager.prototype, 'discardPreparedSource').mockResolvedValue();
+    vi.spyOn(SkillsManager.prototype, 'prepareSource').mockResolvedValue({
+      skills: [],
+      warnings: [
+        'Resolved "non_existing_skill" from the default skills catalog vercel-labs/agent-skills. Use "./non_existing_skill" for a local path.',
+      ],
+    });
+    const addSpy = vi.spyOn(SkillsManager.prototype, 'addFromSource');
+
+    const program = new Command();
+    registerSkillsCommand(program);
+
+    await program.parseAsync(['skills', 'add', 'non_existing_skill'], { from: 'user' });
+
+    expect(spinner.warn).toHaveBeenCalledWith('No skills found in the source.');
+    expect(warnSpy).toHaveBeenCalledWith(
+      'Resolved "non_existing_skill" from the default skills catalog vercel-labs/agent-skills. Use "./non_existing_skill" for a local path.',
+    );
+    expect(promptsMock).not.toHaveBeenCalled();
+    expect(addSpy).not.toHaveBeenCalled();
+    expect(discardSpy).toHaveBeenCalledWith('non_existing_skill', process.cwd(), {});
+  });
+
   it('passes an update confirmation callback that prompts before overwriting changed skills', async () => {
     vi.spyOn(SkillsManager.prototype, 'prepareSource').mockResolvedValue({
       skills: [],

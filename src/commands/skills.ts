@@ -294,11 +294,23 @@ export function registerSkillsCommand(program: Command): void {
       const verifySpinner = ora('Verifying skill source...').start();
       let selectedPluginNames: string[] | undefined;
       let preparedSkills: SkillInfo[] = [];
+      let preparedWarnings: string[] = [];
       try {
         const prepared = await skillsManager.prepareSource(source, projectPath, {
           from: options.from,
         });
         preparedSkills = prepared.skills;
+        preparedWarnings = prepared.warnings;
+        if (preparedSkills.length === 0 && isDefaultCatalogMiss(preparedWarnings)) {
+          verifySpinner.warn('No skills found in the source.');
+          for (const warning of preparedWarnings) {
+            logger.warn(warning);
+          }
+          await skillsManager.discardPreparedSource(source, projectPath, {
+            from: options.from,
+          });
+          return;
+        }
         verifySpinner.stop();
       } catch (error) {
         if (error instanceof MultipleBundlePluginsError) {
@@ -1378,6 +1390,10 @@ function buildSkillsAddCommand(source: string, from: string | undefined, extraAr
 
   args.push(...extraArgs);
   return args.join(' ');
+}
+
+function isDefaultCatalogMiss(warnings: string[]): boolean {
+  return warnings.some(warning => warning.includes('from the default skills catalog'));
 }
 
 function displayDiscoveredSkills(skills: SkillInfo[], warnings: string[]): void {
