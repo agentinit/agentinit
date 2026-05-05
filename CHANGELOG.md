@@ -1,3 +1,16 @@
+# [1.27.0](https://github.com/agentinit/agentinit/compare/v1.26.0...v1.27.0) (2026-05-05)
+
+
+### Bug Fixes
+
+* harden well-known skills and agents md management ([9aa5fc5](https://github.com/agentinit/agentinit/commit/9aa5fc5725df3530b64585905241ed27e2336cfd))
+* **types:** add well-known to union types and SkillInfo metadata ([fcf7852](https://github.com/agentinit/agentinit/commit/fcf7852d492d21ec9705d57b8f020652a5fb4f47))
+
+
+### Features
+
+* well-known discovery, AGENTS.md management, sync symlink, MCP env ([084c608](https://github.com/agentinit/agentinit/commit/084c608b54de6067c695eb4facf363f27d2b8235))
+
 # [1.26.0](https://github.com/agentinit/agentinit/compare/v1.25.2...v1.26.0) (2026-05-03)
 
 
