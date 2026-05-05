@@ -1,3 +1,10 @@
+## [1.27.1](https://github.com/agentinit/agentinit/compare/v1.27.0...v1.27.1) (2026-05-05)
+
+
+### Bug Fixes
+
+* stop skills add on default catalog miss ([652cb9d](https://github.com/agentinit/agentinit/commit/652cb9d7a973133c5e5f81c641144bcb3035fb08))
+
 # [1.27.0](https://github.com/agentinit/agentinit/compare/v1.26.0...v1.27.0) (2026-05-05)
 
 
