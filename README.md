@@ -149,7 +149,26 @@ agentinit sync                # Sync configurations
 agentinit sync --agent claude cursor
 agentinit sync --dry-run      # Preview changes
 agentinit sync --backup       # Create backups
+agentinit sync --symlink      # Create CLAUDE.md -> AGENTS.md after syncing
 ```
+
+`--symlink` refuses to overwrite an existing real `CLAUDE.md`; move or remove that file first if you want `AGENTS.md` to be the shared Claude alias.
+
+### `agentinit agents-md`
+
+Manage `AGENTS.md` directly when you want a shared file for tools that support it.
+
+```bash
+agentinit agents-md init
+agentinit agents-md read
+agentinit agents-md parse
+agentinit agents-md set-section "Project Context" --body "Use strict TypeScript."
+agentinit agents-md set-section "Testing" --file ./testing-notes.md --placement "after Project Context"
+agentinit agents-md remove-section "Testing"
+agentinit agents-md symlink-claude
+```
+
+Section edits preserve unrelated markdown content and operate on the selected heading subtree. `symlink-claude` creates `CLAUDE.md -> AGENTS.md` but refuses to overwrite a real `CLAUDE.md`.
 
 ### `agentinit apply`
 
@@ -235,6 +254,10 @@ Install, list, update, and remove reusable agent skills from marketplaces, local
 # Inspect a source before installing
 agentinit skills add owner/repo --list
 
+# Discover a well-known skill catalog
+agentinit skills discover https://example.com
+agentinit skills discover https://example.com/.well-known/agent-skills/index.json
+
 # Install a bare skill name
 # Uses your configured default marketplace when one is set,
 # otherwise falls back to the public catalog (`vercel-labs/agent-skills`)
@@ -290,7 +313,9 @@ agentinit skills update openai-docs --everywhere
 agentinit skills remove openai-docs
 ```
 
-Skills are installed into a canonical store (`.agents/skills/` for project, `~/.agents/skills/` for global) with agent-specific paths symlinked automatically. Bare skill names resolve from your default marketplace or fall back to the public catalog at `vercel-labs/agent-skills`. Supports GitHub, GitLab, Bitbucket, local paths, and marketplace sources.
+Skills are installed into a canonical store (`.agents/skills/` for project, `~/.agents/skills/` for global) with agent-specific paths symlinked automatically. Bare skill names resolve from your default marketplace or fall back to the public catalog at `vercel-labs/agent-skills`. Supports GitHub, GitLab, Bitbucket, local paths, well-known catalogs, and marketplace sources.
+
+Well-known catalogs are JSON indexes at `/.well-known/agent-skills/index.json`, with fallback to `/.well-known/skills/index.json`. Each entry must include a `name` and a concrete skill `source`; direct index URLs are also supported.
 
 If a GitHub or local Claude bundle contains multiple plugins, `agentinit skills add` prompts you to choose one or more bundled plugins to inspect or install. Use `--all` to skip the prompt and install or inspect every bundled plugin. In non-interactive `--yes` mode, AgentInit can also auto-resolve bundled plugins from `--skill` when those skill names map uniquely; ambiguous selections still fail with guidance.
 

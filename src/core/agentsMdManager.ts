@@ -1,5 +1,5 @@
 import { promises as fs } from 'fs';
-import { resolve, dirname } from 'path';
+import { resolve } from 'path';
 import { fileExists, readFileIfExists, writeFile, createRelativeSymlink } from '../utils/fs.js';
 
 export interface AgentsMdSection {
@@ -11,11 +11,17 @@ export interface AgentsMdSection {
 export interface SetSectionOptions {
   heading: string;
   body: string;
-  placement?: 'append' | 'prepend' | 'after <heading>';
+  placement?: 'append' | 'prepend' | `after ${string}`;
 }
 
 export interface RemoveSectionOptions {
   heading: string;
+}
+
+interface AgentsMdSectionRange extends AgentsMdSection {
+  start: number;
+  headingEnd: number;
+  end: number;
 }
 
 export class AgentsMdManager {
@@ -52,36 +58,11 @@ export class AgentsMdManager {
    * Returns array of sections with heading level, heading text, and body.
    */
   parseSections(content: string): AgentsMdSection[] {
-    const lines = content.split('\n');
-    const sections: AgentsMdSection[] = [];
-    let currentHeading: string | null = null;
-    let currentLevel = 0;
-    let currentBodyLines: string[] = [];
-
-    function flushSection() {
-      if (currentHeading !== null) {
-        sections.push({
-          heading: currentHeading,
-          body: currentBodyLines.join('\n').trimEnd(),
-          level: currentLevel,
-        });
-      }
-    }
-
-    for (const line of lines) {
-      const headingMatch = line.match(/^(#{1,6})\s+(.+)$/);
-      if (headingMatch) {
-        flushSection();
-        currentLevel = headingMatch[1]!.length;
-        currentHeading = headingMatch[2]!.trim();
-        currentBodyLines = [];
-      } else if (currentHeading !== null) {
-        currentBodyLines.push(line);
-      }
-    }
-
-    flushSection();
-    return sections;
+    return this.parseSectionRanges(content).map(({ heading, body, level }) => ({
+      heading,
+      body,
+      level,
+    }));
   }
 
   /**
@@ -98,45 +79,35 @@ export class AgentsMdManager {
    */
   async setSection(options: SetSectionOptions): Promise<void> {
     const agentsMdPath = this.getAgentsMdPath();
-    const content = (await readFileIfExists(agentsMdPath)) || '';
-    const sections = this.parseSections(content);
-    const existingIndex = sections.findIndex(
-      s => s.heading.trim().toLowerCase() === options.heading.trim().toLowerCase()
-    );
+    const heading = this.normalizeHeadingInput(options.heading);
+    const content = ((await readFileIfExists(agentsMdPath)) || '').replace(/\r\n/g, '\n');
+    const sections = this.parseSectionRanges(content);
+    const placement = this.parsePlacement(options.placement);
+    const existing = this.findSectionRange(sections, heading);
 
     let newContent: string;
 
-    if (existingIndex >= 0) {
-      // Replace existing section body
-      sections[existingIndex]!.body = options.body;
-      newContent = this.serializeSections(sections);
+    if (existing) {
+      newContent = `${content.slice(0, existing.start)}${this.renderSection(
+        existing.level,
+        existing.heading,
+        options.body,
+      )}${content.slice(existing.end)}`;
     } else {
-      // Append new section
-      const newSection: AgentsMdSection = {
-        heading: options.heading,
-        body: options.body,
-        level: 2,
-      };
-
-      if (options.placement?.startsWith('after ')) {
-        const afterHeading = options.placement.slice(6).trim();
-        const afterIndex = sections.findIndex(
-          s => s.heading.trim().toLowerCase() === afterHeading.toLowerCase()
-        );
-        if (afterIndex >= 0) {
-          sections.splice(afterIndex + 1, 0, newSection);
-        } else {
-          sections.push(newSection);
-        }
-      } else if (options.placement === 'prepend') {
-        sections.unshift(newSection);
+      const newSection = this.renderSection(2, heading, options.body);
+      if (placement.type === 'after') {
+        const after = this.findSectionRange(sections, placement.heading);
+        newContent = after
+          ? this.insertSection(content, after.end, newSection)
+          : this.insertSection(content, content.length, newSection);
+      } else if (placement.type === 'prepend') {
+        newContent = this.insertSection(content, 0, newSection);
       } else {
-        sections.push(newSection);
+        newContent = this.insertSection(content, content.length, newSection);
       }
-      newContent = this.serializeSections(sections);
     }
 
-    await writeFile(agentsMdPath, newContent);
+    await writeFile(agentsMdPath, this.ensureTrailingNewline(newContent));
   }
 
   /**
@@ -148,38 +119,42 @@ export class AgentsMdManager {
     const content = await readFileIfExists(agentsMdPath);
     if (!content) return false;
 
-    const sections = this.parseSections(content);
-    const index = sections.findIndex(
-      s => s.heading.trim().toLowerCase() === options.heading.trim().toLowerCase()
+    const normalizedContent = content.replace(/\r\n/g, '\n');
+    const section = this.findSectionRange(
+      this.parseSectionRanges(normalizedContent),
+      this.normalizeHeadingInput(options.heading),
     );
 
-    if (index < 0) return false;
+    if (!section) return false;
 
-    sections.splice(index, 1);
-    await writeFile(agentsMdPath, this.serializeSections(sections));
+    const before = normalizedContent.slice(0, section.start).trimEnd();
+    const after = normalizedContent.slice(section.end).trimStart();
+    const newContent = [before, after].filter(Boolean).join('\n');
+    await writeFile(agentsMdPath, this.ensureTrailingNewline(newContent));
     return true;
   }
 
   /**
-   * Create a symlink CLAUDE.md -> AGENTS.md (or reverse if preferred).
-   * Removes existing CLAUDE.md if it exists.
+   * Create a symlink CLAUDE.md -> AGENTS.md.
+   * Refuses to overwrite a real CLAUDE.md because it may contain user-authored rules.
    */
   async symlinkClaude(): Promise<void> {
     const agentsMdPath = this.getAgentsMdPath();
     const claudeMdPath = this.getClaudeMdPath();
 
     if (!(await fileExists(agentsMdPath))) {
-      throw new Error('AGENTS.md does not exist. Run `agentinit init` first.');
+      throw new Error('AGENTS.md does not exist. Create AGENTS.md first.');
     }
 
-    // Remove existing CLAUDE.md (file or symlink)
     try {
       const stats = await fs.lstat(claudeMdPath);
-      if (stats.isSymbolicLink() || stats.isFile()) {
-        await fs.rm(claudeMdPath, { force: true });
+      if (!stats.isSymbolicLink()) {
+        throw new Error('CLAUDE.md already exists and is not a symlink. Move or remove it before creating the alias.');
       }
-    } catch {
-      // File doesn't exist, that's fine
+    } catch (error) {
+      if (!this.isMissingPathError(error)) {
+        throw error;
+      }
     }
 
     const created = await createRelativeSymlink(agentsMdPath, claudeMdPath);
@@ -188,18 +163,101 @@ export class AgentsMdManager {
     }
   }
 
-  /**
-   * Serialize sections back to markdown string.
-   */
-  private serializeSections(sections: AgentsMdSection[]): string {
-    const parts: string[] = [];
-    for (const section of sections) {
-      parts.push(`${'#'.repeat(section.level)} ${section.heading}`);
-      if (section.body) {
-        parts.push(section.body);
-      }
-      parts.push('');
+  private parseSectionRanges(content: string): AgentsMdSectionRange[] {
+    const sections: Omit<AgentsMdSectionRange, 'end' | 'body'>[] = [];
+    const headingPattern = /^(#{1,6})[ \t]+(.+?)\s*$/gm;
+    let match: RegExpExecArray | null;
+
+    while ((match = headingPattern.exec(content)) !== null) {
+      const lineEndIndex = content.indexOf('\n', match.index);
+      sections.push({
+        heading: match[2]!.trim(),
+        level: match[1]!.length,
+        start: match.index,
+        headingEnd: lineEndIndex === -1 ? content.length : lineEndIndex + 1,
+      });
     }
-    return parts.join('\n').trimEnd() + '\n';
+
+    return sections.map((section, index) => {
+      const nextPeerOrParent = sections.slice(index + 1).find(next => next.level <= section.level);
+      const end = nextPeerOrParent?.start ?? content.length;
+      return {
+        ...section,
+        end,
+        body: content.slice(section.headingEnd, end).trimEnd(),
+      };
+    });
+  }
+
+  private findSectionRange(
+    sections: AgentsMdSectionRange[],
+    heading: string,
+  ): AgentsMdSectionRange | undefined {
+    const normalized = this.normalizeHeading(heading);
+    return sections.find(s => this.normalizeHeading(s.heading) === normalized);
+  }
+
+  private normalizeHeadingInput(heading: string): string {
+    const normalized = heading.trim();
+    if (!normalized || normalized.includes('\n') || normalized.includes('\r')) {
+      throw new Error('Section heading must be a single non-empty line');
+    }
+    return normalized;
+  }
+
+  private normalizeHeading(heading: string): string {
+    return heading.trim().toLowerCase();
+  }
+
+  private parsePlacement(placement: SetSectionOptions['placement']): (
+    { type: 'append' } | { type: 'prepend' } | { type: 'after'; heading: string }
+  ) {
+    if (!placement || placement === 'append') {
+      return { type: 'append' };
+    }
+    if (placement === 'prepend') {
+      return { type: 'prepend' };
+    }
+    if (placement.startsWith('after ')) {
+      return { type: 'after', heading: this.normalizeHeadingInput(placement.slice(6)) };
+    }
+    throw new Error('Placement must be "append", "prepend", or "after <heading>"');
+  }
+
+  private renderSection(level: number, heading: string, body: string): string {
+    const normalizedBody = body.replace(/\r\n/g, '\n').trimEnd();
+    return normalizedBody
+      ? `${'#'.repeat(level)} ${heading}\n${normalizedBody}\n`
+      : `${'#'.repeat(level)} ${heading}\n`;
+  }
+
+  private insertSection(content: string, index: number, renderedSection: string): string {
+    const before = content.slice(0, index).trimEnd();
+    const after = content.slice(index).trimStart();
+
+    if (!before && !after) {
+      return renderedSection;
+    }
+    if (!before) {
+      return `${renderedSection}\n${after}`;
+    }
+    if (!after) {
+      return `${before}\n\n${renderedSection}`;
+    }
+    return `${before}\n\n${renderedSection}\n${after}`;
+  }
+
+  private ensureTrailingNewline(content: string): string {
+    if (!content.trim()) {
+      return '';
+    }
+    return content.endsWith('\n') ? content : `${content}\n`;
+  }
+
+  private isMissingPathError(error: unknown): boolean {
+    return !!error
+      && typeof error === 'object'
+      && 'code' in error
+      && (error as NodeJS.ErrnoException).code === 'ENOENT';
   }
 }

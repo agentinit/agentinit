@@ -26,6 +26,7 @@ describe('SkillsManager', () => {
 
   afterEach(async () => {
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
     if (originalHome === undefined) {
       delete process.env.HOME;
     } else {
@@ -99,6 +100,41 @@ describe('SkillsManager', () => {
     const installedPath = await manager.installSkill(srcDir, 'safe-skill', join(targetDir, '.claude/skills'), true);
 
     expect(installedPath).toBe(join(targetDir, '.claude/skills', 'safe-skill'));
+  });
+
+  it('resolves well-known index entries to concrete skill sources', async () => {
+    const manager = new SkillsManager();
+    const projectDir = await mkdtemp(join(tmpdir(), 'agentinit-skill-project-'));
+    const sourceDir = await mkdtemp(join(tmpdir(), 'agentinit-skill-src-'));
+    tempDirs.push(projectDir, sourceDir);
+
+    await mkdir(sourceDir, { recursive: true });
+    await writeFile(join(sourceDir, 'SKILL.md'), '---\nname: docs-helper\ndescription: Local docs helper\n---\n');
+
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      skills: [
+        {
+          name: 'docs-helper',
+          description: 'Catalog description',
+          source: sourceDir,
+          version: '1.2.3',
+          author: 'AgentInit',
+        },
+      ],
+    }))));
+
+    const result = await manager.discoverFromSource('https://example.com/index.json', projectDir);
+
+    expect(result.skills).toEqual([
+      expect.objectContaining({
+        name: 'docs-helper',
+        description: 'Catalog description',
+        path: sourceDir,
+        source: 'well-known',
+        version: '1.2.3',
+        author: 'AgentInit',
+      }),
+    ]);
   });
 
   it('installs skills into the canonical directory and symlinks Claude paths', async () => {
