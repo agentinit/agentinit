@@ -1,3 +1,10 @@
+## [1.27.2](https://github.com/agentinit/agentinit/compare/v1.27.1...v1.27.2) (2026-05-24)
+
+
+### Bug Fixes
+
+* discover categorized skill directories ([c307f6b](https://github.com/agentinit/agentinit/commit/c307f6b4219fdc63dbd5a9acc21586be545c19b4))
+
 ## [1.27.1](https://github.com/agentinit/agentinit/compare/v1.27.0...v1.27.1) (2026-05-05)
 
 
