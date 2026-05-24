@@ -8,6 +8,13 @@ The MCP Verifier library provides programmatic access to verify Model Context Pr
 npm install agentinit
 ```
 
+Token counts use AgentInit's lightweight estimator by default. For accurate tiktoken-backed counts, install the optional tokenizer and enable accurate mode for CLI/runtime configuration:
+
+```bash
+npm install contextcalc
+agentinit config token-counting mode accurate
+```
+
 ## Quick Start
 
 ```typescript
@@ -71,7 +78,7 @@ async verifyServer(
   - `timeout`: Connection timeout in milliseconds
   - `includeResourceContents`: Fetch actual resource data (default: false)
   - `includePromptDetails`: Fetch prompt templates (default: false)
-  - `includeTokenCounts`: Calculate token usage (default: true)
+  - `includeTokenCounts`: Calculate token usage (default: true; uses the configured token counting mode)
 
 **Returns:** `MCPVerificationResult` containing:
 - `server`: The server configuration
@@ -353,14 +360,16 @@ Debug output includes:
 
 ## Token Counting Methodology
 
-The verifier calculates token usage for MCP tools based on empirical testing against Claude Code v2.x. The calculation includes:
+The verifier calculates token usage for MCP tools based on empirical testing against Claude Code v2.x. By default it uses a lightweight estimate so AgentInit works without native tokenizer dependencies. Set `agentinit config token-counting mode accurate` or `AGENTINIT_TOKEN_COUNTING_MODE=accurate` to use the optional `contextcalc`/tiktoken path when installed.
+
+The calculation includes:
 
 - Tool name (with MCP prefix: `mcp__<server>__<tool>`)
 - Tool description
 - Complete JSON Schema for parameters
 - Function calling wrapper format
 
-**Note:** The token counts use a 9x multiplier based on validation against Claude Code's `/context` command output. This accounts for:
+**Note:** The MCP tool counts use a 9x multiplier based on validation against Claude Code's `/context` command output. This accounts for:
 - System instructions for MCP tool usage
 - Additional formatting and metadata per tool
 - Function calling protocol overhead

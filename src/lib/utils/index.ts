@@ -14,8 +14,8 @@
  * ```
  */
 
-// Re-export token counting utility
-export { countTokens } from 'contextcalc';
+// Re-export token counting utilities
+export { countTokens, countTokensExact, countTokensWithMode } from '../../utils/tokenCounter.js';
 
 // Re-export MCP parser
 export { MCPParser, MCPParseError } from '../../core/mcpParser.js';

@@ -18,10 +18,6 @@ vi.mock('@modelcontextprotocol/sdk/client/stdio.js', () => ({
   StdioClientTransport: vi.fn().mockImplementation(() => ({}))
 }));
 
-vi.mock('contextcalc', () => ({
-  countTokens: vi.fn().mockReturnValue(42)
-}));
-
 describe('MCPVerifier', () => {
   let verifier: MCPVerifier;
 

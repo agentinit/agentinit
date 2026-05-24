@@ -213,6 +213,15 @@ agentinit mcp verify --mcp-http notion_api "https://mcp.notion.com/mcp" --timeou
 
 Shows connection status, response time, and available tools/resources/prompts for each MCP server.
 
+Token counts use a lightweight estimator by default so AgentInit does not require native tokenizer dependencies. For accurate tiktoken-backed counts, install the optional tokenizer and enable accurate mode:
+
+```bash
+npm install contextcalc
+agentinit config token-counting mode accurate
+# or for one shell/session:
+AGENTINIT_TOKEN_COUNTING_MODE=accurate agentinit mcp verify --all
+```
+
 **MCP Authentication Options**:
 - `--auth "Bearer TOKEN"` - Adds Authorization header for Bearer token authentication
 - `--header "KEY:VALUE"` - Adds custom headers in KEY:VALUE format (can be used multiple times)
@@ -467,6 +476,9 @@ agentinit agent unset claude effortLevel
 
 # Persist a different default scope if you want repo-local behavior
 agentinit config agent-settings scope project
+
+# Opt into accurate token counts when contextcalc is installed
+agentinit config token-counting mode accurate
 ```
 
 Use `--value-json` when the value itself is JSON. Use `--json` when the command output should be machine-readable.
@@ -639,8 +651,10 @@ import type {
   MCPVerificationResult,
   MCPVerificationOptions
 } from 'agentinit/types';
-import { countTokens, MCPParser } from 'agentinit/utils';
+import { countTokens, countTokensExact, MCPParser } from 'agentinit/utils';
 ```
+
+`countTokens` is a synchronous estimate. `countTokensExact` is async and uses the optional `contextcalc` tokenizer when installed, falling back to the estimator if it is unavailable.
 
 > **Note:** For detailed examples, type definitions, and advanced usage patterns, see the [full library documentation](src/lib/verifier/README.md).
 
@@ -654,10 +668,13 @@ git clone <repository-url>
 cd agentinit
 
 # Install dependencies
-bun install
+npm ci
+
+# Install Bun for CLI bundling if it is not already available
+# https://bun.sh/docs/installation
 
 # Build the project
-bun run build
+npm run build
 
 # Run locally
 node dist/cli.js --help

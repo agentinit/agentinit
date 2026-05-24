@@ -4,12 +4,14 @@ import { logger } from '../utils/logger.js';
 import { MARKETPLACES, getConfiguredDefaultMarketplaceId, getMarketplace, getMarketplaceIds } from '../core/marketplaceRegistry.js';
 import {
   getEffectiveAgentSettingsDefaultScopeSync,
+  getEffectiveTokenCountingModeSync,
   getBuiltInVerifiedGithubRepos,
   normalizeGitHubRepoRef,
   normalizeAgentSettingsDefaultScope,
   normalizeMarketplaceIdentifier,
   normalizeMarketplaceName,
   normalizeMarketplaceRepoUrl,
+  normalizeTokenCountingMode,
   readUserConfig,
   writeUserConfig,
 } from '../core/userConfig.js';
@@ -243,6 +245,73 @@ export function registerConfigCommand(program: Command): void {
       delete configState.defaultAgentSettingsScope;
       await writeUserConfig(sortConfig(configState));
       logger.success('Cleared the user-configured default agent settings scope.');
+    });
+
+  const tokenCounting = config
+    .command('token-counting')
+    .description('Manage token counting defaults');
+
+  tokenCounting
+    .command('mode [mode]')
+    .description('Get or set token counting mode: estimate or accurate')
+    .action(async (modeArg: string | undefined) => {
+      logger.titleBox('AgentInit  Configuration');
+
+      try {
+        if (!modeArg) {
+          const configState = await readUserConfig();
+          const configuredMode = configState.defaultTokenCountingMode;
+          const effectiveMode = getEffectiveTokenCountingModeSync();
+          const envMode = process.env.AGENTINIT_TOKEN_COUNTING_MODE ?? process.env.AGENTINIT_TOKEN_COUNTING;
+
+          logger.info(`Effective token counting mode: ${cyan(effectiveMode)}`);
+          if (configuredMode) {
+            logger.info(`Configured in user config: ${cyan(configuredMode)}`);
+          } else {
+            logger.info('No user-configured token counting mode. Built-in default is estimate.');
+          }
+          if (envMode !== undefined) {
+            try {
+              logger.info(`Environment override: ${cyan(normalizeTokenCountingMode(envMode))}`);
+            } catch {
+              logger.info(`Invalid environment override ignored: ${cyan(envMode)}`);
+            }
+          }
+          if (effectiveMode === 'accurate') {
+            logger.info('Accurate mode uses optional contextcalc/tiktoken when installed and falls back to estimates otherwise.');
+          }
+          return;
+        }
+
+        const mode = normalizeTokenCountingMode(modeArg);
+        const configState = await readUserConfig();
+        configState.defaultTokenCountingMode = mode;
+        await writeUserConfig(sortConfig(configState));
+
+        logger.success(`Set token counting mode to ${green(mode)}.`);
+        if (mode === 'accurate') {
+          logger.info('Install optional contextcalc for accurate tiktoken-backed counts: npm install contextcalc');
+        }
+      } catch (error) {
+        failConfigCommand(error);
+      }
+    });
+
+  tokenCounting
+    .command('clear-mode')
+    .description('Clear the user-configured token counting mode')
+    .action(async () => {
+      logger.titleBox('AgentInit  Configuration');
+
+      const configState = await readUserConfig();
+      if (!configState.defaultTokenCountingMode) {
+        logger.info('No user-configured token counting mode to clear.');
+        return;
+      }
+
+      delete configState.defaultTokenCountingMode;
+      await writeUserConfig(sortConfig(configState));
+      logger.success('Cleared the user-configured token counting mode.');
     });
 
   const verifiedRepos = config

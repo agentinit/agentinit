@@ -1,5 +1,5 @@
-import { countTokens } from 'contextcalc';
 import { readFileIfExists, writeFile, ensureDirectoryExists } from '../utils/fs.js';
+import { countTokensWithMode } from '../utils/tokenCounter.js';
 import type { Agent } from '../agents/Agent.js';
 import type { AppliedRules, RuleApplicationResult, RuleSection } from '../types/rules.js';
 
@@ -42,7 +42,7 @@ export class RulesApplicator {
       const existingContent = await readFileIfExists(configPath) || '';
       const existingSections = agent.extractExistingSections(existingContent);
       const existingRules = agent.extractExistingRules(existingContent);
-      const previousTokenCount = this.countRulesTokens(existingRules);
+      const previousTokenCount = await this.countRulesTokens(existingRules);
 
       const mergedSections = this.mergeSections(existingSections, rules.sections);
       const allMergedRules = mergedSections.flatMap(section => section.rules);
@@ -53,7 +53,7 @@ export class RulesApplicator {
 
       await this.applyRulesByAgentType(agent, allMergedRules, configPath, mergedSections);
 
-      const tokenCount = this.countRulesTokens(allMergedRules);
+      const tokenCount = await this.countRulesTokens(allMergedRules);
       const tokenDiff = tokenCount - previousTokenCount;
       const totalFileTokens = await this.countTotalFileTokens(configPath);
 
@@ -153,7 +153,7 @@ export class RulesApplicator {
       const fileContent = await readFileIfExists(configPath);
       if (!fileContent) return 0;
 
-      return countTokens(fileContent);
+      return await countTokensWithMode(fileContent);
     } catch (error) {
       console.warn('Failed to count total file tokens:', error);
       return 0;
@@ -163,11 +163,11 @@ export class RulesApplicator {
   /**
    * Count tokens in the rules
    */
-  private countRulesTokens(rules: string[]): number {
+  private async countRulesTokens(rules: string[]): Promise<number> {
     try {
       if (rules.length === 0) return 0;
       const rulesText = rules.map(rule => `- ${rule}`).join('\n');
-      return countTokens(rulesText);
+      return await countTokensWithMode(rulesText);
     } catch (error) {
       console.warn('Failed to count tokens:', error);
       return 0;

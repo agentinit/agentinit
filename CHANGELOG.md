@@ -1,3 +1,9 @@
+## Unreleased
+
+### Features
+
+* make token counting work without required native tokenizer dependencies and add configurable accurate mode
+
 ## [1.27.2](https://github.com/agentinit/agentinit/compare/v1.27.1...v1.27.2) (2026-05-24)
 
 

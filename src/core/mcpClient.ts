@@ -2,10 +2,10 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
-import { countTokens } from 'contextcalc';
 import { green, yellow, red } from 'kleur/colors';
 import { logger } from '../utils/logger.js';
 import { extractPackageFromCommand, fetchLatestVersion } from '../utils/packageVersion.js';
+import { countTokensWithMode } from '../utils/tokenCounter.js';
 import { MCPServerType } from '../types/index.js';
 import { DEFAULT_CONNECTION_TIMEOUT_MS, MAX_RESOURCE_CONTENT_SIZE, MCP_VERIFIER_CONFIG, TimeoutError, TOKEN_COUNT_THRESHOLDS } from '../constants/index.js';
 import type {
@@ -201,7 +201,7 @@ export class MCPVerifier {
   /**
    * Calculate token counts for MCP tools based on how they appear in Claude's context
    */
-  private calculateToolTokens(tools: MCPTool[], serverName: string): { toolTokenCounts: Map<string, number>; totalToolTokens: number } {
+  private async calculateToolTokens(tools: MCPTool[], serverName: string): Promise<{ toolTokenCounts: Map<string, number>; totalToolTokens: number }> {
     const toolTokenCounts = new Map<string, number>();
     let totalToolTokens = 0;
 
@@ -271,7 +271,7 @@ export class MCPVerifier {
         //
         // This multiplier was validated against @modelcontextprotocol/server-everything v0.6.2
         // on Claude Code v2.x in October 2025.
-        const tokenCount = countTokens(claudeToolRepresentation) * 9;
+        const tokenCount = (await countTokensWithMode(claudeToolRepresentation)) * 9;
 
         toolTokenCounts.set(tool.name, tokenCount);
         totalToolTokens += tokenCount;
@@ -682,7 +682,7 @@ export class MCPVerifier {
       // Calculate token counts for tools (unless disabled)
       const shouldIncludeTokenCounts = options?.includeTokenCounts !== false;
       const tokenData = shouldIncludeTokenCounts
-        ? this.calculateToolTokens(tools, server.name)
+        ? await this.calculateToolTokens(tools, server.name)
         : undefined;
 
       const capabilities: MCPCapabilities = {

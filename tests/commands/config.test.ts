@@ -12,6 +12,8 @@ describe('config command', () => {
   const originalHome = process.env.HOME;
   const originalExitCode = process.exitCode;
   const originalAgentSettingsScope = process.env.AGENTINIT_AGENT_DEFAULT_SCOPE;
+  const originalTokenCountingMode = process.env.AGENTINIT_TOKEN_COUNTING_MODE;
+  const originalTokenCounting = process.env.AGENTINIT_TOKEN_COUNTING;
 
   beforeEach(async () => {
     const homeDir = await mkdtemp(join(tmpdir(), 'agentinit-config-home-'));
@@ -33,6 +35,18 @@ describe('config command', () => {
       delete process.env.AGENTINIT_AGENT_DEFAULT_SCOPE;
     } else {
       process.env.AGENTINIT_AGENT_DEFAULT_SCOPE = originalAgentSettingsScope;
+    }
+
+    if (originalTokenCountingMode === undefined) {
+      delete process.env.AGENTINIT_TOKEN_COUNTING_MODE;
+    } else {
+      process.env.AGENTINIT_TOKEN_COUNTING_MODE = originalTokenCountingMode;
+    }
+
+    if (originalTokenCounting === undefined) {
+      delete process.env.AGENTINIT_TOKEN_COUNTING;
+    } else {
+      process.env.AGENTINIT_TOKEN_COUNTING = originalTokenCounting;
     }
 
     await Promise.all(tempDirs.map(dir => rm(dir, { recursive: true, force: true })));
@@ -158,6 +172,36 @@ describe('config command', () => {
     expect(infoSpy).not.toHaveBeenCalledWith(expect.stringContaining('Environment override:'));
   });
 
+  it('sets, shows, and clears the token counting mode', async () => {
+    silenceLogger();
+    const infoSpy = vi.spyOn(logger, 'info').mockImplementation(() => {});
+
+    await runConfig(['config', 'token-counting', 'mode', 'accurate']);
+    expect((await readUserConfig()).defaultTokenCountingMode).toBe('accurate');
+
+    process.env.AGENTINIT_TOKEN_COUNTING_MODE = 'estimate';
+    await runConfig(['config', 'token-counting', 'mode']);
+    expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('Effective token counting mode:'));
+    expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('Configured in user config:'));
+    expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('Environment override:'));
+
+    await runConfig(['config', 'token-counting', 'clear-mode']);
+    expect((await readUserConfig()).defaultTokenCountingMode).toBeUndefined();
+  });
+
+  it('reports invalid environment token counting mode overrides as ignored', async () => {
+    silenceLogger();
+    const infoSpy = vi.spyOn(logger, 'info').mockImplementation(() => {});
+
+    await runConfig(['config', 'token-counting', 'mode', 'estimate']);
+    process.env.AGENTINIT_TOKEN_COUNTING_MODE = 'precise';
+    await runConfig(['config', 'token-counting', 'mode']);
+
+    expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('Effective token counting mode:'));
+    expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('Invalid environment override ignored:'));
+    expect(infoSpy).not.toHaveBeenCalledWith(expect.stringContaining('Environment override:'));
+  });
+
   it('sets a non-zero exit code for invalid marketplace operations', async () => {
     silenceLogger();
 
@@ -182,6 +226,14 @@ describe('config command', () => {
     silenceLogger();
 
     await runConfig(['config', 'agent-settings', 'scope', 'workspace']);
+
+    expect(process.exitCode).toBe(1);
+  });
+
+  it('sets a non-zero exit code for invalid token counting mode operations', async () => {
+    silenceLogger();
+
+    await runConfig(['config', 'token-counting', 'mode', 'precise']);
 
     expect(process.exitCode).toBe(1);
   });

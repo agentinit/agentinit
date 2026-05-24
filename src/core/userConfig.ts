@@ -11,10 +11,12 @@ export interface CustomMarketplaceConfig {
 }
 
 export type AgentSettingsDefaultScope = 'global' | 'project' | 'local';
+export type TokenCountingMode = 'estimate' | 'accurate';
 
 export interface AgentInitUserConfig {
   defaultMarketplace?: string | undefined;
   defaultAgentSettingsScope?: AgentSettingsDefaultScope | undefined;
+  defaultTokenCountingMode?: TokenCountingMode | undefined;
   customMarketplaces: CustomMarketplaceConfig[];
   verifiedGithubRepos: string[];
 }
@@ -25,6 +27,7 @@ const GIT_REPO_URL_PATTERN = /^(https?:\/\/|ssh:\/\/|git@).+/;
 
 export const BUILTIN_VERIFIED_GITHUB_REPOS = ['openai/codex-plugin-cc'] as const;
 const AGENT_SETTINGS_SCOPES = new Set<AgentSettingsDefaultScope>(['global', 'project', 'local']);
+const TOKEN_COUNTING_MODES = new Set<TokenCountingMode>(['estimate', 'accurate']);
 
 export function getUserConfigPath(): string {
   return join(homedir(), '.agentinit', 'config.json');
@@ -44,6 +47,18 @@ export function normalizeAgentSettingsDefaultScope(scope: string): AgentSettings
   }
 
   return normalized;
+}
+
+export function normalizeTokenCountingMode(mode: string): TokenCountingMode {
+  const normalized = mode.trim().toLowerCase();
+  if (normalized === 'exact' || normalized === 'tiktoken') {
+    return 'accurate';
+  }
+  if (!TOKEN_COUNTING_MODES.has(normalized as TokenCountingMode)) {
+    throw new Error('Invalid token counting mode. Use estimate or accurate.');
+  }
+
+  return normalized as TokenCountingMode;
 }
 
 export function normalizeMarketplaceIdentifier(identifier: string): string {
@@ -163,9 +178,19 @@ export function sanitizeUserConfig(raw: unknown): AgentInitUserConfig {
     }
   }
 
+  let defaultTokenCountingMode: TokenCountingMode | undefined;
+  if (typeof parsed.defaultTokenCountingMode === 'string') {
+    try {
+      defaultTokenCountingMode = normalizeTokenCountingMode(parsed.defaultTokenCountingMode);
+    } catch {
+      defaultTokenCountingMode = undefined;
+    }
+  }
+
   return {
     ...(defaultMarketplace ? { defaultMarketplace } : {}),
     ...(defaultAgentSettingsScope ? { defaultAgentSettingsScope } : {}),
+    ...(defaultTokenCountingMode ? { defaultTokenCountingMode } : {}),
     customMarketplaces,
     verifiedGithubRepos,
   };
@@ -208,6 +233,10 @@ export function getConfiguredAgentSettingsDefaultScopeSync(): AgentSettingsDefau
   return readUserConfigSync().defaultAgentSettingsScope;
 }
 
+export function getConfiguredTokenCountingModeSync(): TokenCountingMode | undefined {
+  return readUserConfigSync().defaultTokenCountingMode;
+}
+
 export function getEffectiveAgentSettingsDefaultScopeSync(): AgentSettingsDefaultScope {
   const envScope = process.env.AGENTINIT_AGENT_DEFAULT_SCOPE;
   if (typeof envScope === 'string') {
@@ -219,6 +248,19 @@ export function getEffectiveAgentSettingsDefaultScopeSync(): AgentSettingsDefaul
   }
 
   return getConfiguredAgentSettingsDefaultScopeSync() ?? 'global';
+}
+
+export function getEffectiveTokenCountingModeSync(): TokenCountingMode {
+  const envMode = process.env.AGENTINIT_TOKEN_COUNTING_MODE ?? process.env.AGENTINIT_TOKEN_COUNTING;
+  if (typeof envMode === 'string') {
+    try {
+      return normalizeTokenCountingMode(envMode);
+    } catch {
+      // Ignore invalid environment overrides and fall back to persisted config.
+    }
+  }
+
+  return getConfiguredTokenCountingModeSync() ?? 'estimate';
 }
 
 export function getEffectiveVerifiedGithubReposSync(): string[] {
