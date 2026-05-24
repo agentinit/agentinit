@@ -1,3 +1,10 @@
+# [1.28.0](https://github.com/agentinit/agentinit/compare/v1.27.2...v1.28.0) (2026-05-24)
+
+
+### Features
+
+* make token counting configurable ([3f3215a](https://github.com/agentinit/agentinit/commit/3f3215a434bad4103bcda9706fd104cb9c579bee))
+
 ## Unreleased
 
 ### Features
