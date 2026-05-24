@@ -1132,6 +1132,24 @@ describe('SkillsManager', () => {
     expect(result.skills[0]?.path.endsWith('/nothing-design')).toBe(true);
   });
 
+  it('discovers skills nested inside category directories', async () => {
+    const manager = new SkillsManager();
+    const projectDir = await mkdtemp(join(tmpdir(), 'agentinit-skill-project-'));
+    const repoDir = await mkdtemp(join(tmpdir(), 'agentinit-github-skill-repo-'));
+    tempDirs.push(projectDir, repoDir);
+
+    await mkdir(join(repoDir, 'skills', 'engineering', 'tdd'), { recursive: true });
+    await mkdir(join(repoDir, 'skills', 'productivity', 'handoff'), { recursive: true });
+    await writeFile(join(repoDir, 'skills', 'engineering', 'tdd', 'SKILL.md'), '---\nname: tdd\ndescription: Test-driven development\n---\n');
+    await writeFile(join(repoDir, 'skills', 'productivity', 'handoff', 'SKILL.md'), '---\nname: handoff\ndescription: Write handoffs\n---\n');
+
+    vi.spyOn(manager, 'cloneRepo').mockResolvedValue(repoDir);
+
+    const result = await manager.discoverFromSource('mattpocock/skills', projectDir);
+    expect(result.skills.map(skill => skill.name).sort()).toEqual(['handoff', 'tdd']);
+    expect(result.skills.find(skill => skill.name === 'tdd')?.path.endsWith('/skills/engineering/tdd')).toBe(true);
+  });
+
   it('rejects GitHub blob sources that do not point to SKILL.md', async () => {
     const manager = new SkillsManager();
     const projectDir = await mkdtemp(join(tmpdir(), 'agentinit-skill-project-'));

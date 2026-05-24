@@ -53,6 +53,7 @@ const SKILL_SEARCH_DIRS = [
   '.claude/skills',
   '.factory/skills',
 ];
+const MAX_SKILL_CONTAINER_DEPTH = 4;
 
 type LoadedSkillsContext = {
   skills: SkillInfo[];
@@ -462,53 +463,72 @@ export class SkillsManager {
       const fullDir = resolve(repoPath, searchDir);
       if (!(await fileExists(fullDir))) continue;
 
-      // Check if this directory itself has a SKILL.md
-      const directSkillMd = join(fullDir, 'SKILL.md');
-      if (await fileExists(directSkillMd)) {
-        // Check lowercase variant too
-        const parsed = await this.parseSkillMd(directSkillMd);
-        if (parsed && !seen.has(parsed.name)) {
-          seen.add(parsed.name);
-          skills.push({ ...parsed, path: resolve(fullDir) });
-        }
-      }
+      await this.addSkillIfFound(fullDir, seen, skills);
 
-      // Also check lowercase
-      const directSkillMdLower = join(fullDir, 'skill.md');
-      if (await fileExists(directSkillMdLower)) {
-        const parsed = await this.parseSkillMd(directSkillMdLower);
-        if (parsed && !seen.has(parsed.name)) {
-          seen.add(parsed.name);
-          skills.push({ ...parsed, path: resolve(fullDir) });
-        }
-      }
-
-      // Check subdirectories for skill folders
       if (!(await isDirectory(fullDir))) continue;
-      const entries = await listFiles(fullDir);
 
-      for (const entry of entries) {
-        const entryPath = join(fullDir, entry);
-        if (!(await isDirectory(entryPath))) continue;
-
-        // Look for SKILL.md in subdirectory
-        const skillMdPath = join(entryPath, 'SKILL.md');
-        const skillMdPathLower = join(entryPath, 'skill.md');
-        const skillFile = (await fileExists(skillMdPath)) ? skillMdPath
-          : (await fileExists(skillMdPathLower)) ? skillMdPathLower
-          : null;
-
-        if (!skillFile) continue;
-
-        const parsed = await this.parseSkillMd(skillFile);
-        if (parsed && !seen.has(parsed.name)) {
-          seen.add(parsed.name);
-          skills.push({ ...parsed, path: entryPath });
-        }
-      }
+      await this.discoverSkillFolders(fullDir, seen, skills, {
+        depth: searchDir === '.' ? 1 : MAX_SKILL_CONTAINER_DEPTH,
+        includeHidden: searchDir.includes('/.'),
+      });
     }
 
     return skills;
+  }
+
+  private async addSkillIfFound(
+    directory: string,
+    seen: Set<string>,
+    skills: SkillInfo[],
+  ): Promise<boolean> {
+    const skillMdPath = join(directory, 'SKILL.md');
+    const skillMdPathLower = join(directory, 'skill.md');
+    const skillFile = (await fileExists(skillMdPath)) ? skillMdPath
+      : (await fileExists(skillMdPathLower)) ? skillMdPathLower
+      : null;
+
+    if (!skillFile) {
+      return false;
+    }
+
+    const parsed = await this.parseSkillMd(skillFile);
+    if (parsed && !seen.has(parsed.name)) {
+      seen.add(parsed.name);
+      skills.push({ ...parsed, path: resolve(directory) });
+    }
+
+    return true;
+  }
+
+  private async discoverSkillFolders(
+    directory: string,
+    seen: Set<string>,
+    skills: SkillInfo[],
+    options: { depth: number; includeHidden: boolean },
+  ): Promise<void> {
+    if (options.depth <= 0) {
+      return;
+    }
+
+    const entries = await listFiles(directory);
+    for (const entry of entries) {
+      if (!options.includeHidden && entry.startsWith('.')) {
+        continue;
+      }
+
+      const entryPath = join(directory, entry);
+      if (!(await isDirectory(entryPath))) continue;
+
+      const foundSkill = await this.addSkillIfFound(entryPath, seen, skills);
+      if (foundSkill) {
+        continue;
+      }
+
+      await this.discoverSkillFolders(entryPath, seen, skills, {
+        ...options,
+        depth: options.depth - 1,
+      });
+    }
   }
 
   /**
