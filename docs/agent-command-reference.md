@@ -85,6 +85,7 @@ agentinit agent api-key status claude (--env <name>|--key <key>) [--json]
 - `attribution`
 - `includeGitInstructions`
 - `cleanupPeriodDays`
+- `defaultShell`
 - `showThinkingSummaries`
 - `spinnerTipsEnabled`
 - `autoUpdatesChannel`
